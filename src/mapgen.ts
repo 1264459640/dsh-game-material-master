@@ -64,6 +64,7 @@ import {
   parseChunkKey,
   viewCellRange,
   MAX_MAP_DIM,
+  MAX_PLAN_CHUNKS,
   type MapGrid
 } from "./mapgeom.js";
 import { bitmapToPng, buildPlan, rasterize, type PlanBounds, type PlanChunk, type PlanLegendEntry, type RenderContext } from "./maprender.js";
@@ -1307,8 +1308,6 @@ function subdivide(
 
 // ── 计划查询 ──────────────────────────────────────────────────────────────
 
-/** 一次最多回多少 chunk（整张 512×512 地图正好 16×16 = 256 个）。 */
-const MAX_PLAN_CHUNKS = 256;
 
 export interface PlanQueryResult {
   grid: MapGrid;

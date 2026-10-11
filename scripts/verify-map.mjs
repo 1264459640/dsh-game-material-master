@@ -168,56 +168,79 @@ section("4) 命中测试（pointToCellRaw / pointToCell）");
 // ══ 5. chunk 与脏块 ═══════════════════════════════════════════════════════
 section("5) chunk（chunkOf / rangeOfChunk / chunksInRange / canonicalChunk / dirtyChunksFor）");
 {
-  const l = geom.layoutOf(WRAP, 64, 64);
-  const flat = geom.layoutOf(FLAT, 64, 64);
-  check("chunkOf 按 32 对齐", geom.chunkOf(0, 0).cx === 0 && geom.chunkOf(31, 33).cx === 1 && geom.chunkOf(32, 0).cy === 1);
+  /**
+   * ⚠️ 这里**不许写死块边长**：`MAP_CHUNK_SIZE` 是性能旋钮（它决定一次笔刷要重发多少 op），
+   * 断言要表达的是「按块边长对齐 / 跨块 / 环绕折回」这些**契约**，不是那个数字。
+   * 夹具统一用 4×4 块的图（边长 S，块数 NX），块键都按 S 推出来。
+   */
+  const S = geom.MAP_CHUNK_SIZE;
+  const NX = 4;
+  const DIM = S * NX;
+  const l = geom.layoutOf(WRAP, DIM, DIM);
+  const flat = geom.layoutOf(FLAT, DIM, DIM);
+
+  check("chunkOf 按块边长对齐", geom.chunkOf(0, 0).cx === 0 && geom.chunkOf(S - 1, S + 1).cx === 1 && geom.chunkOf(S, 0).cy === 1);
   check("负数坐标给出负 chunk 号", geom.chunkOf(-1, -1).cx === -1 && geom.chunkOf(-1, -1).cy === -1);
-  check("chunkKey 往返", geom.chunkKey(geom.chunkOf(70, 40)) === "1,2" && geom.parseChunkKey("1,2").cy === 2);
+  const roundTripKey = geom.chunkKey(geom.chunkOf(70, 40));
+  check(
+    "chunkKey 往返",
+    roundTripKey === `${Math.floor(40 / S)},${Math.floor(70 / S)}` && geom.parseChunkKey(roundTripKey).cy === Math.floor(70 / S),
+    roundTripKey
+  );
   check("非法 key 返回 undefined", geom.parseChunkKey("a,b") === undefined && geom.parseChunkKey("") === undefined);
 
   const range = geom.rangeOfChunk({ cx: 0, cy: 1 });
-  check("rangeOfChunk 不裁剪（右下开区间 32 格）", range.r0 === 32 && range.r1 === 64 && range.c0 === 0 && range.c1 === 32);
+  check("rangeOfChunk 不裁剪（右下开区间 = 块边长）", range.r0 === S && range.r1 === S * 2 && range.c0 === 0 && range.c1 === S, JSON.stringify(range));
   const negative = geom.rangeOfChunk({ cx: -1, cy: -1 });
-  check("rangeOfChunk 对负 chunk 也成立", negative.r0 === -32 && negative.r1 === 0 && negative.c0 === -32);
+  check("rangeOfChunk 对负 chunk 也成立", negative.r0 === -S && negative.r1 === 0 && negative.c0 === -S, JSON.stringify(negative));
 
-  const covered = geom.chunksInRange({ r0: 0, c0: 0, r1: 33, c1: 33 });
+  const covered = geom.chunksInRange({ r0: 0, c0: 0, r1: S + 1, c1: S + 1 });
   check("chunksInRange 覆盖跨界范围（2×2）", covered.length === 4, String(covered.length));
-  const coveredNeg = geom.chunksInRange({ r0: -1, c0: -1, r1: 1, c1: 1 });
+  const coveredNeg = geom.chunksInRange({ r0: -1, c0: -1, r1: S, c1: S });
   check(
     "chunksInRange 覆盖负范围（2×2，含 (-1,-1)）",
     coveredNeg.length === 4 && coveredNeg.some((chunk) => chunk.cx === -1 && chunk.cy === -1),
     coveredNeg.map(geom.chunkKey).join(" ")
   );
   check("空范围 → 空数组", geom.chunksInRange({ r0: 0, c0: 0, r1: 0, c1: 0 }).length === 0);
-
+  // 块数上限按**面积**折算：调小块边长（性能旋钮）不能悄悄让「缩小到最远」开始截断。
   check(
-    "allChunks = ceil(cols/32) × ceil(rows/32)",
-    geom.allChunks(64, 64).length === 4 && geom.allChunks(1, 1).length === 1 && geom.allChunks(33, 33).length === 4
+    "计划块数上限按面积折算 = 一张最大地图（与块边长无关）",
+    geom.MAX_PLAN_CHUNKS * geom.MAP_CHUNK_SIZE * geom.MAP_CHUNK_SIZE >= geom.MAX_MAP_DIM * geom.MAX_MAP_DIM,
+    `块边长 ${S} → 上限 ${geom.MAX_PLAN_CHUNKS} 块 = ${geom.MAX_PLAN_CHUNKS * S * S} 格`
   );
 
-  const canonical = geom.canonicalChunk({ cx: -1, cy: -1 }, 64, 64);
-  check("canonicalChunk 把负 chunk 折回（-1 → 1）", canonical.cx === 1 && canonical.cy === 1, `${canonical.cx},${canonical.cy}`);
+  check(
+    "allChunks = ceil(cols/块边长) × ceil(rows/块边长)",
+    geom.allChunks(DIM, DIM).length === NX * NX && geom.allChunks(1, 1).length === 1 && geom.allChunks(S * 2, S * 2).length === 4,
+    `4×4 块 → ${geom.allChunks(DIM, DIM).length}`
+  );
+
+  const canonical = geom.canonicalChunk({ cx: -1, cy: -1 }, DIM, DIM);
+  check("canonicalChunk 把负 chunk 折回（-1 → 块数-1）", canonical.cx === NX - 1 && canonical.cy === NX - 1, `${canonical.cx},${canonical.cy}`);
   check(
     "canonicalChunk 对已经规范的 key 是恒等（所以 dropKeys 用它映射缓存键是安全的）",
-    geom.canonicalChunk({ cx: 0, cy: 1 }, 64, 64).cx === 0 && geom.canonicalChunk({ cx: 1, cy: 0 }, 64, 64).cy === 0
+    geom.canonicalChunk({ cx: 0, cy: 1 }, DIM, DIM).cx === 0 && geom.canonicalChunk({ cx: 1, cy: 0 }, DIM, DIM).cy === 0
   );
-  check("canonicalChunk 对多圈的越界 key 也能折回", geom.canonicalChunk({ cx: 5, cy: -3 }, 64, 64).cx === 1 && geom.canonicalChunk({ cx: 5, cy: -3 }, 64, 64).cy === 1);
+  check(
+    "canonicalChunk 对多圈的越界 key 也能折回",
+    geom.canonicalChunk({ cx: NX + 1, cy: -(NX + 1) }, DIM, DIM).cx === 1 && geom.canonicalChunk({ cx: NX + 1, cy: -(NX + 1) }, DIM, DIM).cy === NX - 1
+  );
 
   // 非环绕时视口范围本来就裁在图内，所以缓存键永远是规范的 —— canonicalChunk 在这里不会被用到。
   const corner = geom.dirtyChunksFor([{ r: 0, c: 0 }], flat);
   check("非环绕：角落一格只弄脏 1 个 chunk", corner.length === 1 && corner[0] === "0,0", corner.join(" "));
 
-  const boundary = geom.dirtyChunksFor([{ r: 32, c: 32 }], flat);
-  check("非环绕：32 的倍数边界上恰好弄脏 4 个 chunk", boundary.length === 4, boundary.join(" "));
+  const boundary = geom.dirtyChunksFor([{ r: S, c: S }], flat);
+  check("非环绕：块边界上恰好弄脏 4 个 chunk", boundary.length === 4, boundary.join(" "));
 
   // 环绕下画第 0 行会改变最后一行的自动连接外观 → 必须连带弄脏最后一行所在的 chunk。
-  // 64×64 的图是 2×2 个 chunk，所以角落一格四处都要弄脏。
   const wrapCorner = geom.dirtyChunksFor([{ r: 0, c: 0 }], l);
-  check("环绕：画第 0 行必须连带弄脏最后一行的 chunk", wrapCorner.includes("0,1") && wrapCorner.includes("1,1"), wrapCorner.join(" "));
-  check("环绕：角落一格会弄脏全部 4 个 chunk（2×2 的图）", wrapCorner.length === 4, wrapCorner.join(" "));
+  check("环绕：画第 0 行必须连带弄脏最后一行的 chunk", wrapCorner.includes(`${NX - 1},0`) && wrapCorner.includes(`${NX - 1},${NX - 1}`), wrapCorner.join(" "));
+  check("环绕：角落一格会弄脏全部 4 个 chunk（4×4 块的图，邻域折回后落在四角）", wrapCorner.length === 4, wrapCorner.join(" "));
 
   const flatCorner = geom.dirtyChunksFor([{ r: 0, c: 0 }], flat);
-  check("反向验证：非环绕时不会连带弄脏最后一行", !flatCorner.includes("0,1"), flatCorner.join(" "));
+  check("反向验证：非环绕时不会连带弄脏最后一行", !flatCorner.includes(`${NX - 1},0`), flatCorner.join(" "));
 }
 
 // ══ 6. 视口范围 ═══════════════════════════════════════════════════════════

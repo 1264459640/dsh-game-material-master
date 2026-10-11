@@ -20,6 +20,7 @@
  * 用法：node scripts/verify-map-pipeline.mjs
  */
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import * as geom from "../lib/mapgeom.js";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -509,15 +510,40 @@ try {
   );
   check("包围盒恒等于网格脚印（40×32 = 1280）", seam.bounds.width === 1280 && seam.bounds.height === 1280, JSON.stringify(seam.bounds));
   check("视口越界的计划不是 truncated（上限之内）", seam.truncated === false);
-  const drop = await G.applyMapOps(p1.id, [{ kind: "paint", layerId: "l1", cells: [{ r: 0, c: 10, tile: paletteIndex }] }], {
-    have: ["0,0", "0,1", "1,1", "-2,0", "5,5"]
-  });
-  check("dropKeys 只包含客户端报过的 key", drop.dropKeys.every((key) => ["0,0", "0,1", "1,1", "-2,0", "5,5"].includes(key)), drop.dropKeys.join(" "));
-  check("画第 0 行时最后一行的 chunk 也在 dropKeys 里（wrap 感知的脏块）", drop.dropKeys.includes("0,1"), `${drop.dirtyChunks.join(" ")} → ${drop.dropKeys.join(" ")}`);
-  check("客户端报的负 key 会被映射到规范 chunk 后命中（-2,0 → 0,0）", drop.dropKeys.includes("-2,0"), drop.dropKeys.join(" "));
-  check("内容没变的 chunk 不回给客户端（1,1 / 5,5 被排除）", !drop.dropKeys.includes("1,1") && !drop.dropKeys.includes("5,5"), drop.dropKeys.join(" "));
-  const dropMid = await G.applyMapOps(p1.id, [{ kind: "paint", layerId: "l1", cells: [{ r: 5, c: 10, tile: paletteIndex }] }], { have: ["0,1"] });
-  check("反向验证：在中间行落笔时，最后一行的 chunk 不该被弄脏", !dropMid.dropKeys.includes("0,1"), `${dropMid.dirtyChunks.join(" ")}`);
+  /**
+   * ⚠️ 块键一律**按几何推**，不写死数字：`MAP_CHUNK_SIZE` 是性能旋钮（见 mapgeom.ts），
+   * 断言要表达的是「wrap 感知的脏块 + 客户端报的键怎么映射」，不是某一套具体键名。
+   * 这里先用一次 `have: []` 把宿主**真实**的脏块问出来，再据此构造 have（不是自己推一遍 ——
+   * 自己推一遍就成了拿实现验实现）。
+   */
+  const S = geom.MAP_CHUNK_SIZE;
+  const dimsP1 = await G.mapView(await G.readMapProject(p1.id));
+  const nxP1 = Math.max(1, Math.ceil(dimsP1.cols / S));
+  const nyP1 = Math.max(1, Math.ceil(dimsP1.rows / S));
+  const probe = await G.applyMapOps(p1.id, [{ kind: "paint", layerId: "l1", cells: [{ r: 0, c: 10, tile: paletteIndex }] }], { have: [] });
+  const dirtyKeys = probe.dirtyChunks;
+  const dirtySet = new Set(dirtyKeys);
+  const lastRowDirty = [...dirtySet].filter((key) => Number(key.split(",")[1]) === nyP1 - 1);
+  check("画第 0 行时最后一行的块也脏了（wrap 感知的脏块）", lastRowDirty.length > 0, `dirty=${dirtyKeys.join(" ")}（ny=${nyP1}）`);
+  // 把一个脏块整体往左绕一圈：规范之后还是同一块，所以必须被命中
+  const [dcx, dcy] = dirtyKeys[0].split(",").map(Number);
+  const wrappedKey = `${dcx - nxP1},${dcy}`;
+  // 找一个**没脏**的块（保证「内容没变的不回给客户端」这条断言真的在测东西）
+  let unrelated = "";
+  for (let cy = 0; cy < nyP1 && unrelated === ""; cy++) {
+    for (let cx = 0; cx < nxP1 && unrelated === ""; cx++) {
+      if (!dirtySet.has(`${cx},${cy}`)) unrelated = `${cx},${cy}`;
+    }
+  }
+  const haveKeys = [dirtyKeys[0], wrappedKey, unrelated];
+  const drop = await G.applyMapOps(p1.id, [{ kind: "paint", layerId: "l1", cells: [{ r: 0, c: 10, tile: paletteIndex + 1 }] }], { have: haveKeys });
+  check("dropKeys 只包含客户端报过的 key", drop.dropKeys.every((key) => haveKeys.includes(key)), drop.dropKeys.join(" "));
+  check("客户端报的（规范）脏块会回给客户端", drop.dropKeys.includes(dirtyKeys[0]), `have=${haveKeys.join(" ")} drop=${drop.dropKeys.join(" ")}`);
+  check("客户端报的负 key 会被映射到规范块后命中（绕一圈也认得出来）", drop.dropKeys.includes(wrappedKey), `have=${wrappedKey} drop=${drop.dropKeys.join(" ")}`);
+  check("内容没变的块不回给客户端", unrelated !== "" && !drop.dropKeys.includes(unrelated), `没脏的块 ${unrelated} / drop=${drop.dropKeys.join(" ")}`);
+  const midDirty = (await G.applyMapOps(p1.id, [{ kind: "paint", layerId: "l1", cells: [{ r: 5, c: 10, tile: paletteIndex }] }], { have: [] })).dirtyChunks;
+  const midLastRow = midDirty.filter((key) => Number(key.split(",")[1]) === nyP1 - 1);
+  check("反向验证：在中间行落笔时，最后一行的块不该被弄脏", midLastRow.length === 0, `${midDirty.join(" ")}`);
   check("没报 have 时 dropKeys 是空数组（客户端不需要丢缓存）", (await G.applyMapOps(p1.id, [{ kind: "paint", layerId: "l1", cells: [{ r: 6, c: 6, tile: paletteIndex }] }])).dropKeys.length === 0);
   check("layerIds 过滤只算指定层", (await G.mapPlan(p1.id, { view: { x: 0, y: 0, width: 64, height: 64 }, layerIds: [1] })).chunks.flatMap((c) => c.ops).every((op) => op.l === 1));
   check("have 里已有的 chunk 不再回给客户端", (await G.mapPlan(p1.id, { view: { x: 0, y: 0, width: 64, height: 64 }, have: ["0,0"] })).chunks.every((chunk) => chunk.key !== "0,0"));
@@ -544,14 +570,15 @@ try {
   check("反向验证：关掉环绕后接缝处退化成半格 / 孤岛形状（t 不再是 33/34/37/38）", flatTilesA2.some((t) => ![33, 34, 37, 38].includes(t)), flatTilesA2.join(","));
   await G.saveMapDocStructure(pSeam.id, { wrap: true });
 
-  // ★ dropKeys 也要 wrap 感知：64×64（2×2 个 chunk）上画 (0,0) 一格，
-  //   (0,0) 的上 / 左邻格是 63 行 / 63 列 → 落在另外三个 chunk 里，四个 key 全部失效。
+  // ★ dropKeys 也要 wrap 感知：画 (0,0) 一格，它的上 / 左邻格是最后一行 / 最后一列，
+  //   折回后落在**四个角**的块里 → 四个角的 key 全部失效。键按几何推（块边长是性能旋钮）。
   const pChunk = await newProject("跨块脏标记", { cols: 64, rows: 64 });
   await G.importMapTileset(pChunk.id, "A2", sheetPng(64, 160, 16).toString("base64"));
   const chunkBrush = (await G.mapView(await G.readMapProject(pChunk.id))).tilesets[0].palette[0].index;
-  const fourHave = ["0,0", "0,1", "1,0", "1,1"];
+  const nxChunk = Math.max(1, Math.ceil(64 / geom.MAP_CHUNK_SIZE));
+  const fourHave = ["0,0", `0,${nxChunk - 1}`, `${nxChunk - 1},0`, `${nxChunk - 1},${nxChunk - 1}`];
   const corner = await G.applyMapOps(pChunk.id, [{ kind: "paint", layerId: "l0", cells: [{ r: 0, c: 0, tile: chunkBrush }] }], { have: fourHave });
-  check("画 (0,0)：2×2 个 chunk 全部失效（wrap 邻域落到最后一行 / 列所在的 chunk）", fourHave.every((key) => corner.dropKeys.includes(key)), `dirty=${corner.dirtyChunks.join(" ")} drop=${corner.dropKeys.join(" ")}`);
+  check("画 (0,0)：四个角的块全部失效（wrap 邻域落到最后一行 / 列所在的块）", fourHave.every((key) => corner.dropKeys.includes(key)), `dirty=${corner.dirtyChunks.join(" ")} drop=${corner.dropKeys.join(" ")}`);
   await G.saveMapDocStructure(pChunk.id, { wrap: false });
   await G.saveMapDocStructure(pChunk.id, { clearLayerId: "l0" });
   const cornerFlat = await G.applyMapOps(pChunk.id, [{ kind: "paint", layerId: "l0", cells: [{ r: 0, c: 0, tile: chunkBrush }] }], { have: fourHave });
