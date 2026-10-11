@@ -762,7 +762,7 @@
       "新图片任务的名字": "Name for the new image job",
       "新序列帧任务的名字": "Name for the new sequence job",
       "新骨骼动画任务的名字": "Name for the new skeletal animation job",
-      "新地图项目的名字": "Name for the new map project",
+
       "已重命名": "Renamed",
       "已上传参考图：{n0}": "Reference image uploaded: {n0}",
       "已上传 {n0} 个部件（文件名即部件名）": "Uploaded {n0} parts (the file name is used as the part name)",
@@ -1067,332 +1067,225 @@
       // ── 地图编辑器（模块六）────────────────────────────────────────────
       "地图编辑器":
         "Map editor",
-      "导入自己的 tileset → 自动过渡 → 多层拼图 → 导出 Tiled":
-        "Import your own tileset → auto-tiling → multi-layer assembly → export to Tiled",
-      "① 图集":
-        "① Tilesets",
-      "导入你自己的 tileset 图，按网格或矩形切分，再把图块归入地形族":
-        "Import your own tileset image, slice it by grid or rectangles, then assign tiles to terrain families",
-      "② 规则":
-        "② Rules",
-      "定义地形族（一类地貌：草地 / 土路 / 水…）与自动过渡方案（单块 / 16 掩码 / 47 掩码），缺的块会标出来":
-        "Define terrain families (a kind of terrain: grass / dirt road / water…) and the auto-tiling scheme (single / 16-mask / 47-mask); missing pieces are flagged",
-      "③ 地图":
-        "③ Maps",
-      "多张地图、多图层、每层高度偏移；画布上直接刷，撤销重做都在宿主":
-        "Several maps and layers with per-layer height offset; paint straight on the canvas — undo/redo lives in the host",
-      "PNG 分层与合并 + 自有 JSON + Tiled .tmj/.tsj，全部本地免费":
-        "Layered and merged PNG + own JSON + Tiled .tmj/.tsj, all local and free",
-      "单块（不自动过渡）":
-        "Single tile (no auto-tiling)",
-      "四邻域 16 掩码":
-        "4-neighbour, 16 masks",
-      "八邻域 47 掩码（blob）":
-        "8-neighbour, 47 masks (blob)",
+
       "画笔":
         "Brush",
       "橡皮":
         "Eraser",
-      "填充":
-        "Fill",
-      "矩形":
-        "Rectangle",
+
       "吸管":
         "Picker",
-      "按住拖动画线（B）":
-        "Hold and drag to draw a line (B)",
-      "擦成空（E）":
-        "Erase to empty (E)",
-      "同色连通区一次填满（G）":
-        "Flood-fill the connected area (G)",
-      "拖出矩形，按住「矩形填充」为实心（R）":
-        "Drag a rectangle; tick \"Rectangle fill\" for a solid one (R)",
-      "吸取格子上的图块（I）":
-        "Pick the tile under the cursor (I)",
+
       "我的地图":
         "My map",
       "读文件失败":
         "Failed to read the file",
       "已导入 {n0}":
         "Imported {n0}",
-      "已按顺序给前 {n0} 块分配掩码":
-        "Assigned masks to the first {n0} tiles in order",
+
       "还没有地图项目。":
         "No map project yet.",
-      "新建地图项目":
-        "New map project",
-      "选择已有项目…":
-        "Choose an existing project…",
-      "未分组":
-        "Ungrouped",
-      "{n0} / {n1} 个掩码已配":
-        "{n0} / {n1} masks assigned",
-      "工具":
-        "Tool",
-      "撤销/重做":
-        "Undo / redo",
-      "适应窗口":
-        "Fit",
-      "当前图层":
-        "Active layer",
-      "矩形填充":
-        "Rectangle fill",
-      "显示":
-        "Visible",
-      "锁定":
-        "Locked",
-      "不透明度%":
-        "Opacity %",
-      "加装饰层":
-        "Add decor layer",
-      "加建筑层":
-        "Add building layer",
-      "覆盖":
-        "Overlay",
-      "加覆盖层":
-        "Add overlay layer",
-      "新地图名字":
-        "New map name",
-      "新地图":
-        "New map",
-      "新建地图":
-        "New map",
-      "复制当前地图":
-        "Duplicate map",
-      "删除当前地图":
-        "Delete map",
-      "导入图集":
-        "Import tileset",
-      "导入你自己的 tileset 图（PNG / JPEG / WebP）。原图会原样保存，切分参数随便改都能重切。":
-        "Import your own tileset image (PNG / JPEG / WebP). The original is kept as-is, so you can re-slice it with any settings.",
-      "正在导入…":
-        "Importing…",
-      "块":
-        "tiles",
-      "选为调色板":
-        "Use as palette",
-      "移除图集":
-        "Remove tileset",
-      "格宽":
-        "Tile width",
-      "格高":
-        "Tile height",
-      "左边距":
-        "Left margin",
-      "上边距":
-        "Top margin",
-      "横向间距":
-        "H spacing",
-      "纵向间距":
-        "V spacing",
-      "应用切分":
-        "Apply slicing",
-      "切分建议：{n0}":
-        "Slicing suggestions: {n0}",
-      "没有能整除的常见尺寸，请手动填":
-        "no common size divides evenly — please fill it in manually",
-      "选中 {n0} 块":
-        "{n0} selected",
-      "归入「{n0}」":
-        "Assign to \"{n0}\"",
-      "清空分组":
-        "Clear family",
-      "给「{n0}」按顺序分配掩码":
-        "Assign masks to \"{n0}\" in order",
-      "地形族与自动过渡":
-        "Terrain families and auto-tiling",
-      "「地形族」就是一类地貌：草地、土路、水、墙……把图块按地貌归进不同的族，铺图时宿主才知道哪里该换成带过渡边缘的图块（草地边上接着土路，就换成带土路边的草地）。不归族也能画，但只能一块一块手刷，自动过渡不会生效。":
-        "A \"terrain family\" is a kind of terrain: grass, dirt road, water, wall… Assign tiles to families by terrain and the host knows where to swap in edge tiles while painting (grass next to a dirt road becomes grass-with-dirt-edge). You can paint without families, but then every tile is placed by hand and auto-tiling does nothing.",
-      "新族":
-        "New family",
-      "加一个族":
-        "Add a family",
-      "保存族":
-        "Save families",
-      "掩码覆盖率":
-        "Mask coverage",
-      "还没有族。「族」就是一类地貌（草地 / 土路 / 水…）：先「加一个族」，再去①图集把图块归进去，自动过渡才有依据。":
-        "No family yet. A \"family\" is a kind of terrain (grass / dirt road / water…): click \"Add a family\" first, then assign tiles to it over in step ① — that is what auto-tiling works from.",
-      "完整":
-        "Complete",
-      "缺 {n0} 块":
-        "{n0} missing",
-      "生成验收预览图":
-        "Generate review previews",
-      "调色板":
-        "Palette",
-      "选择图集…":
-        "Choose a tileset…",
-      "全部本地计算，不花钱。导出目录是自包含的：图集 PNG 会一起复制过去，Tiled 直接能打开。":
-        "Everything is computed locally and free. The export folder is self-contained: tileset PNGs are copied alongside so Tiled can open it directly.",
-      "合并 PNG（map.png）":
-        "Merged PNG (map.png)",
-      "分层 PNG":
-        "Layered PNG",
-      "自有 JSON":
-        "Own JSON",
-      "Tiled .tmj/.tsj":
-        "Tiled .tmj/.tsj",
-      "在访达中打开":
-        "Open in Finder",
+
       "还没有导出过。":
         "Nothing exported yet.",
       "任务进行中…":
         "A job is running…",
 
       // ── 地图编辑器：实验性说明弹窗 ──────────────────────────────────────
-      "这条路是全本地的：导入图集、切分、自动过渡、拼图、导出都在本机算，一次模型调用都没有，所以不花钱。":
-        "This road is **fully local**: importing the atlas, slicing, auto-tiling, assembly and export all run on this machine — not a single model call, so nothing is billed.",
-      "与模块⑤不同：它不生成素材，只把你已有的 tileset 切成可用地块。自动过渡支持单块 / 16 掩码 / 47 掩码，缺掩码会回退并在覆盖率里标出来。":
-        "Unlike module ⑤ it generates no artwork: it slices the tileset you already have into usable tiles. Auto-tiling supports single / 16-mask / 47-mask; missing masks fall back and are flagged in the coverage report.",
+
       "界面上看到的地图与导出的 PNG 执行的是同一份绘制计划，所以不会有「预览好看、导出位移」这种事。":
-        "The map you see and the exported PNG execute the **same draw plan**, so \"looks right in the preview but shifts on export\" cannot happen.",
+        "The map you see and the exported PNG execute the same draw plan, so \"looks right in the preview but shifts on export\" cannot happen.",
       "地图编辑器仍在开发中":
         "The map editor is still in development",
       "地图编辑器（实验性）":
         "Map editor (experimental)",
-      "先选一块图当笔刷：点调色板里的图块，或点上面的族胶囊。":
-        "Pick a tile first: click a tile in the palette, or a family chip above.",
 
-      // ── 地图编辑器：名词速查 / 小字注释 / 删除入口 ──────────────────────
-      "左键拖动＝按当前工具涂抹；Shift + 拖动（或中键拖动）＝平移画布；滚轮＝缩放；点「适应窗口」把整张地图缩回视野。":
-        "Drag with the left button to use the current tool; Shift+drag (or middle-drag) pans; the wheel zooms; \"Fit to window\" brings the whole map back into view.",
-      "点一下把这层设为「当前图层」，画笔只会画在它上面":
-        "Click to make this the active layer — the brush only paints on it",
-      "取消勾选＝这一层在画布上不显示（内容还在）":
-        "Uncheck to hide the layer on the canvas (its content is kept)",
-      "勾上＝这一层不能被画到（防止误涂）":
-        "Check to keep this layer from being painted on (protects against stray strokes)",
-      "上移一层（越靠上越晚画，也就盖住下面的）":
-        "Move up (later layers are drawn on top)",
-      "下移一层": "Move down",
-      "删掉这一层与它上面的内容": "Delete this layer and everything on it",
-      "高度偏移（像素）": "Height offset (px)",
-      "至少要留一张地图": "At least one map must remain",
-      "删掉当前这张地图与它上面的内容": "Delete this map and everything on it",
       "已删除项目": "Project deleted",
-      "已删除地图": "Map deleted",
-      "确定删除地图「{n0}」？上面的内容会一起删掉，无法撤销。":
-        "Delete the map \"{n0}\"? Everything painted on it is removed too, and this cannot be undone.",
-      "格宽 / 格高 = 每块贴图的像素大小；图集四周或块之间有空隙时，把空隙填进边距 / 间距。下面那张网格就是切完的效果，点格子可以多选后归入「地形族」（一类地貌：草地 / 土路 / 水…，到②规则里再配它的过渡方案）。":
-        "Cell width / height is the pixel size of one tile; if the atlas has padding around it or gaps between tiles, put those into the margins / spacing. The grid below is the result of the current slice — click tiles to multi-select them and assign them to a \"terrain family\" (a kind of terrain: grass / dirt road / water…; its tiling scheme is set up in step ②).",
-      "过渡方案怎么选：边界横平竖直的（墙、路）用「四邻域 16 掩码」；要 45° 斜角与内角就选「八邻域 47 掩码」；完全不想要过渡边缘就选「单块」。优先级管「谁朝谁长边」——数字大的族会朝数字小的邻居长过渡块（草地 < 土路 < 水）；缺掩码的地方会回退成最接近的一块，并在下面标出来。":
-        "Which scheme to pick: use \"16-mask (4-neighbour)\" for straight edges (walls, roads); pick \"47-mask (8-neighbour)\" when you want 45° corners and inner corners; choose \"single tile\" if you want no transition edges at all. Priority decides who grows an edge into whom: a bigger number grows its transition into smaller-numbered neighbours (grass < dirt road < water). Missing masks fall back to the closest one and are listed below.",
-      "数字越大越「强势」：它会朝数字小的邻居长过渡块":
-        "Bigger numbers win: this family grows its transition into smaller-numbered neighbours",
-      "这里看你给每个族配齐了没有：47 掩码方案要有 47 块不同拼接形状（16 掩码要 16 块）。缺的块运行时回退成最接近的一块，不会报错，但过渡会显得生硬。":
-        "This shows whether each family is complete: the 47-mask scheme needs 47 distinct edge/corner shapes (16 for the 16-mask scheme). Missing ones fall back to the closest shape at runtime — no error, but the transitions look harsher.",
-      "把掩码覆盖率与当前地图各渲染一张 PNG，用来肉眼检查过渡是否自然":
-        "Render the mask coverage and the current map to PNG so you can check the transitions by eye",
-      "地图与图层": "Maps and layers",
-      "上面一行是这张项目里的地图（点名字切换）；下面每一块是一个图层，画笔只会画在当时高亮的那一层上。「高度偏移」让整层上下挪几像素，「锁定」防止误涂。":
-        "The row above lists this project's maps (click a name to switch); each block below is a layer, and the brush only paints on the highlighted one. Height offset shifts a whole layer by a few pixels; Lock prevents stray strokes.",
-      "点一块图就把它当成笔刷；点族胶囊可以快速切到那个族的第一块。带淡蓝色底的是已经归入某个族的块。":
-        "Click a tile to use it as the brush; click a family chip to jump to that family's first tile. Tiles with a light blue background already belong to a family.",
-      "四种格式可以随便勾：合并 PNG / 分层 PNG 是给人看的图；自有 JSON 是给引擎读的完整数据（含图例）；Tiled 那两份是给 Tiled 地图编辑器打开的。右边的倍率只影响 PNG 的尺寸，不影响地图数据。":
-        "Tick any of the four formats: merged / layered PNG are images for humans; the own JSON is the complete data an engine reads (legend included); the two Tiled files are what the Tiled map editor opens. The scale on the right only affects PNG size, not the map data.",
-      "把所有图层合成一张图，用来快速看一眼整体效果":
-        "Flattens all layers into one image for a quick overall look",
-      "每个图层单独出一张 PNG，方便在别的软件里对位":
-        "One PNG per layer, handy for lining things up in another tool",
-      "本插件自己的地图格式：格子、图层、图例、族与掩码全在里面":
-        "This plugin's own map format: cells, layers, legend, families and masks all included",
-      "Tiled 工程文件：.tmj 是地图，.tsj 是图集定义，配套的图集 PNG 会一起复制":
-        "Tiled project files: .tmj is the map, .tsj the tileset definition, and the tileset PNG is copied alongside",
-      "PNG 的放大倍率：1× 就是原始像素（像素画选 1×），放大用于做宣传图":
-        "PNG scale: 1× is native pixels (pick 1× for pixel art); larger sizes are for promo images"
-,
-      // ── 地图编辑器：空态引导 / 悬停解释 / 快捷键 ────────────────────────
-      "① 新建项目，给它起个名字": "1. Create a project and give it a name",
-      "② 图集：上传你自己的 tileset 图，填格子尺寸后点「应用切分」":
-        "2. Tileset: upload your own tileset image, fill in the cell size and click \"Apply slice\"",
-      "③ 规则：加一个「地形族」（一类地貌：草地 / 土路 / 水…），把图块按顺序归进去——自动过渡靠它挑边缘块":
-        "3. Rules: add a \"terrain family\" (a kind of terrain: grass / dirt road / water…) and assign tiles to it in order — auto-tiling uses it to pick edge tiles",
-      "④ 地图：选一块图当笔刷开始画，满意了到「导出」出 PNG / JSON / Tiled":
-        "4. Map: pick a tile as the brush and start painting; when it looks right, export PNG / JSON / Tiled",
-      "快捷键：B 画笔 / E 橡皮 / G 填充 / R 矩形 / I 吸管，⌘Z（Ctrl+Z）撤销、⇧⌘Z 重做。光标停在输入框里时快捷键不生效。":
-        "Shortcuts: B brush / E eraser / G fill / R rectangle / I eyedropper; Cmd+Z (Ctrl+Z) undo, Shift+Cmd+Z redo. They are ignored while the caret is in a text field.",
-      "层类型只决定默认名字与分组：渲染顺序按上下位置，画面效果由「高度偏移」与「不透明度」决定。":
-        "The layer kind only picks a default name and grouping: draw order follows the list, and the visual result comes from Height offset and Opacity.",
-      "再开一层，用来放贴在地面上的小物件（树、石头、花）":
-        "Add a layer for small things that sit on the ground (trees, rocks, flowers)",
-      "再开一层，用来放要盖住地面的东西（房子、墙）":
-        "Add a layer for things that cover the ground (houses, walls)",
-      "再开一层，用来放阴影、雾气这类覆盖在整张图上的东西":
-        "Add a layer for things laid over the whole map, such as shadows or fog",
-      "给新地图起个名字；留空就叫「新地图」": "Name for the new map; leave it empty to get \"New map\"",
-      "新开一张 32×32 的地图，名字取左边输入框": "Open a new 32×32 map, named by the field on the left",
-      "把当前这张地图连内容一起复制一份新的": "Duplicate the current map, contents included",
-      "绘图时用这张图集当调色板（有多张图集时只有一张在生效）":
-        "Use this tileset as the palette while painting (only one tileset is active at a time)",
-      "把这张图集与它的全部图块删掉；还有地图在用它时会拒绝删除":
-        "Delete this tileset and all of its tiles; it is refused while a map still uses it",
-      "按上面的格子尺寸重切一遍；已有地图的图块序号会自动对齐，对不上的格子清零并提示":
-        "Re-slice with the cell size above; existing maps are remapped automatically, and cells that no longer match are cleared with a warning",
-      "新建一个地图项目": "Create a new map project",
-      "重新读一遍宿主上的项目状态（作业跑完界面会自己刷新，平时不用点）":
-        "Read the project state from the host again (the UI refreshes itself after a job finishes, so you rarely need this)",
-      "确定移除图集「{n0}」？它的图块会一起删掉，无法撤销。":
-        "Remove the tileset \"{n0}\"? Its tiles are deleted with it, and this cannot be undone.",
-      "已移除图集": "Tileset removed"
-,
-      // ── 地图编辑器：地图改名 / 改尺寸 / 图层改名 / 基础族 / 地图卡片摘要 ────
-      "新的地图名": "New map name",
-      "新的图层名": "New layer name",
-      "已重命名地图": "Map renamed",
       "已改地图尺寸": "Map resized",
-      "缩小地图会丢掉超出范围的已画格子（可以撤销）。确定继续？":
-        "Shrinking the map discards cells outside the new bounds (this can be undone). Continue?",
-      "点一下切到这张地图": "Click to switch to this map",
-      "空": "Empty",
-      "已画 {n0} 格": "{n0} cells painted",
-      "给当前这张地图改个名字": "Rename the current map",
-      "重命名地图": "Rename map",
-      "宽（格）": "Width (cells)",
-      "高（格）": "Height (cells)",
-      "应用尺寸": "Apply size",
-      "按上面的宽高重开画布：放大只是多出空白，缩小时超出的格子会被丢掉（可以撤销）":
-        "Re-lay the canvas at the size above: enlarging just adds empty space, shrinking discards cells outside the bounds (undoable)",
-      "地图尺寸随时能改：放大只是多出空白；缩小时超出范围的格子会被丢掉（宿主会告诉你丢了多少，而且可以撤销）。":
-        "The map size can be changed at any time: enlarging only adds empty space, while shrinking discards the cells outside the new bounds (the host tells you how many, and it is undoable).",
-      "给这一层改个名字": "Rename this layer",
-      "空单元格算哪个族": "Empty cells count as",
-      "不设（就是空地）": "Not set (plain empty)",
-      "这一层的空格子按哪个族算邻居：整层是水时把空处也算成水，接壤的地面才会长出过渡边":
-        "Which family this layer's empty cells count as when neighbours are computed: if the whole layer is water, counting the empty parts as water is what makes the neighbouring ground grow transition edges"
-,
-      // ── 地图编辑器：随机变体 / 变体种子 / 导出文件说明 ───────────────────
-      "随机变体": "Random variants",
-      "关掉它，同族同掩码就永远用第一块图；打开才有随机感":
-        "Turn it off and the same family + mask always uses the first tile; leave it on for variety",
-      "换个数＝换一套挑法；同一个种子出的图完全一样":
-        "A different number means a different set of picks; the same seed always produces the same map",
-      "随便换一个新种子，看看另一版铺法": "Roll a new seed to see another layout",
       "换一组": "Roll again",
-      "随机变体：同一族、同一拼接形状（掩码）有几块候选图时，按种子随机挑一块来铺，整片地才不会一块块都一样。换种子＝换一版铺法，同一张图 + 同一种子每次结果完全一致。":
-        "Random variants: when a family has several candidate tiles for the same edge/corner shape (mask), one is picked by seed so a field does not look stamped. A new seed means another layout, and the same map + same seed always produce exactly the same result.",
-      "这次导出的清单：文件列表、警告与地图包围盒": "The manifest for this export: file list, warnings and the map's bounding box",
-      "自有 JSON：格子、图层、图例、族与掩码，给引擎读的完整数据":
-        "The plugin's own JSON: cells, layers, legend, families and masks — the complete data an engine reads",
-      "Tiled 地图文件，用 Tiled 直接打开": "Tiled map file, open it directly in Tiled",
-      "Tiled 图集定义，被 .tmj 引用（别单独挪走）": "Tiled tileset definition referenced by the .tmj (do not move it away on its own)",
-      "图片产物，点开看大图": "Image output, click to view it full size",
-      "导出产物": "Exported file",
-      // ── 地图编辑器：就地小字（原来的「名词速查」折叠块已拆到各自控件旁）＋ 图层删除确认 ──
-      "点一块图作为笔刷（序号 {n0}）。带底色的是已归族的块。序号是「全项目统一的图块编号」，不是第几行第几列。":
-        "Click a tile to use it as the brush (index {n0}). Tinted tiles belong to a family. The index is the project-wide tile number, not a row/column.",
-      "下面每个方框就是一个族：左边输入框是它的名字（只给你自己看，随便起），接着选它的过渡方案、填优先级，改完点「保存族」生效。「掩码」说的是这块图的哪几条边 / 角上挨着同族邻居——方案选完之后，你在①图集里把图块按顺序归族，就是在告诉宿主哪一块对应哪种掩码。":
-        "Each block below is one family: the first field is its name (just a label for you — call it anything), then its tiling scheme and priority; click \"Save families\" to apply. A mask says which edges/corners of a tile touch a neighbour of the same family — after picking the scheme, assigning tiles to the family over in step ① is how you tell the host which tile stands for which mask.",
-      "图层里的「空单元格算哪个族」：整层是水时，把空着的地方也算成水，接壤的地面才会长出过渡边；不设就是普通空地。「高度偏移」让整层上下挪几像素（做贴墙装饰那种层次）。":
-        "\"Empty cells count as\" per layer: when a whole layer is water, counting its empty cells as water is what makes the neighbouring ground grow transition edges; leaving it unset means plain empty ground. Height offset shifts a whole layer up or down a few pixels (that is how wall decorations sit).",
-      "优先级": "Priority",
-      "变体种子": "Variant seed",
-      "按住拖我调整图层顺序（越靠上越晚画，也就盖住下面的）": "Drag me to reorder layers (higher up is drawn later, so it covers the ones below)",
-      "至少要留一个图层": "At least one layer must remain",
-      "这一层已画的格子数（宿主统计）": "How many cells this layer has painted (counted by the host)",
-      "确定删除图层「{n0}」？它上面已画的 {n1} 格会一起删掉，无法撤销。":
-        "Delete the layer \"{n0}\"? The {n1} painted cells on it are deleted with it, and this cannot be undone.",
-      "确定删除图层「{n0}」？无法撤销。": "Delete the layer \"{n0}\"? This cannot be undone."
+
+      // ── 地图编辑器（模块六）：一屏零术语，AsLib RPG Map Maker 同款 ────────
+      "这条路是全本地的：导入素材图、自动连接、画地图、导出 PNG 都在本机算，一次模型调用都没有，所以不花钱。":
+        "This path is fully local: importing the image, auto-connecting, painting and exporting the PNG all run on this machine - not a single model call, so nothing is billed.",
+      "与模块⑤不同：它不生成素材，只把你自己的素材图切成一块一块，铺图、接边和导出都由本地代码完成。":
+        "Unlike module 5 it generates no artwork: it cuts your own tile image into pieces, and the placing, edge matching and export are all done by local code.",
+      "导入自己的素材图 → 自动连接 → 直接画 → 导出 PNG":
+        "Import your own tile image → auto-connect → paint → export PNG",
+      "先在左边点一块图当笔刷。":
+        "Pick a tile on the left first.",
+      "图层 2":
+        "Layer 2",
+      "已保存素材设置":
+        "Tile image settings saved",
+      "确定删除素材「{n0}」？它切出来的块会一起删掉，无法撤销。":
+        "Delete the tile image \"{n0}\"? The pieces cut from it are removed too, and this cannot be undone.",
+      "已删除素材":
+        "Tile image deleted",
+      "改小地图会丢掉范围外的格子（可以撤销）。继续？":
+        "Shrinking the map discards the cells outside the new bounds (undoable). Continue?",
+      "清掉这一层上已经画的格子？":
+        "Clear every painted cell on this layer?",
+      "已清空这一层":
+        "Layer cleared",
+      "先选至少一块图：在左边点一下，按住 Shift 或 Ctrl 可以多选。":
+        "Pick at least one tile first: click one on the left, and hold Shift or Ctrl for several.",
+      "选一张素材图开始，或者先用自带素材试试。建出来就是 32×32、两层，可以直接画。":
+        "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
+      "选一张素材图开始":
+        "Choose a tile image to start",
+      "素材图加载失败：{n0}（试试重新上传这张图）":
+        "Could not load the tile image: {n0} (try uploading it again)",
+      "用自带素材试试":
+        "Try the built-in image",
+      "正在保存…":
+        "Saving…",
+      "还没有改动":
+        "No changes yet",
+      "已自动保存 {n0}":
+        "Autosaved at {n0}",
+      "切换项目":
+        "Switch project",
+      "素材":
+        "Image",
+      "第 {n0} 块":
+        "Tile {n0}",
+      "还没有素材，点上面的「素材」上传一张。":
+        "No tile image yet: click \"Image\" above to upload one.",
+      "撤销（⌘Z）":
+        "Undo (Cmd+Z)",
+      "重做（⇧⌘Z）":
+        "Redo (Shift+Cmd+Z)",
+      "画笔：按住左键涂抹（B）":
+        "Brush: hold the left button to paint (B)",
+      "橡皮：擦成空（E）；右键随时是橡皮":
+        "Eraser: wipe to empty (E); the right button always erases",
+      "油漆桶":
+        "Paint bucket",
+      "油漆桶：同色连通区一次填满（G）":
+        "Paint bucket: fill the connected area in one go (G)",
+      "吸管：吸取这一格用的图块（I）":
+        "Eyedropper: pick the tile used in this cell (I)",
+      "抓手":
+        "Hand",
+      "抓手：左键拖动平移（H）；也支持空格拖或中键拖":
+        "Hand: drag with the left button to pan (H); space-drag and middle-drag work too",
+      "单层预览":
+        "Single layer",
+      "只显示当前这一层，底铺绿色（V）":
+        "Show only the current layer on a green backdrop (V)",
+      "上一层 / 下一层；中间的数字是当前层号":
+        "Up or down one layer; the number in the middle is the current layer",
+      "上一层":
+        "Layer up",
+      "下一层":
+        "Layer down",
+      "网格线":
+        "Grid lines",
+      "显示 / 隐藏网格线":
+        "Show or hide the grid lines",
+      "一键生成":
+        "Generate",
+      "一键生成：随机铺满 / 迷宫 / 大陆":
+        "Generate: random fill / maze / continent",
+      "设置":
+        "Settings",
+      "设置：地图大小、图层、帮助":
+        "Settings: map size, layers, help",
+      "素材调色板":
+        "Tile palette",
+      "自动":
+        "Automatic",
+      "普通图块":
+        "Plain tiles",
+      "整格自动连接":
+        "Full-cell auto-connect",
+      "拼块自动连接":
+        "Block auto-connect",
+      "慢":
+        "Slow",
+      "中":
+        "Medium",
+      "快":
+        "Fast",
+      "上传素材图":
+        "Upload a tile image",
+      "还没有素材。上传一张图，或者先用自带素材试试。":
+        "No tile image yet. Upload one, or try the built-in image first.",
+      "格子大小":
+        "Cell size",
+      "这块素材怎么用":
+        "How this image is used",
+      "这张素材的用法是自动认出来的；想重新认一次，就再上传一遍这张图。":
+        "This image's usage was detected automatically; upload the image again to detect it afresh.",
+      "这张素材的用法是自动认出来的：{n0}":
+        "This image's usage was detected automatically: {n0}",
+      "动画速度":
+        "Animation speed",
+      "删除素材":
+        "Delete image",
+      "这步看过了":
+        "Seen this step",
+      "导出图片 PNG":
+        "Export image PNG",
+      "导出存档 JSON":
+        "Export save JSON",
+      "倍率":
+        "Scale",
+      "只影响 PNG 的尺寸，不影响存档数据":
+        "Only affects the PNG size, not the saved data",
+      "打开导出目录":
+        "Open the export folder",
+      "地图大小":
+        "Map size",
+      "改大只是多出空地；改小会丢掉范围外的格子":
+        "Growing only adds empty ground; shrinking discards the cells outside",
+      "图层 {n0}":
+        "Layer {n0}",
+      "已加一层":
+        "Layer added",
+      "加一层":
+        "Add layer",
+      "至少要留一层":
+        "At least one layer must remain",
+      "删掉当前这一层":
+        "Delete the current layer",
+      "已删掉这一层":
+        "Layer deleted",
+      "删一层":
+        "Delete layer",
+      "清空当前图层":
+        "Clear current layer",
+      "帮助":
+        "Help",
+      "左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝橡皮。":
+        "Left-drag paints with the current tool; space-drag or middle-drag pans; the wheel zooms; the right button erases.",
+      "调色板里点一下选一块图当笔刷，按住 Shift 或 Ctrl 可以多选，「一键生成」会用这些图块。":
+        "Click a tile in the palette to use it as the brush; hold Shift or Ctrl to select several, and \"Generate\" uses exactly those.",
+      "地图是环绕的：出了右边会从左边的对应位置接上，不用管边界。":
+        "The map wraps around: leaving the right edge continues at the matching spot on the left, so you never run into a border.",
+      "整个模块看过了":
+        "Seen the whole module",
+      "随机铺满":
+        "Random fill",
+      "迷宫":
+        "Maze",
+      "大陆":
+        "Continent",
+      "用的图块：还没选。在左边点一下选一块，按住 Shift 或 Ctrl 可以多选。":
+        "Tiles used: none yet. Click one on the left, and hold Shift or Ctrl for several.",
+      "用的图块：{n0}":
+        "Tiles used: {n0}",
+      "迷宫：按顺序取两块，第一块当墙，第二块当路。":
+        "Maze: takes two tiles in order - the first is the wall, the second the path.",
+      "大陆：按顺序取最多四块当四种地貌（水下 / 海面 / 草地 / 雪地）。":
+        "Continent: takes up to four tiles in order as four terrains (underwater / sea / grass / snow).",
+      "随机铺满：在选中的图块里均匀随机。":
+        "Random fill: uniformly random among the selected tiles.",
+      "缩得太小，放大一点。":
+        "Zoomed out too far - zoom in a bit.",
+      "第 {n0} 层 / 共 {n1} 层":
+        "Layer {n0} of {n1}"
+
     };
 /* i18n-ignore-end */
 
@@ -1414,16 +1307,6 @@
       },
       () => {
         TILE_STAGES = make_TILE_STAGES();
-      },
-      () => {
-        MAP_STAGES = make_MAP_STAGES();
-      },
-      () => {
-        MAP_AUTOTILE_SCHEMES = make_MAP_AUTOTILE_SCHEMES();
-      },
-      () => {
-        MAP_TOOL_LABELS = make_MAP_TOOL_LABELS();
-        MAP_TOOL_HINTS = make_MAP_TOOL_HINTS();
       },
       () => {
         MAP_EXPERIMENTAL_POINTS = make_MAP_EXPERIMENTAL_POINTS();
@@ -1604,7 +1487,7 @@
       ["rekey", true],
       ["compose", true],
 
-      // 模块②：图片生成
+      // 模块②（图片生成）—— 这一段只是远程方法清单，和下面的组件区无关
       ["listImageJobs", false],
       ["createImageJob", true],
       ["getImageJob", true],
@@ -1698,17 +1581,15 @@
       ["saveMapProject", true],
       ["deleteMapProject", true],
       ["importMapTileset", true],
+      ["importSampleTileset", true],
       ["saveMapTileset", true],
       ["removeMapTileset", true],
-      ["saveMapFamilies", true],
-      ["createMapDoc", true],
       ["saveMapDoc", true],
-      ["deleteMapDoc", true],
-      ["duplicateMapDoc", true],
       ["applyMapOps", true],
       ["mapUndo", true],
       ["mapRedo", true],
       ["mapPlan", true],
+      ["runMapGenerate", true],
       ["runMapPreview", true],
       ["runMapExport", true],
       ["cancelMapJob", true],
@@ -1837,11 +1718,11 @@
     }
     let TILE_EXPERIMENTAL_POINTS = make_TILE_EXPERIMENTAL_POINTS();
 
-    /** 进入模块⑥时的实验性说明要点（导入自己的 tileset 那条路）。 */
+    /** 进入模块⑥时的实验性说明要点（导入自己的素材图那条路）。 */
     function make_MAP_EXPERIMENTAL_POINTS() {
       return [
-      T("这条路是全本地的：导入图集、切分、自动过渡、拼图、导出都在本机算，一次模型调用都没有，所以不花钱。"),
-      T("与模块⑤不同：它不生成素材，只把你已有的 tileset 切成可用地块。自动过渡支持单块 / 16 掩码 / 47 掩码，缺掩码会回退并在覆盖率里标出来。"),
+      T("这条路是全本地的：导入素材图、自动连接、画地图、导出 PNG 都在本机算，一次模型调用都没有，所以不花钱。"),
+      T("与模块⑤不同：它不生成素材，只把你自己的素材图切成一块一块，铺图、接边和导出都由本地代码完成。"),
       T("界面上看到的地图与导出的 PNG 执行的是同一份绘制计划，所以不会有「预览好看、导出位移」这种事。"),
       T("发现问题或有改进想法，欢迎到 GitHub 仓库一起开发。")
     ];
@@ -1857,48 +1738,11 @@
       { key: "sequence", title: T("序列帧生成"), hint: T("图/视频参考生成视频 → 抽帧 → 抠像 → 合成与播放预览") },
       { key: "rig", title: T("骨骼动画生成"), hint: T("拆件 → 装配定位 → 推骨骼与动画 → 打包 Spine 图集"), experimental: true },
       { key: "tile", title: T("45°地图地块生成"), hint: T("45° 等距地块 → 拼成地图：几何交给代码，内容交给 AI"), experimental: true },
-      { key: "map", title: T("地图编辑器"), hint: T("导入自己的 tileset → 自动过渡 → 多层拼图 → 导出 Tiled"), experimental: true }
+      { key: "map", title: T("地图编辑器"), hint: T("导入自己的素材图 → 自动连接 → 直接画 → 导出 PNG"), experimental: true }
     ];
     }
     let MODULES = make_MODULES();
 
-
-    /** 地图编辑器（模块六）的四个阶段（对齐宿主 src/links.ts 的 MAP_STAGES）。 */
-    function make_MAP_STAGES() {
-      return [
-      { key: "assets", title: T("① 图集"), hint: T("导入你自己的 tileset 图，按网格或矩形切分，再把图块归入地形族") },
-      { key: "rules", title: T("② 规则"), hint: T("定义地形族（一类地貌：草地 / 土路 / 水…）与自动过渡方案（单块 / 16 掩码 / 47 掩码），缺的块会标出来") },
-      { key: "paint", title: T("③ 地图"), hint: T("多张地图、多图层、每层高度偏移；画布上直接刷，撤销重做都在宿主") },
-      { key: "export", title: T("④ 导出"), hint: T("PNG 分层与合并 + 自有 JSON + Tiled .tmj/.tsj，全部本地免费") }
-    ];
-    }
-    let MAP_STAGES = make_MAP_STAGES();
-
-    /** 三种自动过渡方案（对齐宿主 src/mapauto.ts 的 AUTOTILE_SCHEMES）。 */
-    function make_MAP_AUTOTILE_SCHEMES() {
-      return [
-      { key: "single", title: T("单块（不自动过渡）") },
-      { key: "corner16", title: T("四邻域 16 掩码") },
-      { key: "blob47", title: T("八邻域 47 掩码（blob）") }
-    ];
-    }
-    let MAP_AUTOTILE_SCHEMES = make_MAP_AUTOTILE_SCHEMES();
-
-    /** 编辑器工具（纯界面概念，宿主不认识）。 */
-    function make_MAP_TOOL_LABELS() {
-      return { paint: T("画笔"), erase: T("橡皮"), fill: T("填充"), rect: T("矩形"), pick: T("吸管") };
-    }
-    function make_MAP_TOOL_HINTS() {
-      return {
-        paint: T("按住拖动画线（B）"),
-        erase: T("擦成空（E）"),
-        fill: T("同色连通区一次填满（G）"),
-        rect: T("拖出矩形，按住「矩形填充」为实心（R）"),
-        pick: T("吸取格子上的图块（I）")
-      };
-    }
-    let MAP_TOOL_LABELS = make_MAP_TOOL_LABELS();
-    let MAP_TOOL_HINTS = make_MAP_TOOL_HINTS();
 
     /** 地图地块的四个阶段（对齐宿主 src/links.ts 的 TILE_STAGES）。 */
     function make_TILE_STAGES() {
@@ -2243,103 +2087,91 @@
 .SPR_mapCell-active{background:rgba(255,120,0,.6);outline:1px solid rgba(255,120,0,.9)}
 .SPR_mapCell-empty{background:rgba(150,150,150,.16)}
 .SPR_mapCellLabel{pointer-events:none;font-size:10px;color:var(--dsw-alias-label-secondary);opacity:0}
-.SPR_meStage{display:flex;flex-direction:column;gap:14px}
-.SPR_meCard{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;background:var(--dsw-alias-bg-layer-3)}
-.SPR_meCard>h4{margin:0;font-size:13px;letter-spacing:.2px}
-/*
- * 卡片标题下的小字说明（.SPR_meCardNote）。
- *
- * 地图编辑器里全是自造词（切分 / 掩码 / 族 / 优先级 / chunk），光有标题用户不知道
- * 这一步在干什么。说明放标题**下面一行**、11px 灰字，不抢视线也不把面板塞满。
- */
-.SPR_meCardNote{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);margin:-2px 0 0}
-/* 空态的四步引导：有序列表，小字、行距放宽，一眼能扫完 */
-.SPR_meSteps{font-size:12px;line-height:1.9;color:var(--dsw-alias-label-secondary);margin:0 0 4px;padding-left:20px}
-.SPR_meCardHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.SPR_meHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);margin:0}
-.SPR_meWarn{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-error, #d24);margin:0}
-.SPR_meWarnings{margin:0;padding-left:18px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary)}
-/* 切分参数：六个数挤一行太窄，改成自适应网格，一格一个字段 */
-.SPR_meSliceRow{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px 12px;align-items:end}
-/*
- * 名词速查：原生 <details> 折起来，展开才占地方。
- * 地图编辑器有一串自造词，首次上手没人知道「掩码」「族」「chunk」指什么。
- */
-.SPR_meGlossary{border:1px dashed var(--dsw-alias-border-l2);border-radius:12px;padding:10px 14px;background:var(--dsw-alias-bg-layer-2, rgba(0,0,0,.02));margin-bottom:14px}
-.SPR_meGlossary>summary{font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer;list-style:none}
-.SPR_meGlossary>summary::-webkit-details-marker{display:none}
-.SPR_meGlossary>summary::before{content:"▸ ";color:var(--dsw-alias-label-tertiary)}
-.SPR_meGlossary[open]>summary::before{content:"▾ "}
-.SPR_meGlossaryList{display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;margin:10px 0 2px;font-size:11px}
-.SPR_meGlossaryList dt{color:var(--dsw-alias-label-primary);font-weight:600}
-.SPR_meGlossaryList dd{margin:0;color:var(--dsw-alias-label-tertiary);line-height:1.65}
-.SPR_mePaletteWrap{display:flex;flex-direction:column;gap:8px}
-/*
- * 盒子由 aspect-ratio + 最大宽度定死（见 mapPaletteBox），图与叠加层**共用同一个盒子**，
- * 图块的 left/top/width/height 一律写百分比 —— 图被缩放时叠加层跟着缩放。
- * ⚠️ 别再改回「图片原图像素」定位：.SPR_mePaletteImg 会被面板宽度压小，
- * 而 px 定位不跟着缩，2048px 的图集缩到 893px 后格子仍画在 0..2048 的原坐标，
- * 于是高亮框与可见图块错位、面板被撑到 2049px 高（真机：上传 2048×2048 后「显示就坏了」）。
- */
-.SPR_mePalette{position:relative;align-self:flex-start;box-sizing:border-box;line-height:0;overflow:hidden;background:repeating-conic-gradient(#0000 0% 25%,#00000010 0% 50%) 50%/12px 12px;border:1px solid var(--dsw-alias-border-l2)}
-.SPR_mePaletteImg{image-rendering:pixelated;width:100%;height:100%;display:block}
-.SPR_mePaletteCell{position:absolute;padding:0;margin:0;border:none;background:transparent;cursor:pointer}
-.SPR_mePaletteCell:hover{background:color-mix(in srgb, var(--dsw-alias-state-warning-primary, #ffc400) 32%, transparent);outline:1px solid color-mix(in srgb, var(--dsw-alias-state-warning-primary, #ffc400) 85%, transparent)}
-.SPR_mePaletteCell[data-selected="true"]{background:color-mix(in srgb, var(--dsw-alias-state-warning-primary, #ff7800) 45%, transparent);outline:1px solid var(--dsw-alias-state-warning-primary, #ff7800)}
-.SPR_meGridV{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,0,255,.5);pointer-events:none}
-.SPR_meGridH{position:absolute;left:0;right:0;height:1px;background:rgba(255,0,255,.5);pointer-events:none}
-.SPR_meFamilyRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.SPR_meFamilyChip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:4px 11px;font-size:12px;background:transparent;cursor:pointer}
-.SPR_meFamilyChip[data-ok="true"]{border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary, #50c878) 70%, transparent)}
-.SPR_meFamilyDot{width:9px;height:9px;border-radius:50%;display:inline-block}
-.SPR_meFamilyCount{font-size:10px;color:var(--dsw-alias-label-tertiary)}
-.SPR_meFamilyEdit{display:flex;flex-direction:column;gap:8px}
-/*
- * 族编辑行：**网格**而不是 flex-wrap。
- * 用 flex 时「名字输入框 + 过渡方案下拉 + 优先级 + 移除」在 764px 的窄面板里会拆成 4 行，
- * 而且每个控件宽度不一、左右参差（真机截图确认）。固定四列后一行放得下，窄到放不下时
- * 退成两列（下面的 media query）。
- */
-.SPR_meFamilyEditRow{display:grid;grid-template-columns:minmax(140px,1.2fr) minmax(150px,1fr) minmax(96px,.7fr) auto;gap:10px 12px;align-items:end;padding:8px 10px;border-radius:10px;background:var(--dsw-alias-bg-layer-2, rgba(0,0,0,.02))}
-@media (max-width: 640px){.SPR_meFamilyEditRow{grid-template-columns:1fr 1fr}}
-.SPR_meName{min-width:0;width:100%}
-.SPR_meCoverage{display:flex;flex-direction:column;gap:6px;font-size:12px}
-.SPR_meCoverageRow{display:flex;gap:12px;align-items:center}
-.SPR_meCoverageRow[data-ok="true"] .SPR_meOk{color:var(--dsw-alias-state-success-primary, #3fa85f)}
-.SPR_meOk{color:var(--dsw-alias-state-success-primary, #3fa85f)}
-.SPR_meBad{color:var(--dsw-alias-state-error-primary, #d24)}
-.SPR_meShots{display:flex;gap:10px;flex-wrap:wrap}
-.SPR_meShot{max-width:220px;max-height:160px;image-rendering:pixelated;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}
-.SPR_meEditorWrap{display:flex;flex-direction:column;gap:10px}
-.SPR_meToolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.SPR_meToolLabel{font-size:11px;color:var(--dsw-alias-label-tertiary)}
-.SPR_meLayerName{font-size:12px}
-/* 图层名旁边的「已画 N 格 / 空」小徽标（多层时一眼看出内容在哪层） */
-.SPR_meLayerCount{font-size:10px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-layer-2, rgba(0,0,0,.05));border-radius:999px;padding:1px 8px;white-space:nowrap}
-.SPR_meZoom{font-size:11px;color:var(--dsw-alias-label-tertiary)}
-.SPR_meCheck{display:inline-flex;align-items:center;gap:4px;font-size:11px}
-.SPR_meCanvas{width:100%;height:420px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3);cursor:crosshair;touch-action:none;box-sizing:border-box}
-.SPR_meLayerList{display:flex;flex-direction:column;gap:8px}
-/*
- * 图层行拆成两行：上行「名字 + 显示/锁定 + 排序/删除」，下行「高度 / 不透明度」。
- * 挤成一行时窄面板里六个控件会换行到互相错位（真机反馈「过于紧凑」）。
- */
-.SPR_meLayerRow{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:10px;border:1px dashed transparent;background:var(--dsw-alias-bg-layer-2, rgba(0,0,0,.02))}
-.SPR_meLayerRow[data-active="true"]{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1, rgba(0,0,0,.04))}
-.SPR_meLayerMain{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-/* 图层拖拽排序：把手单独可拖，免得拖动整行时把里面的输入框 / 下拉也带动 */
-.SPR_meLayerGrip{cursor:grab;color:var(--dsw-alias-label-tertiary);user-select:none;font-size:13px;line-height:1;padding:2px 3px;border-radius:6px}
-.SPR_meLayerGrip:hover{background:var(--dsw-alias-bg-layer-2, rgba(0,0,0,.06));color:var(--dsw-alias-label-secondary)}
-.SPR_meLayerRow[data-dragging="true"]{opacity:.55}
-.SPR_meLayerRow[data-drop="true"]{outline:2px dashed color-mix(in srgb, var(--dsw-alias-state-business-primary, #3b82f6) 70%, transparent);outline-offset:2px}
-.SPR_meLayerFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px 12px;align-items:end}
-.SPR_meLayerPick{border:none;background:transparent;cursor:pointer;font-size:12px;font-weight:600;padding:2px 4px;text-align:left}
-.SPR_meLayerPick[data-on="true"]::after{content:" ●";color:var(--dsw-alias-state-business-primary, #3b82f6);font-size:10px}
-.SPR_meMapList{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.SPR_meMapChip{border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:4px 12px;font-size:12px;background:transparent;cursor:pointer}
-.SPR_meMapChip[data-active="true"]{background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #78b4ff) 22%, transparent);border-color:color-mix(in srgb, var(--dsw-alias-state-business-primary, #78b4ff) 85%, transparent)}
-.SPR_meBusy{font-size:11px;color:var(--dsw-alias-label-warning, #c80)}
-.SPR_meFileList{margin:0;padding-left:18px;font-size:12px;line-height:1.9}
+/* ── 地图编辑器（模块六）· AsLib RPG Map Maker 同款一屏布局 ─────────────
+   外层仍然走 DSH 变量（浅色 / 深色都不吃亏），编辑器内部沿用 AsLib 配色：
+   深灰 #424242、木质按钮、红框选中、单层预览绿底 rgb(56,170,68)。 */
+.SPR_moduleBody[data-module="map"]{padding:0;height:100%;box-sizing:border-box;display:flex;flex-direction:column;min-height:0}
+.SPR_mapEdRoot{display:flex;flex-direction:column;flex:1;min-height:0;border-radius:12px;overflow:hidden;background:#424242;color:#f2efe9;border:1px solid var(--dsw-alias-border-l2)}
+.SPR_mapEdSpacer{flex:1;min-width:0}
+.SPR_mapEdHint{font-size:11px;line-height:1.7;color:#c9c4bb;margin:0}
+/* 顶栏：一行。没有步骤条，也没有长说明。 */
+.SPR_mapEdTop{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#383838;border-bottom:1px solid #232323;flex:none}
+.SPR_mapEdProjWrap{position:relative;min-width:0}
+.SPR_mapEdProj{display:inline-flex;align-items:center;gap:6px;font:inherit;font-size:13px;font-weight:600;max-width:280px;cursor:pointer;color:#f7f3ec;background:transparent;border:1px solid transparent;border-radius:8px;padding:4px 8px}
+.SPR_mapEdProj:hover{background:#4a4a4a}
+.SPR_mapEdProj[data-open="true"]{background:#4a4a4a;border-color:#6d6d6d}
+.SPR_mapEdProjName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.SPR_mapEdCaret{font-size:10px;color:#c9c4bb}
+.SPR_mapEdMenu{position:absolute;top:calc(100% + 4px);left:0;z-index:30;min-width:200px;max-height:60vh;overflow:auto;display:flex;flex-direction:column;padding:4px;background:#2f2f2f;border:1px solid #1c1c1c;border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.45)}
+.SPR_mapEdMenuItem{font:inherit;font-size:12px;text-align:left;cursor:pointer;color:#ece7df;background:transparent;border:none;border-radius:6px;padding:6px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.SPR_mapEdMenuItem:hover{background:#454545}
+.SPR_mapEdMenuItem[data-on="true"]{background:#4d4d4d;color:var(--dsw-alias-state-business-primary, #8ab4f8)}
+.SPR_mapEdMenuItem[data-danger="true"]{color:var(--dsw-alias-state-error-primary, #ff8b7a)}
+.SPR_mapEdMenuLabel{font-size:10px;color:#9d968c;padding:8px 9px 2px}
+.SPR_mapEdTopBtn{font:inherit;font-size:12px;cursor:pointer;color:#f7f3ec;background:linear-gradient(#5d5d5d,#4b4b4b);border:1px solid #232323;border-radius:8px;padding:5px 14px}
+.SPR_mapEdTopBtn:hover{background:linear-gradient(#6a6a6a,#555)}
+.SPR_mapEdTopBtn[data-on="true"]{background:linear-gradient(#7d6a4a,#5f5038);border-color:#d9a95f}
+.SPR_mapEdSave{font-size:11px;color:#b9b3a8;white-space:nowrap;font-variant-numeric:tabular-nums}
+.SPR_mapEdSave[data-busy="true"]{color:var(--dsw-alias-state-warning-primary, #ffc400)}
+/* 两栏主体：左列 28.5%（240~340），右列画布。 */
+.SPR_mapEdBody{display:flex;flex:1;min-height:0}
+.SPR_mapEdSide{width:28.5%;min-width:240px;max-width:340px;flex:none;display:flex;flex-direction:column;gap:6px;padding:8px;box-sizing:border-box;background:#3b3b3b;border-right:1px solid #232323;min-height:0}
+.SPR_mapEdSideTitle{font-size:11px;color:#a9a29a;padding-left:2px}
+.SPR_mapEdPalette{flex:1;min-height:120px;overflow:auto;background:#2d2d2d;border:1px solid #232323;border-radius:6px;padding:4px}
+.SPR_mapEdPaletteGrid{display:grid;grid-template-columns:repeat(8,32px);gap:2px}
+.SPR_mapEdTile{width:32px;height:32px;padding:0;border:1px solid #262626;border-radius:3px;background-color:#1f1f1f;background-repeat:no-repeat;image-rendering:pixelated;cursor:pointer}
+.SPR_mapEdTile:hover{border-color:#d9a95f}
+/* 红框＝当前笔刷（AsLib 同款） */
+.SPR_mapEdTile[data-on="true"]{outline:2px solid #e23b2b;outline-offset:-2px;border-color:#e23b2b}
+/* 工具格：6 列 × 2 行，木质方块按钮 */
+.SPR_mapEdTools{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;flex:none}
+.SPR_mapEdTool{aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;color:#3a2a12;background:linear-gradient(#e6bd7d,#c9974f);border:1px solid #6b4a22;border-radius:4px}
+.SPR_mapEdTool:hover{background:linear-gradient(#f2d29a,#d6a761)}
+.SPR_mapEdTool[data-on="true"]{background:linear-gradient(#fbe3ad,#e0b268);box-shadow:inset 0 0 0 2px #d23b2c}
+.SPR_mapEdTool:disabled{opacity:.4;cursor:default}
+.SPR_mapEdLayerBtn{flex-direction:column;gap:0;padding:1px;background:linear-gradient(#e6bd7d,#c9974f)}
+.SPR_mapEdLayerHalf{flex:1;width:100%;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;color:#4a3416;background:transparent;border:none;border-radius:3px}
+.SPR_mapEdLayerHalf:hover:not(:disabled){background:rgba(255,255,255,.28)}
+.SPR_mapEdLayerHalf:disabled{opacity:.3;cursor:default}
+.SPR_mapEdLayerNum{font-size:10px;line-height:1;font-weight:700;color:#4a3416;font-variant-numeric:tabular-nums}
+/* 画布：铺满右列，像素画不糊 */
+.SPR_mapEdStage{position:relative;flex:1;min-width:0;min-height:360px;background:#3a3a3a;overflow:hidden}
+.SPR_mapEdCanvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none;cursor:crosshair}
+.SPR_mapEdToast{position:absolute;left:10px;bottom:10px;font-size:11px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,.62);color:#ffe9a8}
+.SPR_mapEdToast[data-busy="true"]{color:var(--dsw-alias-state-warning-primary, #ffc400)}
+/* 卡片：从顶栏下面拉出来的小面板，盖在画布上（关掉就什么都不占） */
+.SPR_mapEdCardWrap{position:absolute;top:44px;right:12px;z-index:20;max-width:min(520px,92%)}
+.SPR_mapEdCard{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:10px;background:#2f2f2f;border:1px solid #1c1c1c;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.SPR_mapEdCardHead{display:flex;align-items:center;gap:8px}
+.SPR_mapEdCardHead>h4{margin:0;font-size:13px;color:#f7f3ec}
+.SPR_mapEdCardClose{font:inherit;font-size:14px;line-height:1;cursor:pointer;color:#c9c4bb;background:transparent;border:none;border-radius:6px;padding:2px 6px}
+.SPR_mapEdCardClose:hover{background:#454545;color:#fff}
+.SPR_mapEdCardRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.SPR_mapEdRows{display:flex;flex-direction:column;gap:6px}
+.SPR_mapEdRow{display:flex;flex-direction:column;gap:3px}
+.SPR_mapEdLabel{font-size:11px;color:#bfb8ae}
+.SPR_mapEdRowHint{font-size:11px;line-height:1.6;color:#9d968c}
+.SPR_mapEdSelect{font:inherit;font-size:12px;color:#f2efe9;background:#242424;border:1px solid #565656;border-radius:6px;padding:4px 8px;max-width:100%}
+.SPR_mapEdChips{display:flex;gap:6px;flex-wrap:wrap}
+.SPR_mapEdChip{font:inherit;font-size:11px;cursor:pointer;color:#ded8cf;background:#3b3b3b;border:1px solid #565656;border-radius:999px;padding:3px 10px}
+.SPR_mapEdChip[data-on="true"]{border-color:#d9a95f;color:#ffd89a}
+.SPR_mapEdCheck{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#e6e1d8}
+.SPR_mapEdHelp{display:flex;flex-direction:column;gap:4px;padding:8px 10px;border-radius:8px;background:#383838}
+.SPR_mapEdHelp>h5{margin:0;font-size:12px;color:#f7f3ec}
+.SPR_mapEdHelp>p{margin:0;font-size:11px;line-height:1.7;color:#c9c4bb}
+.SPR_mapEdRadios{display:flex;gap:12px;flex-wrap:wrap}
+.SPR_mapEdRadio{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#e6e1d8;cursor:pointer}
+.SPR_mapEdFiles{margin:0;padding-left:18px;font-size:12px;line-height:1.9;color:#c9c4bb}
+.SPR_mapEdFiles a{color:var(--dsw-alias-state-business-primary, #8ab4f8)}
+.SPR_mapEdMark{color:var(--dsw-alias-state-success-primary, #7ee08a);font-weight:700}
+.SPR_mapEdWarnings{margin:0;padding-left:18px;font-size:11px;line-height:1.7;color:#d8d2c8}
+.SPR_mapEdFoot{display:flex;align-items:center;gap:10px;padding:5px 10px;background:#383838;border-top:1px solid #232323;flex:none;flex-wrap:wrap}
+.SPR_mapEdFoot .SPR_notice{margin:0}
+.SPR_mapEdFootText{font-size:11px;color:#b9b3a8;font-variant-numeric:tabular-nums}
+/* 空态：一句话 + 两个按钮，点完一步到位（建项目 → 导素材 → 32×32 两层，直接可画） */
+.SPR_mapEdEmpty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;flex:1;min-height:320px;padding:30px 20px;text-align:center;background:#424242;border-radius:12px;border:1px solid var(--dsw-alias-border-l2)}
+.SPR_mapEdEmptyText{margin:0;font-size:15px;font-weight:600;color:#f7f3ec}
+.SPR_mapEdEmptyRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 
 .SPR_mapCell:hover .SPR_mapCellLabel{opacity:1}
 .SPR_step-active{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-state-business-primary)}
@@ -2670,44 +2502,6 @@
       if (value === null) return null;
       const trimmed = String(value).trim();
       return trimmed === "" ? fallback : trimmed;
-    }
-
-    /** 图集预览（调色板 / 切分预览）里图片的最长边上限。 */
-    const MAP_PALETTE_MAX = 420;
-
-    /**
-     * 图集预览的盒子尺寸。
-     *
-     * 只约束**宽度**、高度交给 `aspect-ratio` 推：max-width 由「最长边不超过
-     * MAP_PALETTE_MAX」反推得到，所以宽高两边都守得住，且**永远不会破坏宽高比**。
-     * 给盒子直接写 `max-height` 就会：宽度仍是 100% 时被 max-height 一夹，比例塌掉，
-     * 百分比定位的图块又和图片错位（正是下面 `.SPR_mePalette` 注释里那个真机 bug）。
-     */
-    function mapPaletteBox(imageWidth, imageHeight) {
-      const width = imageWidth > 0 ? imageWidth : 1;
-      const height = imageHeight > 0 ? imageHeight : 1;
-      const maxWidth = Math.max(1, Math.round((MAP_PALETTE_MAX * width) / Math.max(width, height)));
-      return { width: "100%", maxWidth: `${maxWidth}px`, aspectRatio: `${width} / ${height}` };
-    }
-
-    /** 原图像素 → 盒子百分比：叠加层必须按百分比写，才会跟着被缩放的图片一起缩。 */
-    function mapPct(value, total) {
-      return total > 0 ? `${(value / total) * 100}%` : "0%";
-    }
-
-    /**
-     * 导出产物的一句话说明（按文件名/扩展名判断，纯文案）。
-     *
-     * 导出列表原本只有文件名：`map.json` / `map.tmj` / `xxx.tsj` 对不熟悉 Tiled 的人
-     * 完全看不出区别，更不知道该拿哪个去用。挂到 `title` 上，悬停即见。
-     */
-    function exportFileHint(file: string): string {
-      if (file === "manifest.json") return T("这次导出的清单：文件列表、警告与地图包围盒");
-      if (file === "map.json") return T("自有 JSON：格子、图层、图例、族与掩码，给引擎读的完整数据");
-      if (file === "map.tmj") return T("Tiled 地图文件，用 Tiled 直接打开");
-      if (file.endsWith(".tsj")) return T("Tiled 图集定义，被 .tmj 引用（别单独挪走）");
-      if (file.endsWith(".png")) return T("图片产物，点开看大图");
-      return T("导出产物");
     }
 
     function statusKind(node) {
@@ -6028,48 +5822,49 @@
       );
     }
 
-    // ── 模块六 · 地图编辑器（导入 tileset）────────────────────────────────
+    // ── 模块六 · 地图编辑器（单屏 · 零术语）────────────────────────────────
     //
-    // 与模块五的根本区别：**宿主是唯一渲染器**。
-    // 界面拿到的不是坐标公式，而是一份绘制计划（每项 = 用哪块图、画在哪个像素），
-    // canvas 只负责把计划执行出来；导出 PNG 执行的是同一份计划。于是
-    // 「预览 = 导出」是构造出来的，而不是靠调试去对齐两套坐标口径。
+    // 界面只做一件事：把宿主下发的绘制计划执行出来。
+    // 「哪一格用哪一块、画在哪个像素、动起来是哪几块」全在宿主算好，这里连坐标变换
+    // 都不做，只把计划里的 x / y 交给 canvas。
     //
-    // 界面里**唯一**复刻的宿主逻辑是命中测试（`MAP_pointToCell` 等三个函数），
-    // 那是鼠标点击必需的；宿主真实现见 `src/mapgeom.ts`，
-    // `scripts/verify-map-client.mjs` 拿它做黄金对照逐点比对。
+    // 唯一被允许复刻的宿主逻辑是命中测试（下面四个坐标函数），那是鼠标必需；
+    // 宿主真实现见 `src/mapgeom.ts`，自检拿它做黄金对照逐点比对。
     //
-    // ⚠️ 变体挑选 / 自动过渡 / 层高换算 / 裁剪偏移**都不在这里**：那些全在宿主。
-    // 一旦在界面里再写一遍，就回到了旧模块那条「预览与出图两套口径」的老路。
+    // ⚠️ 变体挑选 / 自动连接 / 计划分块 / 绘制顺序**都不在这里**：多写一套口径，
+    // 就是「预览好看、导出位移」的老路。
 
-    /** chunk 边长（对齐宿主 `mapgeom.MAP_CHUNK_SIZE`）。 */
-    const MAP_CHUNK = 32;
+    /**
+     * 宿主绘制计划里「一批绘制条目」的字段名。
+     *
+     * 只是个协议字段名（界面上不会出现这个词）。术语黑名单自检按**词边界**判，
+     * 所以这里可以照实写 —— 别为了骗过自检去拼字符串。
+     */
+    const MAP_PLAN_LIST = "chunks";
 
-    /** 像素 → 格子。**与宿主 `mapgeom.pointToCell` 同构**。 */
+    /** 取模到 0..size-1（负数也对）：与宿主 `mapgeom` 的环绕口径一致。 */
+    function MAP_wrapIndex(value, size) {
+      if (!(size > 0)) return value;
+      const rest = value % size;
+      return rest < 0 ? rest + size : rest;
+    }
+
+    /** 像素 → 格子。**与宿主 `mapgeom.pointToCell` 同构**（环绕时取模，且恒算在图内）。 */
     function MAP_pointToCell(layout, x, y) {
-      if (layout.grid.kind === "square") {
-        const c = Math.floor(x / layout.grid.tileWidth);
-        const r = Math.floor(y / layout.grid.tileHeight);
-        return { r, c, inMap: r >= 0 && c >= 0 && r < layout.rows && c < layout.cols };
+      const c = Math.floor(x / layout.stepX);
+      const r = Math.floor(y / layout.stepY);
+      if (layout.wrap === true) {
+        return { r: MAP_wrapIndex(r, layout.rows), c: MAP_wrapIndex(c, layout.cols), inMap: true };
       }
-      const u = (x - layout.centerX) / layout.stepX;
-      const v = (y - layout.centerY) / layout.stepY;
-      const c = Math.round((v + u) / 2);
-      const r = Math.round((v - u) / 2);
       return { r, c, inMap: r >= 0 && c >= 0 && r < layout.rows && c < layout.cols };
     }
 
-    /** 格子锚点（贴图锚点落地的点）。**与宿主 `mapgeom.cellAnchor` 同构**。 */
+    /** 格子锚点 = 单元格底边中点。**与宿主 `mapgeom.cellAnchor` 同构**。 */
     function MAP_cellAnchor(layout, r, c) {
-      if (layout.grid.kind === "square") {
-        return { x: c * layout.grid.tileWidth + layout.grid.tileWidth / 2, y: (r + 1) * layout.grid.tileHeight };
-      }
-      return {
-        x: layout.centerX + (c - r) * layout.stepX,
-        y: layout.centerY + (c + r) * layout.stepY + layout.grid.tileHeight / 2
-      };
+      return { x: c * layout.stepX + layout.grid.tileWidth / 2, y: (r + 1) * layout.stepY };
     }
 
+    /** 贴图左上角。**与宿主 `mapgeom.cellTopLeft` 同构**。 */
     function MAP_cellTopLeft(layout, r, c, width, height, anchorX = 0.5, anchorY = 1) {
       const anchor = MAP_cellAnchor(layout, r, c);
       return { x: anchor.x - width * anchorX, y: anchor.y - height * anchorY };
@@ -6107,128 +5902,229 @@
       return out;
     }
 
-    function MAP_chunkOf(r, c) {
-      return { cx: Math.floor(c / MAP_CHUNK), cy: Math.floor(r / MAP_CHUNK) };
+    /** `HH:MM`：顶栏「已自动保存」用。 */
+    function MAP_clock(stamp) {
+      const date = new Date(stamp);
+      const pad = (value) => String(value).padStart(2, "0");
+      return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
-    function MAP_chunkKey(chunk) {
-      return `${chunk.cx},${chunk.cy}`;
-    }
-
-    /** 视口（地图像素坐标）覆盖到哪些 chunk。 */
-    function MAP_visibleChunks(layout, view) {
-      const corners = [
-        [view.x, view.y],
-        [view.x + view.w, view.y],
-        [view.x, view.y + view.h],
-        [view.x + view.w, view.y + view.h]
-      ].map(([x, y]) => MAP_pointToCell(layout, x, y));
-      const rMin = Math.max(0, Math.min.apply(null, corners.map((hit) => hit.r)) - MAP_CHUNK);
-      const rMax = Math.min(layout.rows - 1, Math.max.apply(null, corners.map((hit) => hit.r)) + MAP_CHUNK);
-      const cMin = Math.max(0, Math.min.apply(null, corners.map((hit) => hit.c)) - MAP_CHUNK);
-      const cMax = Math.min(layout.cols - 1, Math.max.apply(null, corners.map((hit) => hit.c)) + MAP_CHUNK);
-      const keys = [];
-      for (let cy = Math.floor(rMin / MAP_CHUNK); cy <= Math.floor(rMax / MAP_CHUNK); cy++) {
-        for (let cx = Math.floor(cMin / MAP_CHUNK); cx <= Math.floor(cMax / MAP_CHUNK); cx++) keys.push(`${cx},${cy}`);
+    /**
+     * 工具格的图标：内联 SVG 自绘（形状语义对齐 AsLib）。
+     *
+     * 纯函数、不碰 state：面板重渲染时重建这几个图标，代价可以忽略。
+     */
+    function MapToolIcon(props) {
+      const name = props.name;
+      const box: any = { viewBox: "0 0 24 24", width: 20, height: 20, "aria-hidden": "true", focusable: "false", fill: "currentColor" };
+      const path = (d: string, extra?: any) => h("path", { d, ...(extra || {}) });
+      const arrow = "M9 4.6 2.8 10.5 9 16.4v-3.7h4.1a4.4 4.4 0 0 1 0 8.8H7.6v3.2h5.5a7.6 7.6 0 0 0 0-15.2H9V4.6Z";
+      if (name === "undo") return h("svg", box, path(arrow));
+      if (name === "redo") return h("svg", box, h("g", { transform: "translate(24 0) scale(-1 1)" }, path(arrow)));
+      if (name === "pen") return h("svg", box, path("M3.4 20.6l1-4.7L15.6 4.7a2.7 2.7 0 0 1 3.8 3.8L8.1 19.6l-4.7 1Z"));
+      if (name === "eraser") {
+        return h("svg", box, path("M13.4 3.6 4.2 12.8a2.4 2.4 0 0 0 0 3.4l3.6 3.6h6l8.1-8.1a2.4 2.4 0 0 0 0-3.4l-5.1-5.1a2.4 2.4 0 0 0-3.4 0Zm1.2 3.4 4 4-2.6 2.6-4-4 2.6-2.6Z"));
       }
-      return keys;
+      if (name === "bucket") {
+        return h(
+          "svg",
+          box,
+          path("M11.2 2.6 3.9 9.9a2.2 2.2 0 0 0 0 3.1l4.7 4.7a2.2 2.2 0 0 0 3.1 0l7.3-7.3-7.8-7.8Z"),
+          path("M19.4 13.6s2.5 3 2.5 4.5a2.5 2.5 0 1 1-5 0c0-1.5 2.5-4.5 2.5-4.5Z")
+        );
+      }
+      if (name === "pipette") return h("svg", box, path("M15.6 3.4 20.6 8.4 18 11 13 6l2.6-2.6Z"), path("M11.9 7.1 3 16v5h5l8.9-8.9-5-5Z"));
+      if (name === "hand") {
+        return h("svg", box, path("M7.6 11V6.4a1.6 1.6 0 0 1 3.2 0V11h1V4.4a1.6 1.6 0 0 1 3.2 0V11h1V6.4a1.6 1.6 0 0 1 3.2 0V14a6.6 6.6 0 0 1-6.6 6.6h-1.1A5.7 5.7 0 0 1 5.4 15v-2.3a1.7 1.7 0 0 1 3-1l-.8-.7Z"));
+      }
+      if (name === "single") {
+        return h(
+          "svg",
+          box,
+          path("M3 4h18v5H3z", { fillOpacity: 0.42 }),
+          path("M3 10h18v5H3z"),
+          path("M3 16h18v4H3z", { fillOpacity: 0.42 })
+        );
+      }
+      if (name === "grid") return h("svg", box, path("M8.4 3h2.5v18H8.4zM13.1 3h2.5v18h-2.5zM3 8.4h18v2.5H3zM3 13.1h18v2.5H3z"));
+      if (name === "magic") {
+        return h(
+          "svg",
+          box,
+          path("M3.3 20.7 13.1 10.9l-1.9-1.9L1.4 18.8l1.9 1.9Z"),
+          path("M17.6 1.8 19 5.3l3.5 1.4L19 8.1 17.6 11.6 16.2 8.1 12.7 6.7 16.2 5.3 17.6 1.8Z")
+        );
+      }
+      if (name === "settings") {
+        return h(
+          "svg",
+          box,
+          h("rect", { x: 3, y: 4.6, width: 18, height: 2.2, rx: 1.1 }),
+          h("rect", { x: 6, y: 2.4, width: 4.4, height: 6.6, rx: 2.2 }),
+          h("rect", { x: 3, y: 10.9, width: 18, height: 2.2, rx: 1.1 }),
+          h("rect", { x: 13.6, y: 8.7, width: 4.4, height: 6.6, rx: 2.2 }),
+          h("rect", { x: 3, y: 17.2, width: 18, height: 2.2, rx: 1.1 }),
+          h("rect", { x: 8.4, y: 15, width: 4.4, height: 6.6, rx: 2.2 })
+        );
+      }
+      if (name === "up") return h("svg", { viewBox: "0 0 10 6", width: 11, height: 7, "aria-hidden": "true", fill: "currentColor" }, path("M5 0 10 6H0z"));
+      if (name === "down") return h("svg", { viewBox: "0 0 10 6", width: 11, height: 7, "aria-hidden": "true", fill: "currentColor" }, path("M0 0h10L5 6z"));
+      return null;
     }
 
-    /** 图块序号 → { 图集, 源矩形 }（宿主给的 legend）。 */
-    function MAP_legendMap(view) {
-      const map = new Map();
-      for (const entry of view.legend || []) map.set(entry.index, entry);
-      return map;
-    }
-
-    /** 把宿主回传的 chunk 补丁写进缓存。 */
-    function MAP_mergePatches(chunks, patches) {
-      const next = new Map(chunks);
-      for (const patch of patches || []) next.set(patch.key, patch.ops || []);
-      return next;
-    }
-
+    /**
+     * 模块六：单屏零术语地图编辑器。
+     *
+     * 一屏三块：顶栏（项目名 / 素材 / 导出 / 保存状态）、左列（素材调色板 + 12 个工具格）、
+     * 画布。没有步骤条，也没有长说明 —— 名词解释一律贴着控件写一行小字。
+     */
     function MapModule(props) {
       useLocaleTick();
       const api = props.api;
+
+      // ── 项目与视图 ───────────────────────────────────────────────────────
       const [projects, setProjects] = React.useState([]);
-      const [projectId, setProjectId] = React.useState(null);
       const [view, setView] = React.useState(null);
-      const [stage, setStage] = React.useState("assets");
       const [notice, setNotice] = React.useState(null);
-      const [busy, setBusy] = React.useState(false);
-      const [activeLayerId, setActiveLayerId] = React.useState(null);
-      const [brush, setBrush] = React.useState(null);
-      const [tool, setTool] = React.useState("paint");
+      const [openCard, setOpenCard] = React.useState(null);
+      const [menuOpen, setMenuOpen] = React.useState(false);
+      /** 素材卡片里正在看的那一张素材（只有一张时用不到）。 */
+      const [tsIndex, setTsIndex] = React.useState(0);
+      const [busyKey, setBusyKey] = React.useState(null);
+
+      // ── 画布：缩放 / 平移 / 绘制计划 ──────────────────────────────────────
       const [zoom, setZoom] = React.useState(1);
       const [pan, setPan] = React.useState({ x: 0, y: 0 });
-      const [zoomMode, setZoomMode] = React.useState("fit");
-      const [chunks, setChunks] = React.useState(new Map());
-      const [selectedTilesetId, setSelectedTilesetId] = React.useState(null);
-      const [selectedTileIds, setSelectedTileIds] = React.useState([]);
-      /** 图集切分草稿（每张图集一份）。 */
-      const [sliceDraft, setSliceDraft] = React.useState({});
-      /** 族草稿（整份）。 */
-      const [familyDraft, setFamilyDraft] = React.useState(null);
-      /** 导出选项。 */
+      const [viewport, setViewport] = React.useState({ w: 900, h: 520 });
+      /** 画布尺寸量过一次没有：量之前不发计划请求（否则第一帧按默认尺寸算，白拉一遍）。 */
+      const [measured, setMeasured] = React.useState(false);
+      /** 计划缓存：key → 绘制条目。`have` 直接由它派发。 */
+      const planRef = React.useRef(new Map());
+      const [planOps, setPlanOps] = React.useState(new Map());
+      const [visibleKeys, setVisibleKeys] = React.useState([]);
+      const visibleRef = React.useRef([]);
+      /** 自增一次＝「重新问一遍宿主缺哪些块」（补拉用）。 */
+      const [planEpoch, setPlanEpoch] = React.useState(0);
+      const [planMeta, setPlanMeta] = React.useState({ fps: 1, frameCount: 1 });
+      /** 动画速度：null = 跟宿主的 `fps` 走；选了慢 / 中 / 快就是用户指定。 */
+      const [animFps, setAnimFps] = React.useState(null);
+      const [frame, setFrame] = React.useState(0);
+      const [truncated, setTruncated] = React.useState(false);
+      const [planWarnings, setPlanWarnings] = React.useState([]);
+      const [imagesReady, setImagesReady] = React.useState(0);
+
+      // ── 工具 / 笔刷 / 图层 / 显示开关 ─────────────────────────────────────
+      const [tool, setTool] = React.useState("pen");
+      /** 当前笔刷（图例里的全局序号）。 */
+      const [brush, setBrush] = React.useState(null);
+      /** 多选（供「一键生成」取用）。 */
+      const [multi, setMulti] = React.useState([]);
+      const [layerIndex, setLayerIndex] = React.useState(0);
+      const [single, setSingle] = React.useState(false);
+      const [showGrid, setShowGrid] = React.useState(false);
+      const [hover, setHover] = React.useState(null);
+
+      // ── 保存状态 / 生成草稿 / 导出 ────────────────────────────────────────
+      const [savedAt, setSavedAt] = React.useState(null);
+      const [saving, setSaving] = React.useState(false);
+      const [genKind, setGenKind] = React.useState("random");
+      const [genSeed, setGenSeed] = React.useState(20261005);
       const [exportScale, setExportScale] = React.useState(1);
-      const [exportFormats, setExportFormats] = React.useState({ pngMerged: true, pngLayers: true, json: true, tiled: true });
-      const [newMapName, setNewMapName] = React.useState("");
-      /** 地图尺寸草稿（点「应用尺寸」才提交，避免每敲一个数字就 resize 一次）。 */
-      const [mapSizeDraft, setMapSizeDraft] = React.useState({ cols: 32, rows: 32 });
-      /** 图层拖拽排序：正在拖的层 + 当前悬停的目标层（只用于高亮，真正落点看 drop）。 */
-      const [dragLayerId, setDragLayerId] = React.useState(null);
-      const [dragOverId, setDragOverId] = React.useState(null);
+
       const imageRefs = React.useRef({});
       const canvasRef = React.useRef(null);
-      const wrapRef = React.useRef(null);
+      /**
+       * 画布的 ref 回调：顺手挂一个 `{ passive: false }` 的滚轮监听。
+       *
+       * ⚠️ **不能只写 React 的 `onWheel`**：它是被动注册的，在里面 `preventDefault()`
+       * 只会在控制台留一条「Unable to preventDefault inside passive event listener」
+       * 并且**照旧滚动面板** —— 真机上就是「滚轮缩放地图的同时整块面板也在滚」。
+       * 用 ref 回调而不是 `useEffect(..., [])`：空态时画布还不存在，空依赖的 effect
+       * 不会在它后来出现时再跑一次，监听就永远挂不上。
+       */
+      const wheelOff = React.useRef(null);
+      const zoomAtRef = React.useRef(null);
+      const bindCanvas = React.useCallback((node) => {
+        if (typeof wheelOff.current === "function") {
+          wheelOff.current();
+          wheelOff.current = null;
+        }
+        canvasRef.current = node === undefined ? null : node;
+        if (node === null || node === undefined) return;
+        const handler = (event) => {
+          event.preventDefault();
+          const zoom = zoomAtRef.current;
+          if (typeof zoom === "function") zoom(event.clientX, event.clientY, event.deltaY < 0 ? 1.15 : 1 / 1.15);
+        };
+        node.addEventListener("wheel", handler, { passive: false });
+        wheelOff.current = () => node.removeEventListener("wheel", handler);
+      }, []);
+      const stageRef = React.useRef(null);
+      const fileRef = React.useRef(null);
+      const pointersRef = React.useRef(new Map());
       const strokeRef = React.useRef(null);
+      const strokeSeq = React.useRef(0);
+      const currentStroke = React.useRef(null);
       const flushTimer = React.useRef(null);
       const pendingOps = React.useRef([]);
-      /**
-       * 当前这一笔的 id（一次按下 → 抬起算一笔）。
-       *
-       * 拖动时 op 每 ~60ms 提交一次，带上同一个 id 宿主才会把它并成**一条**历史 ——
-       * 否则一次拖拽要按好几次撤销才回得去。
-       */
-      const strokeId = React.useRef(0);
-      const [viewport, setViewport] = React.useState({ w: 640, h: 420 });
-      const [ghost, setGhost] = React.useState(null);
-      /**
-       * 「矩形填充」开关。
-       *
-       * ⚠️ 必须自己一个 state，**不能挂在 `ghost` 上**：ghost 是跟着指针走的瞬时
-       * 状态（指针移出画布就 null），挂在它上面的勾选框会变成「点不动」——
-       * 真机实测：勾选框看着能点，点完状态不变（onChange 里被 `prev === null` 吞掉）。
-       */
-      const [rectFilled, setRectFilled] = React.useState(false);
-      const [imagesReady, setImagesReady] = React.useState(0);
-      const [planWarnings, setPlanWarnings] = React.useState([]);
+      const fittedRef = React.useRef(null);
+      const spaceRef = React.useRef(false);
       const intent = useStudioIntent();
       /**
        * 实验性进入提示。
        *
-       * ⚠️ Hook 必须在**任何提前 return 之前**（下面 `project === null` 那条早返回
-       * 会绕过它）—— 顺序一变就是 React error #310，整块白屏。
+       * ⚠️ Hook 必须在**任何提前 return 之前**：下面 `view === null` 那条早返回
+       * 会绕过它，顺序一变就是 React error #310，整块白屏。
        */
       const [gateOpen, setGateOpen] = React.useState(experimentalGateMuted.map !== true);
       const closeGate = React.useCallback(() => setGateOpen(false), []);
 
-      const project = React.useMemo(() => (view === null ? null : view), [view]);
-      const doc = project === null ? null : project.doc;
-      const layout = doc === null || doc === undefined ? null : doc.layout;
-      const layerOf = (id) => (doc === null ? undefined : (doc.layers || []).find((layer) => layer.id === id));
-      const activeLayer = activeLayerId !== null && layerOf(activeLayerId) !== undefined ? layerOf(activeLayerId) : doc === null ? undefined : (doc.layers || [])[0];
-      const legend = React.useMemo(() => (project === null ? new Map() : MAP_legendMap(project)), [project]);
-      const assetBase = project === null ? "" : project.assetBase;
+      const viewId = view === null ? null : view.id;
+      const layers = view === null ? [] : view.layers || [];
+      const safeLayerIndex = layers.length === 0 ? 0 : Math.min(Math.max(0, layerIndex), layers.length - 1);
+      const activeLayer = layers.length === 0 ? null : layers[safeLayerIndex];
+      const tilesets = view === null ? [] : view.tilesets || [];
+      const safeTsIndex = tilesets.length === 0 ? 0 : Math.min(Math.max(0, tsIndex), tilesets.length - 1);
+      const tileset = tilesets.length === 0 ? null : tilesets[safeTsIndex];
+      const legend = view === null ? [] : view.legend || [];
+      const assetBase = view === null ? "" : view.assetBase;
+      const exportFiles = view === null ? [] : view.exportFiles || [];
 
-      /** 切项目 / 切地图后把尺寸草稿对齐到当前文档（否则输入框还停在上一张地图的尺寸）。 */
-      const docSizeKey = doc === null || doc === undefined ? null : `${doc.id}:${doc.cols}x${doc.rows}`;
-      React.useEffect(() => {
-        if (doc === null || doc === undefined) return;
-        setMapSizeDraft({ cols: doc.cols, rows: doc.rows });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [docSizeKey]);
+      /** 与宿主 `layoutOf` 同形的一份布局：坐标函数要用它的步长与环绕开关。 */
+      const layout = React.useMemo(() => {
+        if (view === null) return null;
+        const grid = view.grid;
+        const cols = view.cols;
+        const rows = view.rows;
+        return {
+          grid,
+          cols,
+          rows,
+          stepX: grid.tileWidth,
+          stepY: grid.tileHeight,
+          width: cols * grid.tileWidth,
+          height: rows * grid.tileHeight,
+          wrap: grid.wrap === true
+        };
+      }, [view]);
+
+      /** 图例：全局序号 → { 素材, 源矩形 }。 */
+      const legendMap = React.useMemo(() => {
+        const map = new Map();
+        for (const entry of legend) map.set(entry.index, entry);
+        return map;
+      }, [legend]);
+
+      const tilesetReason = tileset === null ? "" : tileset.reason || "";
+      const activeFps = animFps === null ? (planMeta.fps > 0 ? planMeta.fps : 1) : animFps;
+
+      /** 当前缩放 / 平移的最新值：捏合与滚轮要在同一次事件里读到，不能靠 state。 */
+      const zoomRef = React.useRef(zoom);
+      zoomRef.current = zoom;
+      const panRef = React.useRef(pan);
+      panRef.current = pan;
+      const viewportRef = React.useRef(viewport);
+      viewportRef.current = viewport;
 
       const withApi = React.useCallback(
         async (fn, options) => {
@@ -6248,108 +6144,199 @@
         [api]
       );
 
+      /**
+       * 每个缓存条目是**按哪次请求的视口**取回来的（键 → 视口矩形）。
+       *
+       * ⚠️ 宿主回的是「覆盖这个视口的那批条目」，所以一个键的内容取决于当时问的
+       * 视口大小。只按 key 判断「我有没有」会让**视口变大后新露出来的格子一直空着**
+       * （键还在缓存里，宿主就不重发了 —— 实测踩过）。这里只比较**客户端自己发出去的
+       * 两个矩形**，不碰任何格 / 块的可见范围计算。
+       */
+      const fetchedRef = React.useRef(new Map());
+
+      /** 换项目 / 换层 / 大改之后：把计划整份作废（下次渲染重新问宿主）。 */
+      const clearPlan = React.useCallback(() => {
+        planRef.current = new Map();
+        fetchedRef.current = new Map();
+        visibleRef.current = [];
+        setPlanOps(new Map());
+        setVisibleKeys([]);
+      }, []);
+
+      /**
+       * 读一次项目视图。
+       *
+       * `keep` = 保留画布上的选择（图层 / 面板 / 缩放）：验收打勾、导出回读这类
+       * 「只是刷新一下状态」的调用不该把用户正在画的层顶掉。
+       */
       const loadProject = React.useCallback(
-        async (id, mapId) => {
-          if (api === undefined || id === null) return;
+        async (id, keep) => {
+          if (api === undefined || id === null || id === undefined || id === "") return;
           try {
-            const next = await api.getMapProject(mapId === undefined ? { projectId: id } : { projectId: id, mapId });
+            const next = await api.getMapProject({ projectId: id, lang: activeLang() });
+            if (keep !== true) {
+              clearPlan();
+              setLayerIndex(0);
+              setTsIndex(0);
+              setPlanMeta({ fps: 1, frameCount: 1 });
+              setAnimFps(null);
+              setTruncated(false);
+              setPlanWarnings([]);
+              setSavedAt(null);
+            }
             setView(next);
-            setChunks(new Map());
-            setProjectId(next.id);
-            const layers = (next.doc && next.doc.layers) || [];
-            setActiveLayerId(layers.length > 0 ? layers[0].id : null);
           } catch (error) {
             setNotice({ kind: "error", text: msg(error) });
           }
         },
-        [api]
+        [api, clearPlan]
       );
 
-      const loadList = React.useCallback(async () => {
-        if (api === undefined) return;
-        try {
-          const result = await api.listMapProjects();
-          setProjects(result.projects || []);
-          if (projectId === null && result.projects && result.projects.length > 0) await loadProject(result.projects[0].id);
-        } catch (error) {
-          setNotice({ kind: "error", text: msg(error) });
-        }
-      }, [api, projectId, loadProject]);
-
       React.useEffect(() => {
-        void loadList();
-      }, [loadList]);
+        void (async () => {
+          if (api === undefined) return;
+          try {
+            const result = await api.listMapProjects();
+            const list = result.projects || [];
+            setProjects(list);
+            if (list.length > 0) await loadProject(list[0].id);
+          } catch (error) {
+            setNotice({ kind: "error", text: msg(error) });
+          }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [api]);
 
-      // 深链接：`?dsh-gmm=1&module=map&job=<项目 id>&stage=paint`
-      // （项目 id 走 jobId 字段，与 tile 同一套约定，见宿主 links.ts 的 OpenIntent）
+      // 深链接：`?dsh-gmm=1&module=map&job=<项目 id>&stage=assets|rules|paint|export`
       React.useEffect(() => {
         if (intent === null || intent.module !== "map") return;
-        if (typeof intent.stage === "string" && MAP_STAGES.some((entry) => entry.key === intent.stage)) setStage(intent.stage);
-        if (typeof intent.jobId === "string" && intent.jobId !== "") void loadProject(intent.jobId);
-      }, [intent, loadProject]);
-
-      const mapId = doc === null || doc === undefined ? null : doc.id;
-
-      /**
-       * 作业进行中就轮询。
-       *
-       * 验收预览 / 导出是宿主上的异步作业（`runMapPreview` / `runMapExport` 只回
-       * `started`），提交完那次重读拿到的还是「进行中」，此后**再没有人刷新**：
-       * 表现是顶部「任务进行中…」一直挂着、导出文件列表永远是空的。
-       * 真机实测：文件其实早就写到磁盘了，点一下「刷新状态」才全部出现。
-       * 模块⑤与②③④都有这个轮询，这里补上（`busy` 转 false 时 effect 自己收尾）。
-       */
-      const projectBusy = view !== null && view.busy === true;
-      React.useEffect(() => {
-        if (projectBusy !== true || projectId === null) return;
-        const timer = setInterval(() => {
-          void loadProject(projectId, mapId);
-        }, 1500);
-        return () => clearInterval(timer);
+        const id = typeof intent.jobId === "string" && intent.jobId !== "" ? intent.jobId : intent.projectId;
+        if (typeof id === "string" && id !== "") void loadProject(id);
+        if (intent.stage === "assets") setOpenCard("assets");
+        else if (intent.stage === "export") setOpenCard("export");
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [projectBusy, projectId, mapId, loadProject]);
+      }, [intent]);
 
-      // ── 计划 chunk 的按需拉取 ────────────────────────────────────────────
-      const requestChunks = React.useCallback(
-        async (keys) => {
-          if (api === undefined || projectId === null || mapId === null) return;
-          const missing = keys.filter((key) => !chunks.has(key));
-          if (missing.length === 0) return;
-          try {
-            const plan = await api.mapPlan({ projectId, mapId, chunks: missing });
-            setChunks((prev) => {
-              const next = new Map(prev);
-              for (const chunk of plan.chunks || []) next.set(chunk.key, chunk.ops || []);
-              for (const key of missing) if (!next.has(key)) next.set(key, []);
-              return next;
-            });
-            setPlanWarnings(plan.warnings || []);
-          } catch (error) {
-            setNotice({ kind: "error", text: msg(error) });
+      // ── 绘制计划：什么时候问、怎么合并 ───────────────────────────────────
+      const applyQuery = React.useCallback((result, view) => {
+        const incoming = Array.isArray(result?.[MAP_PLAN_LIST]) ? result[MAP_PLAN_LIST] : [];
+        const next = new Map(planRef.current);
+        for (const entry of incoming) {
+          next.set(entry.key, Array.isArray(entry.ops) ? entry.ops : []);
+          // 记下这一份是「按哪个视口」取回来的：视口再变大时它就不够画了
+          if (view !== undefined) fetchedRef.current.set(entry.key, view);
+        }
+        const keys = Array.isArray(result?.visibleKeys) ? result.visibleKeys : [];
+        /** 缓存上限：先丢「已经不在可见范围里」的键，免得看久了内存无限涨。 */
+        if (next.size > 384) {
+          const keep = new Set(keys);
+          for (const key of [...next.keys()]) {
+            if (next.size <= 256) break;
+            if (!keep.has(key)) next.delete(key);
           }
-        },
-        [api, projectId, mapId, chunks]
-      );
+        }
+        planRef.current = next;
+        visibleRef.current = keys;
+        setPlanOps(next);
+        setVisibleKeys(keys);
+        const fps = Number(result?.fps);
+        const frames = Number(result?.frameCount);
+        setPlanMeta({
+          fps: Number.isFinite(fps) && fps > 0 ? fps : 1,
+          frameCount: Number.isFinite(frames) && frames > 1 ? Math.floor(frames) : 1
+        });
+        setTruncated(result?.truncated === true);
+        setPlanWarnings(Array.isArray(result?.warnings) ? result.warnings : []);
+      }, []);
 
-      /**
-       * 自动选中第一张图集。
-       *
-       * `selectedTilesetId` 默认是 `null`，而「③ 地图」的调色板与图集卡片上的
-       * 「给『族』按顺序分配掩码」都依赖它 —— 不自动选，用户点分配掩码会**静默没反应**
-       * （真机实测：上传图集 → 加族 → 点分配掩码，覆盖率一直是 0/47，界面连报错都没有）。
-       * 依赖写成 id 串：只在图集增删时重挑，用户手动把调色板选回「选择图集…」不会被反复覆盖。
-       */
-      const tilesetIds = (view === null ? [] : view.tilesets).map((entry) => entry.id).join(",");
+      /** 计划的「身份」：这张图变了（换项目 / 换层 / 换网格 / 换尺寸）就整份重来。 */
+      const planKey =
+        viewId === null || layout === null
+          ? null
+          : `${viewId}|${single === true ? safeLayerIndex : "all"}|${layout.wrap === true ? "w" : "n"}|${layout.stepX}x${layout.stepY}|${layout.cols}x${layout.rows}`;
+
+      // 身份变了 → 旧计划一律作废（不同层的块里条目本来就不同）
+      const planKeyRef = React.useRef(null);
       React.useEffect(() => {
-        const list = view === null ? [] : view.tilesets;
-        setSelectedTilesetId((prev) => (prev !== null && list.some((entry) => entry.id === prev) ? prev : list.length > 0 ? list[0].id : null));
+        if (planKeyRef.current === planKey) return;
+        planKeyRef.current = planKey;
+        if (planKey === null) return;
+        clearPlan();
+        setPlanEpoch((value) => value + 1);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [tilesetIds]);
+      }, [planKey]);
 
-      // ── 画布：视口渲染（大地图也不卡）─────────────────────────────────────
+      /** 外框矩形是否盖住内框（只用来判断「这一份计划还够不够画当前视口」）。 */
+      const viewCovers = (outer, inner) =>
+        outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.width >= inner.x + inner.width && outer.y + outer.height >= inner.y + inner.height;
+
+      React.useEffect(() => {
+        if (api === undefined || viewId === null || layout === null || measured !== true) return undefined;
+        let cancelled = false;
+        const timer = setTimeout(() => {
+          void (async () => {
+            try {
+              const size = viewportRef.current;
+              const currentView = { x: pan.x, y: pan.y, width: size.w / zoom, height: size.h / zoom };
+              const have = [...planRef.current.keys()].filter((key) => {
+                const fetched = fetchedRef.current.get(key);
+                return fetched !== undefined && viewCovers(fetched, currentView);
+              });
+              const result = await api.mapPlan({
+                projectId: viewId,
+                view: currentView,
+                have,
+                layerIds: single === true ? [safeLayerIndex] : undefined
+              });
+              if (cancelled === true) return;
+              applyQuery(result, currentView);
+            } catch (error) {
+              if (cancelled === true) return;
+              setNotice({ kind: "error", text: msg(error) });
+            }
+          })();
+        }, 32);
+        return () => {
+          cancelled = true;
+          clearTimeout(timer);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [api, viewId, planKey, planEpoch, pan, zoom, viewport, single, safeLayerIndex, measured]);
+
+      // 视图尺寸变了（面板宽窄、窗口缩放）：重新量一次
+      React.useEffect(() => {
+        const element = stageRef.current;
+        if (element === null || element === undefined) return undefined;
+        const measure = () => {
+          const rect = element.getBoundingClientRect();
+          setViewport({ w: Math.max(160, Math.round(rect.width)), h: Math.max(120, Math.round(rect.height)) });
+          setMeasured(true);
+        };
+        measure();
+        if (typeof ResizeObserver !== "function") return undefined;
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [viewId]);
+
+      // 换项目 / 改尺寸后把整张地图摆回视野中央（用户自己平移过就不再动）
+      React.useEffect(() => {
+        if (view === null || layout === null) return;
+        const key = `${view.id}:${layout.cols}x${layout.rows}:${layout.stepX}`;
+        if (fittedRef.current === key) return;
+        fittedRef.current = key;
+        const scale = Math.min(1, viewport.w / Math.max(1, layout.width), viewport.h / Math.max(1, layout.height));
+        const next = Math.min(8, Math.max(0.25, Number.isFinite(scale) && scale > 0 ? scale : 1));
+        setZoom(next);
+        setPan({ x: (layout.width - viewport.w / next) / 2, y: (layout.height - viewport.h / next) / 2 });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [viewId, layout === null ? "" : `${layout.cols}x${layout.rows}x${layout.stepX}`, viewport.w, viewport.h]);
+
+      // ── 画布绘制 ─────────────────────────────────────────────────────────
       const draw = React.useCallback(() => {
         const canvas = canvasRef.current;
-        if (canvas === null || canvas === undefined || layout === null || doc === null || doc === undefined) return;
+        if (canvas === null || canvas === undefined || layout === null) return;
         const ctx = canvas.getContext("2d");
         if (ctx === null || ctx === undefined) return;
         const width = Math.max(1, Math.round(viewport.w));
@@ -6357,11 +6344,10 @@
         /**
          * 按 devicePixelRatio 放大 backing store。
          *
-         * 不放大时在 Retina 上每个地图像素只占 1 个物理像素 → 整张图发糊
-         * （像素画尤其明显）。坐标仍然按 CSS 像素记，倍率进 transform，
-         * 所以计划里的目标坐标**一个都不用改**（drawImage 的入参保持原样）。
+         * 不放大时每个地图像素只占 1 个物理像素 → 像素画在 Retina 上发糊。
+         * 坐标仍按 CSS 像素记，倍率进 transform，所以计划里的目标坐标一个都不用改。
          */
-        const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+        const dpr = Math.max(1, Math.min(3, (typeof window !== "undefined" && window.devicePixelRatio) || 1));
         const backingWidth = Math.round(width * dpr);
         const backingHeight = Math.round(height * dpr);
         if (canvas.width !== backingWidth) canvas.width = backingWidth;
@@ -6371,24 +6357,21 @@
         ctx.imageSmoothingEnabled = false;
         const scale = zoom * dpr;
         ctx.setTransform(scale, 0, 0, scale, -pan.x * scale, -pan.y * scale);
-        const rectOf = (index) => legend.get(index);
-        /**
-         * 帧统计。
-         *
-         * `window.__mapDebug = true` 时把「这一帧为什么画/没画出东西」记在
-         * `window.__mapDrawStats` 上 —— 自检与真机验收都靠它定位
-         * 「画布是空的」这类问题（是没拉到计划、还是缺图源、还是坐标算飞了）。
-         * 默认关掉，正常使用不产生任何额外开销。
-         */
-        const debug = (window as any).__mapDebug === true;
-        const stats = debug ? { keys: [], cached: 0, drawn: 0, noLegend: 0, noImage: 0, first: null } : null;
-        for (const key of MAP_visibleChunks(layout, { x: pan.x, y: pan.y, w: width / zoom, h: height / zoom })) {
+        // 单层预览：底铺绿。层过滤由宿主的计划做，这里一条条目都不筛。
+        if (single === true) {
+          ctx.fillStyle = "rgb(56,170,68)";
+          ctx.fillRect(pan.x, pan.y, width / zoom, height / zoom);
+        }
+        const debug = typeof window !== "undefined" && (window as any).__mapDebug === true;
+        const stats: any = debug ? { keys: [], cached: 0, drawn: 0, noLegend: 0, noImage: 0, first: null, frame: 0 } : null;
+        for (const key of visibleRef.current) {
           if (stats !== null) stats.keys.push(key);
-          const ops = chunks.get(key);
+          const ops = planOps.get(key);
           if (ops === undefined) continue;
           if (stats !== null) stats.cached += ops.length;
           for (const op of ops) {
-            const entry = rectOf(op.t);
+            const index = op.cycle === undefined || op.cycle.length === 0 ? op.t : op.cycle[frame % op.cycle.length];
+            const entry = legendMap.get(index);
             if (entry === undefined) {
               if (stats !== null) stats.noLegend++;
               continue;
@@ -6400,111 +6383,146 @@
             }
             if (stats !== null) {
               stats.drawn++;
-              if (stats.first === null) stats.first = { t: op.t, x: op.x, y: op.y, ts: entry.tilesetId };
+              if (stats.first === null) stats.first = { t: index, x: op.x, y: op.y, ts: entry.tilesetId };
             }
             ctx.globalAlpha = op.a === undefined ? 1 : op.a;
-            ctx.drawImage(image, entry.rect.x, entry.rect.y, entry.rect.width, entry.rect.height, op.x, op.y, entry.rect.width, entry.rect.height);
+            ctx.drawImage(
+              image,
+              entry.rect.x,
+              entry.rect.y,
+              entry.rect.width,
+              entry.rect.height,
+              op.x,
+              op.y,
+              entry.rect.width,
+              entry.rect.height
+            );
           }
-        }
-        if (stats !== null) {
-          (window as any).__mapDrawStats = stats;
         }
         ctx.globalAlpha = 1;
-        if (ghost !== null && ghost.length > 0) {
-          ctx.fillStyle = ghost.ok === false ? "rgba(240,80,80,0.35)" : "rgba(80,220,120,0.32)";
-          for (const cell of ghost.cells) {
-            if (layout.grid.kind === "square") {
-              const topLeft = MAP_cellTopLeft(layout, cell.r, cell.c, layout.grid.tileWidth, layout.grid.tileHeight);
-              ctx.fillRect(topLeft.x, topLeft.y, layout.grid.tileWidth, layout.grid.tileHeight);
-              continue;
-            }
-            const center = MAP_cellAnchor(layout, cell.r, cell.c);
-            const halfW = layout.grid.tileWidth / 2;
-            const halfH = layout.grid.tileHeight / 2;
-            ctx.beginPath();
-            ctx.moveTo(center.x, center.y - layout.grid.tileHeight);
-            ctx.lineTo(center.x + halfW, center.y - halfH);
-            ctx.lineTo(center.x, center.y);
-            ctx.lineTo(center.x - halfW, center.y - halfH);
-            ctx.closePath();
-            ctx.fill();
+        // 网格线：只是对位用的装饰，不参与任何绘制计划
+        if (showGrid === true) {
+          const stepX = layout.grid.tileWidth;
+          const stepY = layout.grid.tileHeight;
+          const thin = 1 / zoom;
+          ctx.fillStyle = "rgba(255,255,255,0.22)";
+          const right = pan.x + width / zoom;
+          const bottom = pan.y + height / zoom;
+          let count = 0;
+          for (let x = Math.floor(pan.x / stepX) * stepX; x <= right && count < 800; x += stepX) {
+            ctx.fillRect(x, pan.y, thin, height / zoom);
+            count++;
+          }
+          for (let y = Math.floor(pan.y / stepY) * stepY; y <= bottom && count < 1600; y += stepY) {
+            ctx.fillRect(pan.x, y, width / zoom, thin);
+            count++;
           }
         }
-      }, [layout, doc, viewport, zoom, pan, chunks, legend, ghost]);
+        // 悬停格：2px 红框（四条细矩形，不用 stroke，免得被 DPR 影响粗细）
+        if (hover !== null && hover !== undefined) {
+          const topLeft = MAP_cellTopLeft(layout, hover.r, hover.c, layout.grid.tileWidth, layout.grid.tileHeight);
+          const thickness = 2 / zoom;
+          const w = layout.grid.tileWidth;
+          const hh = layout.grid.tileHeight;
+          ctx.fillStyle = "#e23b2b";
+          ctx.fillRect(topLeft.x, topLeft.y, w, thickness);
+          ctx.fillRect(topLeft.x, topLeft.y + hh - thickness, w, thickness);
+          ctx.fillRect(topLeft.x, topLeft.y + thickness, thickness, hh - thickness * 2);
+          ctx.fillRect(topLeft.x + w - thickness, topLeft.y + thickness, thickness, hh - thickness * 2);
+        }
+        if (stats !== null && typeof window !== "undefined") {
+          stats.frame = frame;
+          (window as any).__mapDrawStats = stats;
+        }
+      }, [layout, viewport, zoom, pan, planOps, legend, legendMap, single, showGrid, hover, frame]);
 
       React.useEffect(() => {
         draw();
       }, [draw, imagesReady]);
 
-      // 视口变化 / 平移缩放后按需补齐 chunk
-      React.useEffect(() => {
-        if (layout === null) return;
-        const keys = MAP_visibleChunks(layout, { x: pan.x, y: pan.y, w: viewport.w / zoom, h: viewport.h / zoom });
-        void requestChunks(keys);
-      }, [layout, pan, viewport, zoom, requestChunks]);
+      /** 停帧条件：系统开了「减少动态效果」或页面被切到后台 → 永远停在第一帧。 */
+      const stillFrame =
+        (typeof window !== "undefined" &&
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches === true) ||
+        (typeof document !== "undefined" && document !== null && document.hidden === true);
 
-      // 容器尺寸变化 → 视口跟着变（否则右下角永远画不到）
       React.useEffect(() => {
-        const element = wrapRef.current;
-        if (element === null || element === undefined) return;
-        const measure = () => {
-          const rect = element.getBoundingClientRect();
-          setViewport({ w: Math.max(160, Math.round(rect.width)), h: 420 });
+        if (stillFrame === true || planMeta.frameCount <= 1) {
+          setFrame(0);
+          return undefined;
+        }
+        if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") return undefined;
+        const started = Date.now();
+        let handle = 0;
+        const tick = () => {
+          const elapsed = (Date.now() - started) / 1000;
+          setFrame(Math.floor(elapsed * activeFps) % planMeta.frameCount);
+          handle = window.requestAnimationFrame(tick);
         };
-        measure();
-        if (typeof ResizeObserver !== "function") return;
-        const observer = new ResizeObserver(measure);
-        observer.observe(element);
-        return () => observer.disconnect();
-      }, [projectId, stage]);
-
-      // 「适应窗口」缩放：整张地图塞进画布
-      React.useEffect(() => {
-        if (zoomMode !== "fit" || doc === null || doc === undefined) return;
-        const bounds = doc.bounds;
-        if (bounds === undefined || bounds.width <= 0) return;
-        const scale = Math.min(1, Math.min(viewport.w / bounds.width, viewport.h / bounds.height));
-        setZoom(scale > 0 ? scale : 1);
-        setPan({ x: bounds.originX, y: bounds.originY });
-      }, [zoomMode, doc, viewport]);
+        handle = window.requestAnimationFrame(tick);
+        return () => window.cancelAnimationFrame(handle);
+      }, [stillFrame, planMeta.frameCount, activeFps]);
 
       // ── 编辑：op 批量提交 ────────────────────────────────────────────────
+      const applyResult = React.useCallback((result) => {
+        if (result === undefined || result === null) return;
+        const drop = Array.isArray(result.dropKeys) ? result.dropKeys : [];
+        if (drop.length > 0) {
+          const next = new Map(planRef.current);
+          for (const key of drop) {
+            next.delete(key);
+            fetchedRef.current.delete(key);
+          }
+          planRef.current = next;
+          setPlanOps(next);
+        }
+        setView((prev) => (prev === null ? prev : { ...prev, canUndo: result.canUndo === true, canRedo: result.canRedo === true }));
+        if (Array.isArray(result.skipped) && result.skipped.length > 0) {
+          setNotice({ kind: "error", text: result.skipped.slice(0, 2).join("；") });
+        }
+        setSavedAt(Date.now());
+        setPlanEpoch((value) => value + 1);
+      }, []);
+
       const flushOps = React.useCallback(async () => {
         if (flushTimer.current !== null) {
           clearTimeout(flushTimer.current);
           flushTimer.current = null;
         }
         const ops = pendingOps.current;
-        if (ops.length === 0 || api === undefined || projectId === null || mapId === null) return;
-        pendingOps.current = [];
-        // 调试钩子：`window.__mapDebug = true` 时记下每次提交的笔画 id 与条数
-        // （「一次拖拽被拆成好几步撤销」就是靠它定位的）
-        if ((window as any).__mapDebug === true) {
-          const log = ((window as any).__mapOpsLog = (window as any).__mapOpsLog ?? []);
-          log.push({ stroke: ops[0]?.stroke ?? null, count: ops.length });
-          if (log.length > 200) log.shift();
+        if (ops.length === 0) return;
+        if (api === undefined || viewId === null) {
+          // ⚠️ 这里**必须**把队列清掉再返回：服务还没挂上 / 项目已被切换时提交不了，
+          // 留下的话它们会带着**上一笔的 stroke** 等到下一次 flush，被
+          // `stroke: ops[0]?.stroke` 整批盖成一个 id —— 两笔不同的涂抹会被并成
+          // 一条撤销；项目已删除时还会往旧 viewId 提交。
+          pendingOps.current = [];
+          return;
         }
+        pendingOps.current = [];
+        setSaving(true);
         try {
-          const result = await api.applyMapOps({ projectId, mapId, ops, stroke: ops[0]?.stroke });
-          setChunks((prev) => MAP_mergePatches(prev, result.patches));
-          setView((prev) => (prev === null ? prev : { ...prev, doc: { ...prev.doc, canUndo: result.canUndo, canRedo: result.canRedo } }));
-          if (result.skipped !== undefined && result.skipped.length > 0) {
-            setNotice({ kind: "error", text: result.skipped.slice(0, 2).join("；") });
-          }
+          const result = await api.applyMapOps({ projectId: viewId, ops, stroke: ops[0]?.stroke, have: [...planRef.current.keys()] });
+          applyResult(result);
         } catch (error) {
           setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setSaving(false);
         }
-      }, [api, projectId, mapId]);
+      }, [api, viewId, applyResult]);
 
+      /**
+       * 入队一批 op。
+       *
+       * 一次按下 → 抬起算**一笔**：拖动期间每 40ms 提交一次，但都带同一个 `stroke`，
+       * 宿主才会并成一条历史；否则一次拖拽要按好几次撤销才回得去。
+       */
       const queueOps = React.useCallback(
         (ops, immediate) => {
-          const stroke = `s${++strokeId.current}`;
-          const stamped = ops.map((op) => ({ ...op, stroke }));
-          // ⚠️ 同一笔的多次 flush 必须共用同一个 id：拖动时的中间批次要沿用
-          // 当前笔画的 id，只有新按下时才换新的。
-          const key = immediate === true ? stroke : (currentStroke.current ?? stroke);
-          currentStroke.current = immediate === true ? null : key;
-          pendingOps.current = pendingOps.current.concat(stamped.map((op) => ({ ...op, stroke: key })));
+          const stroke = currentStroke.current === null ? `s${++strokeSeq.current}` : currentStroke.current;
+          currentStroke.current = immediate === true ? null : stroke;
+          pendingOps.current = pendingOps.current.concat(ops.map((op) => ({ ...op, stroke })));
           if (immediate === true) {
             void flushOps();
             return;
@@ -6513,1335 +6531,1110 @@
           flushTimer.current = setTimeout(() => {
             flushTimer.current = null;
             void flushOps();
-          }, 60);
+          }, 40);
         },
         [flushOps]
       );
 
+      const doUndo = async () => {
+        if (api === undefined || viewId === null) return;
+        setSaving(true);
+        try {
+          applyResult(await api.mapUndo({ projectId: viewId, have: [...planRef.current.keys()] }));
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      const doRedo = async () => {
+        if (api === undefined || viewId === null) return;
+        setSaving(true);
+        try {
+          applyResult(await api.mapRedo({ projectId: viewId, have: [...planRef.current.keys()] }));
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      // ── 画布命中测试与交互 ───────────────────────────────────────────────
       const cellFromEvent = React.useCallback(
         (event) => {
           const canvas = canvasRef.current;
-          if (canvas === null || layout === null) return null;
+          if (canvas === null || canvas === undefined || layout === null) return null;
           const rect = canvas.getBoundingClientRect();
           const x = (event.clientX - rect.left) / zoom + pan.x;
           const y = (event.clientY - rect.top) / zoom + pan.y;
           const hit = MAP_pointToCell(layout, x, y);
-          return hit.inMap ? hit : null;
+          return hit.inMap === true ? hit : null;
         },
         [layout, zoom, pan]
       );
 
-      /** 当前拖拽笔画的 id（null = 没有正在进行的笔画）。 */
-      const currentStroke = React.useRef(null);
+      const paintCells = (from, to, tile) => {
+        if (activeLayer === null) return;
+        const cells = from === null ? [to] : MAP_lineCells(from.r, from.c, to.r, to.c);
+        queueOps([{ kind: "paint", layerId: activeLayer.id, cells: cells.map((cell) => ({ r: cell.r, c: cell.c, tile })) }]);
+      };
 
-      /**
-       * 某个工具要不要先选笔刷。
-       *
-       * ⚠️ **橡皮不需要笔刷**（它就是把格子清空）。以前这条判断是
-       * `activeLayer === undefined || brush === null`，于是刚进面板、还没点过调色板时
-       * 拿橡皮在画布上拖，**一点反应都没有也不报错**（真机实测）。
-       */
-      const needsBrush = (name) => name === "paint" || name === "fill" || name === "rect";
       const warnNoBrush = () => {
         if (brush === null) {
-          setNotice({ kind: "error", text: T("先选一块图当笔刷：点调色板里的图块，或点上面的族胶囊。") });
+          setNotice({ kind: "error", text: T("先在左边点一块图当笔刷。") });
           return true;
         }
         return false;
       };
 
-      const strokePaint = (from, to) => {
-        if (activeLayer === undefined) return;
-        if (needsBrush(tool) && warnNoBrush()) return;
-        const cells = from === null ? [to] : MAP_lineCells(from.r, from.c, to.r, to.c);
-        const tile = tool === "erase" ? 0 : (brush === null ? 0 : brush.tile);
-        queueOps([
-          { kind: "paint", layerId: activeLayer.id, cells: cells.map((cell) => ({ r: cell.r, c: cell.c, tile })) }
-        ]);
+      /** 吸管：从宿主给的绘制条目里读「这一格最上面是哪一块」。 */
+      const pickAt = (cell) => {
+        let found = null;
+        for (const key of visibleRef.current) {
+          const ops = planOps.get(key);
+          if (ops === undefined) continue;
+          for (const op of ops) {
+            if (op.r !== cell.r || op.c !== cell.c) continue;
+            if (single === true && op.l !== safeLayerIndex) continue;
+            if (found === null || (op.l ?? 0) >= (found.l ?? 0)) found = op;
+          }
+        }
+        if (found === null) return;
+        // ⚠️ 吸管吸到的是**这一格实际贴的那一块**。对拼块素材来说那是一个 16px 小格，
+        // 而调色板里只有该素材的**一个代表笔刷** —— 直接 setBrush(小格) 的话红框找不到
+        // 对应的格子，用户会看到「当前笔刷」凭空消失（真机实测：吸海面后红框没了）。
+        // 所以这里把它归到「拥有它的那个调色板条目」上；普通素材每格都有条目，等于原样。
+        const owner = legendMap.get(found.t);
+        const entries = view === null || view === undefined ? [] : view.tilesets;
+        let index = found.t;
+        if (owner !== undefined) {
+          const tileset = entries.find((entry) => entry.id === owner.tilesetId);
+          const palette = tileset === undefined ? [] : tileset.palette;
+          if (palette.length > 0 && !palette.some((entry) => entry.index === found.t)) index = palette[0].index;
+        }
+        setBrush({ index });
+        setMulti([index]);
       };
 
+      const zoomAt = (clientX, clientY, factor) => {
+        const canvas = canvasRef.current;
+        if (canvas === null || canvas === undefined) return;
+        const rect = canvas.getBoundingClientRect();
+        const prev = zoomRef.current;
+        const next = Math.min(8, Math.max(0.25, prev * factor));
+        const mapX = (clientX - rect.left) / prev + panRef.current.x;
+        const mapY = (clientY - rect.top) / prev + panRef.current.y;
+        setZoom(next);
+        setPan({ x: mapX - (clientX - rect.left) / next, y: mapY - (clientY - rect.top) / next });
+      };
+      // 原生滚轮监听要在事件到来时拿到**最新**的 zoomAt（它闭包了 zoom/pan），
+      // 所以用 ref 转发，而不是把 zoomAt 塞进 effect 依赖（那会每帧重新挂监听）。
+      zoomAtRef.current = zoomAt;
+
       const onPointerDown = (event) => {
-        if (layout === null || doc === null || doc === undefined) return;
+        if (layout === null) return;
+        if (typeof event.preventDefault === "function") event.preventDefault();
+        const canvas = canvasRef.current;
+        if (canvas !== null && canvas !== undefined && typeof canvas.setPointerCapture === "function" && event.pointerId !== undefined) {
+          try {
+            canvas.setPointerCapture(event.pointerId);
+          } catch {
+            // 捕获失败不影响画图，只是拖出画布后会断线。
+          }
+        }
+        const pointerId = event.pointerId === undefined ? 1 : event.pointerId;
+        pointersRef.current.set(pointerId, { x: event.clientX, y: event.clientY });
+        if (pointersRef.current.size === 2) {
+          const [a, b] = [...pointersRef.current.values()];
+          strokeRef.current = null;
+          currentStroke.current = null;
+          pointersRef.current.pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y) };
+          return;
+        }
         const hit = cellFromEvent(event);
         if (hit === null) return;
-        if (event.button === 1 || event.shiftKey === true) {
+        if (tool === "hand" || event.button === 1 || spaceRef.current === true) {
           strokeRef.current = { mode: "pan", clientX: event.clientX, clientY: event.clientY, pan: { ...pan } };
           return;
         }
-        if (tool === "fill") {
-          if (activeLayer === undefined) return;
-          if (warnNoBrush()) return;
-          queueOps([{ kind: "fill", layerId: activeLayer.id, r: hit.r, c: hit.c, tile: brush.tile }], true);
+        if (event.button === 2 || tool === "eraser") {
+          currentStroke.current = null;
+          strokeRef.current = { mode: "paint", from: hit, tile: 0 };
+          paintCells(null, hit, 0);
           return;
         }
-        if (tool === "rect") {
-          if (warnNoBrush()) return;
-          strokeRef.current = { mode: "rect", from: hit };
-          setGhost({ cells: [hit], ok: true });
+        if (tool === "pipette") {
+          pickAt(hit);
           return;
         }
-        if (tool === "pick") {
-          const chunk = MAP_chunkOf(hit.r, hit.c);
-          const ops = chunks.get(MAP_chunkKey(chunk)) || [];
-          const found = ops.find((op) => op.r === hit.r && op.c === hit.c);
-          if (found !== undefined) setBrush({ tile: found.t });
+        if (tool === "bucket") {
+          if (warnNoBrush() || activeLayer === null) return;
+          queueOps([{ kind: "fill", layerId: activeLayer.id, r: hit.r, c: hit.c, tile: brush.index }], true);
           return;
         }
+        if (warnNoBrush()) return;
         currentStroke.current = null;
-        strokeRef.current = { mode: "paint", from: hit };
-        strokePaint(null, hit);
-        setGhost({ cells: [hit], ok: true });
+        strokeRef.current = { mode: "paint", from: hit, tile: brush.index };
+        paintCells(null, hit, brush.index);
       };
 
       const onPointerMove = (event) => {
         if (layout === null) return;
-        const hit = cellFromEvent(event);
+        const pointerId = event.pointerId === undefined ? 1 : event.pointerId;
+        if (pointersRef.current.has(pointerId)) pointersRef.current.set(pointerId, { x: event.clientX, y: event.clientY });
+        const pinch = pointersRef.current.pinch;
+        if (pinch !== undefined && pointersRef.current.size === 2) {
+          const [a, b] = [...pointersRef.current.values()];
+          const distance = Math.hypot(a.x - b.x, a.y - b.y);
+          if (pinch.distance > 0) zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, distance / pinch.distance);
+          pinch.distance = distance;
+          return;
+        }
         const stroke = strokeRef.current;
         if (stroke !== null && stroke !== undefined && stroke.mode === "pan") {
-          setPan({ x: stroke.pan.x - (event.clientX - stroke.clientX) / zoom, y: stroke.pan.y - (event.clientY - stroke.clientY) / zoom });
+          setPan({
+            x: stroke.pan.x - (event.clientX - stroke.clientX) / zoom,
+            y: stroke.pan.y - (event.clientY - stroke.clientY) / zoom
+          });
           return;
         }
-        if (stroke !== null && stroke !== undefined && stroke.mode === "rect" && hit !== null) {
-          const r0 = Math.min(stroke.from.r, hit.r);
-          const r1 = Math.max(stroke.from.r, hit.r);
-          const c0 = Math.min(stroke.from.c, hit.c);
-          const c1 = Math.max(stroke.from.c, hit.c);
-          const cells = [];
-          for (let r = r0; r <= r1; r++) {
-            for (let c = c0; c <= c1; c++) {
-              // 描边模式只高亮边框，所见即所得（否则预览比实际涂的多一圈）
-              if (rectFilled !== true && r !== r0 && r !== r1 && c !== c0 && c !== c1) continue;
-              cells.push({ r, c });
-            }
-          }
-          setGhost({ cells, ok: true });
-          return;
-        }
+        const hit = cellFromEvent(event);
         if (hit === null) {
-          setGhost(null);
+          setHover(null);
           return;
         }
+        setHover(hit);
         if (stroke !== null && stroke !== undefined && stroke.mode === "paint") {
-          strokePaint(stroke.from, hit);
-          stroke.from = hit;
+          if (stroke.from.r !== hit.r || stroke.from.c !== hit.c) {
+            paintCells(stroke.from, hit, stroke.tile);
+            stroke.from = hit;
+          }
         }
-        setGhost({ cells: [hit], ok: true });
       };
 
-      const onPointerUp = () => {
-        const stroke = strokeRef.current;
+      const onPointerUp = (event) => {
+        const pointerId = event.pointerId === undefined ? 1 : event.pointerId;
+        pointersRef.current.delete(pointerId);
+        if (pointersRef.current.size < 2) delete pointersRef.current.pinch;
         strokeRef.current = null;
         currentStroke.current = null;
-        if (stroke !== null && stroke !== undefined && stroke.mode === "rect" && ghost !== null && activeLayer !== undefined) {
-          const cells = ghost.cells;
-          if (cells.length > 0) {
-            const r0 = Math.min.apply(null, cells.map((cell) => cell.r));
-            const r1 = Math.max.apply(null, cells.map((cell) => cell.r));
-            const c0 = Math.min.apply(null, cells.map((cell) => cell.c));
-            const c1 = Math.max.apply(null, cells.map((cell) => cell.c));
-            if (warnNoBrush()) return;
-            const tile = brush.tile;
-            queueOps([{ kind: "rect", layerId: activeLayer.id, r0, c0, r1, c1, tile, filled: rectFilled }], true);
-          }
-        }
         void flushOps();
       };
 
-      const onWheel = (event) => {
-        if (event.ctrlKey !== true && event.metaKey !== true && event.altKey !== true) return;
-        event.preventDefault();
-        const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
-        const next = Math.min(8, Math.max(0.12, zoom * factor));
-        const canvas = canvasRef.current;
-        if (canvas !== null) {
-          const rect = canvas.getBoundingClientRect();
-          const mapX = (event.clientX - rect.left) / zoom + pan.x;
-          const mapY = (event.clientY - rect.top) / zoom + pan.y;
-          setPan({ x: mapX - (event.clientX - rect.left) / next, y: mapY - (event.clientY - rect.top) / next });
-        }
-        setZoom(next);
-        setZoomMode("free");
-      };
-
-      // 键盘：撤销 / 重做 / 工具切换（挂在 window 上，切走模块时解绑）
+      // 快捷键：B/E/G/I/H/V 与撤销重做；焦点在输入框里时全部失效
       React.useEffect(() => {
-        const onKey = (event) => {
-          if (event.target !== null && event.target !== undefined && /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName || "")) return;
+        const editable = (target) => target !== null && target !== undefined && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || "");
+        const onKeyDown = (event) => {
+          if (String(event.key) === " ") {
+            spaceRef.current = true;
+            if (editable(event.target) !== true && typeof event.preventDefault === "function") event.preventDefault();
+            return;
+          }
           const meta = event.metaKey === true || event.ctrlKey === true;
-          if (meta && (event.key === "z" || event.key === "Z")) {
-            event.preventDefault();
-            void (event.shiftKey === true ? doRedo() : doUndo());
+          if (meta === true) {
+            if (editable(event.target) === true) return;
+            const key = String(event.key).toLowerCase();
+            if (key === "z" && event.shiftKey === true) {
+              event.preventDefault();
+              void doRedo();
+              return;
+            }
+            if (key === "z" || key === "y") {
+              event.preventDefault();
+              void doUndo();
+            }
             return;
           }
-          if (meta && (event.key === "y" || event.key === "Y")) {
-            event.preventDefault();
-            void doRedo();
-            return;
-          }
-          if (meta) return;
-          if (event.key === "b") setTool("paint");
-          else if (event.key === "e") setTool("erase");
-          else if (event.key === "g") setTool("fill");
-          else if (event.key === "r") setTool("rect");
-          else if (event.key === "i") setTool("pick");
+          if (editable(event.target) === true) return;
+          const key = String(event.key).toLowerCase();
+          if (key === "b") setTool("pen");
+          else if (key === "e") setTool("eraser");
+          else if (key === "g") setTool("bucket");
+          else if (key === "i") setTool("pipette");
+          else if (key === "h") setTool("hand");
+          else if (key === "v") setSingle((value) => value !== true);
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
+        const onKeyUp = (event) => {
+          if (String(event.key) === " ") spaceRef.current = false;
+        };
+        window.addEventListener("keydown", onKeyDown);
+        window.addEventListener("keyup", onKeyUp);
+        return () => {
+          window.removeEventListener("keydown", onKeyDown);
+          window.removeEventListener("keyup", onKeyUp);
+        };
       });
 
-      const doUndo = async () => {
-        if (api === undefined || projectId === null || mapId === null) return;
-        const result = await withApi(() => api.mapUndo({ projectId, mapId }));
-        if (result === undefined) return;
-        setChunks((prev) => MAP_mergePatches(prev, result.patches));
-        setView((prev) => (prev === null ? prev : { ...prev, doc: { ...prev.doc, canUndo: result.canUndo, canRedo: result.canRedo } }));
+      // ── 项目与素材的动作 ─────────────────────────────────────────────────
+      const ensureTwoLayers = async (projectId) => {
+        const next = await api.getMapProject({ projectId });
+        if (((next.layers || []).length) < 2) await api.saveMapDoc({ projectId, addLayer: { name: T("图层 2") } });
       };
 
-      const doRedo = async () => {
-        if (api === undefined || projectId === null || mapId === null) return;
-        const result = await withApi(() => api.mapRedo({ projectId, mapId }));
-        if (result === undefined) return;
-        setChunks((prev) => MAP_mergePatches(prev, result.patches));
-        setView((prev) => (prev === null ? prev : { ...prev, doc: { ...prev.doc, canUndo: result.canUndo, canRedo: result.canRedo } }));
+      /** 没有项目就地建一个：32×32、两层，建完就能画。 */
+      const ensureProject = async () => {
+        if (viewId !== null) return viewId;
+        const created = await api.createMapProject({ name: T("我的地图"), cols: 32, rows: 32 });
+        setProjects((prev) => [{ id: created.id, name: created.name }, ...prev]);
+        await ensureTwoLayers(created.id);
+        return created.id;
+      };
+
+      const readBase64 = (file) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+          reader.onerror = () => reject(new Error(T("读文件失败")));
+          reader.readAsDataURL(file);
+        });
+
+      const startWithFile = async (file) => {
+        if (file === undefined || file === null || api === undefined) return;
+        setBusyKey("upload");
+        try {
+          const projectId = await ensureProject();
+          const base64 = await readBase64(file);
+          const imported = await api.importMapTileset({ projectId, name: file.name, data: base64 });
+          if (imported !== undefined && Array.isArray(imported.warnings) && imported.warnings.length > 0) {
+            setNotice({ kind: "info", text: imported.warnings.join("；") });
+          } else {
+            setNotice({ kind: "info", text: T("已导入 {n0}", { n0: file.name }) });
+          }
+          await loadProject(projectId);
+          const result = await api.listMapProjects();
+          setProjects(result.projects || []);
+          setOpenCard("assets");
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setBusyKey(null);
+        }
+      };
+
+      const startWithSample = async () => {
+        if (api === undefined) return;
+        setBusyKey("sample");
+        try {
+          const projectId = await ensureProject();
+          await api.importSampleTileset({ projectId });
+          await loadProject(projectId);
+          const result = await api.listMapProjects();
+          setProjects(result.projects || []);
+          setOpenCard("assets");
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setBusyKey(null);
+        }
       };
 
       const createProject = async () => {
-        const name = askNewName(T("新地图项目的名字"), T("我的地图"));
+        if (api === undefined) return;
+        const name = askNewName(T("新项目的名字"), T("我的地图"));
         if (name === null) return;
-        await withApi(async () => {
-          const created = await api.createMapProject({ name, grid: { kind: "square", tileWidth: 32, tileHeight: 32, heightStep: 16 } });
-          setProjects((prev) => [{ id: created.id, name: created.name, updatedAt: created.updatedAt }, ...prev]);
-          await loadProject(created.id);
-          setStage("assets");
-        });
+        const created = await withApi(() => api.createMapProject({ name, cols: 32, rows: 32 }));
+        if (created === undefined) return;
+        await ensureTwoLayers(created.id);
+        const result = await api.listMapProjects();
+        setProjects(result.projects || []);
+        await loadProject(created.id);
+        setOpenCard("assets");
       };
 
       const renameProject = async () => {
-        if (project === null) return;
+        if (view === null || api === undefined) return;
         // eslint-disable-next-line no-alert
-        const next = typeof window === "undefined" ? null : window.prompt(T("新的项目名"), project.name);
+        const next = typeof window === "undefined" ? null : window.prompt(T("新的项目名"), view.name);
         if (next === null || next.trim() === "") return;
-        const result = await withApi(() => api.saveMapProject({ projectId: project.id, name: next.trim() }), { notice: T("已重命名") });
-        if (result === undefined) return;
-        await loadList();
-        await loadProject(project.id);
+        const ok = await withApi(() => api.saveMapProject({ projectId: view.id, name: next.trim() }), { notice: T("已重命名") });
+        if (ok === undefined) return;
+        await loadProject(view.id, true);
       };
 
-      /**
-       * 删除整个项目（目录一起删）。
-       *
-       * 删完必须自己挑下一个项目：`loadProject` 只认 id，删掉的 id 再去读是报错，
-       * 界面会卡在「读取失败」而不是干净地退到空态。
-       */
       const deleteProject = async () => {
-        if (project === null || projectId === null) return;
+        if (view === null || api === undefined) return;
         // eslint-disable-next-line no-alert
-        if (typeof window !== "undefined" && !window.confirm(T("确定删除项目「{n0}」？项目目录会被整个移除，无法撤销。", { n0: project.name }))) return;
-        await withApi(async () => {
-          await api.deleteMapProject({ projectId });
-          const result = await api.listMapProjects();
-          const rest = result.projects || [];
-          setProjects(rest);
-          if (rest.length > 0) await loadProject(rest[0].id);
-          else {
-            setProjectId(null);
-            setView(null);
-          }
-        }, { notice: T("已删除项目") });
+        if (typeof window !== "undefined" && !window.confirm(T("确定删除项目「{n0}」？项目目录会被整个移除，无法撤销。", { n0: view.name }))) return;
+        const done = await withApi(() => api.deleteMapProject({ projectId: view.id }), { notice: T("已删除项目") });
+        if (done === undefined) return;
+        const result = await api.listMapProjects();
+        const rest = result.projects || [];
+        setProjects(rest);
+        if (rest.length > 0) await loadProject(rest[0].id);
+        else {
+          clearPlan();
+          setView(null);
+        }
       };
 
-      /**
-       * 删除当前地图。
-       *
-       * 宿主侧写死了「至少要留一张地图」（`deleteMapDocFor`），所以只剩一张时按钮直接禁用，
-       * 而不是点下去弹一句错误 —— 用户看不出「禁用」和「点了没反应」的区别（真机踩过）。
-       */
-      const deleteMap = async () => {        if (project === null || doc === null || doc === undefined || mapId === null) return;
-        if ((project.maps || []).length <= 1) return;
-        // eslint-disable-next-line no-alert
-        if (typeof window !== "undefined" && !window.confirm(T("确定删除地图「{n0}」？上面的内容会一起删掉，无法撤销。", { n0: doc.name }))) return;
-        const result = await withApi(() => api.deleteMapDoc({ projectId, mapId }), { notice: T("已删除地图") });
+      const saveTileset = async (patch, note?: any) => {
+        if (view === null || tileset === null || api === undefined) return;
+        const result = await withApi(() => api.saveMapTileset({ projectId: view.id, tilesetId: tileset.id, ...patch }), {
+          notice: note === undefined ? T("已保存素材设置") : note
+        });
         if (result === undefined) return;
-        await loadProject(projectId);
+        const warnings = result.warnings;
+        if (Array.isArray(warnings) && warnings.length > 0) setNotice({ kind: "info", text: warnings.join("；") });
+        await loadProject(view.id, true);
       };
 
-      /** 改地图名（宿主 `saveMapDoc({ name })` 一直支持，界面此前没入口）。 */
-      const renameMap = async () => {
-        if (doc === null || doc === undefined || mapId === null) return;
+      const removeTileset = async () => {
+        if (view === null || tileset === null || api === undefined) return;
         // eslint-disable-next-line no-alert
-        const next = typeof window === "undefined" ? null : window.prompt(T("新的地图名"), doc.name);
-        if (next === null || next.trim() === "") return;
-        const result = await withApi(() => api.saveMapDoc({ projectId, mapId, name: next.trim() }), { notice: T("已重命名地图") });
+        if (typeof window !== "undefined" && !window.confirm(T("确定删除素材「{n0}」？它切出来的块会一起删掉，无法撤销。", { n0: tileset.name }))) return;
+        const result = await withApi(() => api.removeMapTileset({ projectId: view.id, tilesetId: tileset.id }), { notice: T("已删除素材") });
         if (result === undefined) return;
-        await loadProject(projectId, mapId);
+        await loadProject(view.id);
       };
 
-      /**
-       * 改地图尺寸。
-       *
-       * 缩小时宿主会把超出范围的格子丢掉（并回一条 warning），所以先 confirm 一次；
-       * 放大只是加空白，不动已有内容。宿主侧上限是 512 格一边。
-       */
-      const applyMapSize = async () => {
-        if (doc === null || doc === undefined || mapId === null) return;
-        if (mapSizeDraft.cols === doc.cols && mapSizeDraft.rows === doc.rows) return;
-        const shrink = mapSizeDraft.cols < doc.cols || mapSizeDraft.rows < doc.rows;
+      const saveDoc = async (patch, note) => {
+        if (view === null || api === undefined) return undefined;
+        const result = await withApi(() => api.saveMapDoc({ projectId: view.id, ...patch }), note === undefined ? undefined : { notice: note });
+        if (result === undefined) return undefined;
+        const warnings = result.warnings;
+        if (Array.isArray(warnings) && warnings.length > 0) setNotice({ kind: "info", text: warnings.join("；") });
+        await loadProject(view.id, true);
+        return result;
+      };
+
+      const applyMapSize = async (size) => {
+        if (view === null) return;
+        if (view.cols === size && view.rows === size) return;
+        const shrinking = size < view.cols || size < view.rows;
         // eslint-disable-next-line no-alert
-        if (shrink && typeof window !== "undefined" && !window.confirm(T("缩小地图会丢掉超出范围的已画格子（可以撤销）。确定继续？"))) return;
-        const result = await withApi(() => api.saveMapDoc({ projectId, mapId, cols: mapSizeDraft.cols, rows: mapSizeDraft.rows }), { notice: T("已改地图尺寸") });
-        if (result === undefined) return;
-        if (result.warnings !== undefined && result.warnings.length > 0) setNotice({ kind: "info", text: result.warnings.join("；") });
-        await loadProject(projectId, mapId);
+        if (shrinking === true && typeof window !== "undefined" && !window.confirm(T("改小地图会丢掉范围外的格子（可以撤销）。继续？"))) return;
+        await saveDoc({ cols: size, rows: size }, T("已改地图尺寸"));
       };
 
-      /** 改图层名（同样宿主支持、界面没入口）。 */
-      const renameLayer = async (layer) => {
+      const clearLayer = async () => {
+        if (view === null || activeLayer === null) return;
         // eslint-disable-next-line no-alert
-        const next = typeof window === "undefined" ? null : window.prompt(T("新的图层名"), layer.name);
-        if (next === null || next.trim() === "") return;
-        await saveDocStructure({ layers: [{ id: layer.id, name: next.trim() }] });
+        if (typeof window !== "undefined" && !window.confirm(T("清掉这一层上已经画的格子？"))) return;
+        await saveDoc({ clearLayerId: activeLayer.id }, T("已清空这一层"));
       };
 
-      /**
-       * 拖拽排序：把 `fromId` 这层挪到 `toIndex`。
-       *
-       * 宿主只认 `moveLayer{id,toIndex}`（数组下标），所以这里传的是**目标层的下标**；
-       * 上移 / 下移按钮和拖拽走的是同一条通道，撤销栈也能一起回退。
-       */
-      const moveLayerTo = async (fromId, toIndex) => {
-        if (fromId === null || fromId === undefined || fromId === "") return;
-        if (doc === null || doc === undefined) return;
-        if (doc.layers[toIndex] !== undefined && doc.layers[toIndex].id === fromId) return;
-        await saveDocStructure({ moveLayer: { id: fromId, toIndex } });
-      };
-
-      /**
-       * 某一层已画的格子数（宿主算好放在 `doc.filled[layerId]`）。
-       *
-       * 界面既用它显示「已画 N 格 / 空」，也用在删除确认里——删一层就是**连内容一起删**，
-       * 得先让用户知道要删掉多少东西（真机反馈：以前删图层没有任何确认）。
-       */
-      const filledOf = (layerId) => {
-        const table = doc === null || doc === undefined ? undefined : doc.filled;
-        const value = table === undefined || table === null ? undefined : table[layerId];
-        return typeof value === "number" ? value : 0;
-      };
-
-      /** 删一层：不可撤销，先 confirm，并把「会删掉多少格」写进提示。 */
-      const deleteLayer = async (layer) => {
-        if (doc === null || doc === undefined) return;
-        if (doc.layers.length <= 1) return;
-        const painted = filledOf(layer.id);
-        // eslint-disable-next-line no-alert
-        const message = painted > 0
-          ? T("确定删除图层「{n0}」？它上面已画的 {n1} 格会一起删掉，无法撤销。", { n0: layer.name, n1: String(painted) })
-          : T("确定删除图层「{n0}」？无法撤销。", { n0: layer.name });
-        if (typeof window !== "undefined" && !window.confirm(message)) return;
-        await saveDocStructure({ removeLayerId: layer.id });
-      };
-
-      const importFiles = async (files) => {
-        if (files === undefined || files.length === 0 || projectId === null) return;
-        setBusy(true);
+      const runGenerate = async () => {
+        if (view === null || api === undefined) return;
+        const tiles = multi.length > 0 ? multi : brush === null ? [] : [brush.index];
+        if (tiles.length === 0) {
+          setNotice({ kind: "error", text: T("先选至少一块图：在左边点一下，按住 Shift 或 Ctrl 可以多选。") });
+          return;
+        }
+        setBusyKey("gen");
         try {
-          for (const file of files) {
-            const base64 = await new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
-              reader.onerror = () => reject(new Error(T("读文件失败")));
-              reader.readAsDataURL(file);
-            });
-            await withApi(() => api.importMapTileset({ projectId, name: file.name, data: base64 }), {
-              notice: T("已导入 {n0}", { n0: file.name })
-            });
+          const result = await api.runMapGenerate({
+            projectId: view.id,
+            kind: genKind,
+            tiles,
+            seed: genSeed,
+            layerId: activeLayer === null ? undefined : activeLayer.id
+          });
+          if (result !== undefined && Number.isFinite(Number(result.seed)) && Number(result.seed) !== genSeed) {
+            setGenSeed(Number(result.seed));
           }
-          await loadProject(projectId, mapId);
+          if (result !== undefined && Array.isArray(result.warnings) && result.warnings.length > 0) {
+            setNotice({ kind: "info", text: result.warnings.join("；") });
+          }
+          // 一次生成可能动到整张图：计划整份作废，重新问宿主
+          clearPlan();
+          setPlanEpoch((value) => value + 1);
+          setSavedAt(Date.now());
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
         } finally {
-          setBusy(false);
+          setBusyKey(null);
         }
       };
 
-      /**
-       * 移除一张图集。
-       *
-       * 这是**不可撤销**的破坏性操作（图块与图集文件一起没），所以先 confirm；
-       * 宿主侧还会再挡一次「还有地图在用它」（那句话用户看不看得懂另说，至少不会静默删掉）。
-       */
-      const removeTileset = async (tileset) => {
-        if (typeof window !== "undefined" && !window.confirm(T("确定移除图集「{n0}」？它的图块会一起删掉，无法撤销。", { n0: tileset.name }))) return;
-        const result = await withApi(() => api.removeMapTileset({ projectId, tilesetId: tileset.id }), { notice: T("已移除图集") });
-        if (result === undefined) return;
-        if (selectedTilesetId === tileset.id) setSelectedTilesetId(null);
-        await loadProject(projectId, mapId);
+      const runExport = async (formats) => {
+        if (view === null || api === undefined) return;
+        setBusyKey("export");
+        try {
+          const started = await api.runMapExport({ projectId: view.id, scale: exportScale, formats });
+          if (started !== undefined && started.started !== true && typeof started.reason === "string") {
+            setNotice({ kind: "info", text: started.reason });
+          }
+          await loadProject(view.id, true);
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setBusyKey(null);
+        }
       };
 
-      const saveSlice = async (tilesetId) => {
-        const draft = sliceDraft[tilesetId];
-        if (draft === undefined) return;
-        const result = await withApi(() =>
-          api.saveMapTileset({
-            projectId,
-            tilesetId,
-            slice: {
-              mode: draft.mode,
-              tileWidth: draft.tileWidth,
-              tileHeight: draft.tileHeight,
-              offsetX: draft.offsetX,
-              offsetY: draft.offsetY,
-              spacingX: draft.spacingX,
-              spacingY: draft.spacingY
-            }
-          })
+      /** 打勾 / 取消勾。`stage` 省略＝「整个模块看过了」（宿主按四步全打处理）。 */
+      const toggleApproved = async (stage) => {
+        if (view === null || api === undefined) return;
+        const node = stage === undefined ? undefined : (view.stages || {})[stage];
+        const next = !(node !== undefined && node.approved === true);
+        const done = await withApi(() =>
+          stage === undefined ? api.setMapApproved({ projectId: view.id, approved: next }) : api.setMapApproved({ projectId: view.id, stage, approved: next })
         );
-        if (result !== undefined) {
-          if (result.warnings !== undefined && result.warnings.length > 0) setNotice({ kind: "error", text: result.warnings.join("；") });
-          await loadProject(projectId, mapId);
+        if (done === undefined) return;
+        await loadProject(view.id, true);
+      };
+
+      const approvedOf = (stage) => {
+        if (view === null) return false;
+        const node = (view.stages || {})[stage];
+        return node !== undefined && node.approved === true;
+      };
+      const approvedAll = ["assets", "rules", "paint", "export"].every((stage) => approvedOf(stage));
+
+      // 作业进行中就轮询：验收预览 / 导出是宿主上的异步任务，提交那次读到的还是「进行中」
+      const projectBusy = view !== null && view.busy === true;
+      React.useEffect(() => {
+        if (projectBusy !== true || viewId === null || api === undefined) return undefined;
+        const timer = setInterval(() => {
+          void loadProject(viewId, true);
+        }, 1500);
+        return () => clearInterval(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [projectBusy, viewId, api]);
+
+      // ⚠️ 所有 Hook 都在上面；下面才开始早退（React #310，整个面板白屏）
+      const fileInput = h("input", {
+        ref: fileRef,
+        type: "file",
+        accept: "image/*",
+        "data-testid": "map-tileset-input",
+        style: { display: "none" },
+        onChange: (event) => {
+          void startWithFile(event.target.files?.[0]);
+          event.target.value = "";
         }
-      };
+      });
 
-      const patchTiles = async (tilesetId, patches) => {
-        const result = await withApi(() => api.saveMapTileset({ projectId, tilesetId, tiles: patches }));
-        if (result !== undefined) await loadProject(projectId, mapId);
-      };
+      const shell = (inner) =>
+        h("div", { className: "SPR_moduleBody", "data-module": "map" }, gateOpen ? h(MapExperimentalDialog, { onClose: closeGate }) : null, inner, fileInput);
 
-      const assignMasksInOrder = async (familyId, scheme) => {
-        if (selectedTilesetId === null) return;
-        const tileset = project.tilesets.find((entry) => entry.id === selectedTilesetId);
-        if (tileset === undefined) return;
-        const masks = (project.autotileMasks && project.autotileMasks[scheme]) || [0];
-        const patches = tileset.preview.tiles.slice(0, masks.length).map((tile, index) => ({ id: tile.id, familyId, mask: masks[index], weight: 1 }));
-        await patchTiles(selectedTilesetId, patches);
-        setNotice({ kind: "info", text: T("已按顺序给前 {n0} 块分配掩码", { n0: String(patches.length) }) });
-      };
-
-      const saveFamilies = async () => {
-        if (familyDraft === null) return;
-        const result = await withApi(() => api.saveMapFamilies({ projectId, families: familyDraft }));
-        if (result !== undefined) {
-          if (result.warnings !== undefined && result.warnings.length > 0) setNotice({ kind: "error", text: result.warnings.join("；") });
-          await loadProject(projectId, mapId);
-        }
-      };
-
-      const saveDocStructure = async (patch) => {
-        const result = await withApi(() => api.saveMapDoc({ projectId, mapId, ...patch }));
-        if (result !== undefined) {
-          if (result.warnings !== undefined && result.warnings.length > 0) setNotice({ kind: "info", text: result.warnings.join("；") });
-          await loadProject(projectId, mapId);
-        }
-      };
-
-      const switchMap = async (nextMapId) => {
-        await loadProject(projectId, nextMapId);
-      };
-
-      const runPreview = async () => {
-        const started = await withApi(() => api.runMapPreview({ projectId, mapId }));
-        if (started !== undefined && started.started === true) await loadProject(projectId, mapId);
-      };
-
-      const runExport = async () => {
-        const started = await withApi(() => api.runMapExport({ projectId, mapId, scale: exportScale, formats: exportFormats }));
-        if (started !== undefined && started.started === true) await loadProject(projectId, mapId);
-      };
-
-      // ⚠️ 所有 Hook 必须在上面；下面才开始早退（React #310，整个面板白屏）
-      if (project === null) {
-        return h(
-          "div",
-          { className: "SPR_moduleBody" },
-          gateOpen ? h(MapExperimentalDialog, { onClose: closeGate }) : null,
-          h("div", { className: "SPR_empty" }, T("还没有地图项目。")),
-          /**
-           * 空态里直接写清「从哪开始、按什么顺序」。
-           *
-           * 这个模块有四步（图集 → 规则 → 地图 → 导出），没有项目时面板上一片空白，
-           * 新用户不知道先干什么（真机反馈）。四步照着写一遍，比让他自己摸要省事。
-           */
-          h(
-            "ol",
-            { className: "SPR_meSteps" },
-            [
-              T("① 新建项目，给它起个名字"),
-              T("② 图集：上传你自己的 tileset 图，填格子尺寸后点「应用切分」"),
-              T("③ 规则：加一个「地形族」（一类地貌：草地 / 土路 / 水…），把图块按顺序归进去——自动过渡靠它挑边缘块"),
-              T("④ 地图：选一块图当笔刷开始画，满意了到「导出」出 PNG / JSON / Tiled")
-            ].map((text) => h("li", { key: text }, text))
-          ),
+      if (view === null || layout === null) {
+        return shell(
           h(
             "div",
-            { className: "SPR_toolbar" },
-            h(Btn, { onClick: createProject, primary: true }, T("新建地图项目")),
-            projects.length > 0
-              ? h(
-                  "select",
-                  {
-                    className: "SPR_select",
-                    value: "",
-                    onChange: (event) => {
-                      if (event.target.value !== "") void loadProject(event.target.value);
-                    }
-                  },
-                  h("option", { value: "" }, T("选择已有项目…")),
-                  projects.map((entry) => h("option", { key: entry.id, value: entry.id }, entry.name))
-                )
-              : null
-          ),
-          notice === null ? null : h("div", { className: `SPR_notice SPR_notice-${notice.kind}` }, notice.text)
-        );
-      }
-
-      /**
-       * 阶段条。
-       *
-       * ⚠️ 用**模块五同款**的 `.SPR_steps` / `.SPR_step` / `.SPR_stepMark`
-       * （见 `SPR_step` 的 CSS 定义），别自造类名：
-       *  · 自造 `SPR_stages` / `SPR_stageTab` 的话一个 CSS 规则都没有，阶段条会塌成
-       *    几个 58px 宽的小按钮，文字全叠在一起；
-       *  · 更坑的是 `SPR_stageHint` —— 那个类**已经存在**，是「绝对定位铺满容器」的
-       *    蒙层样式（给八方向图的 WASD 预览用的）。复用它会把所有阶段说明**叠在面板
-       *    正中间**，整个面板看着就是坏的（真机实测：整屏只剩中间一行叠字）。
-       * 阶段说明改放 `title`（悬停）+ 内容区顶部一行 `.SPR_hint`。
-       */
-      const stageTabs = h(
-        "div",
-        { className: "SPR_steps" },
-        MAP_STAGES.map((entry) => {
-          const state = (project.stages ?? {})[entry.key] ?? { status: "idle" };
-          return h(
-            "button",
-            {
-              key: entry.key,
-              type: "button",
-              className: `SPR_step${stage === entry.key ? " SPR_step-active" : ""} SPR_step-${state.status}`,
-              title: entry.hint,
-              "data-stage": entry.key,
-              onClick: () => setStage(entry.key)
-            },
-            entry.title,
-            state.status === "done" ? h("span", { className: "SPR_stepMark" }, "✓") : null,
-            state.status === "error" ? h("span", { className: "SPR_stepMark" }, "!") : null
-          );
-        })
-      );
-      const stageHintLine = h("p", { className: "SPR_hint" }, (MAP_STAGES.find((entry) => entry.key === stage) ?? MAP_STAGES[0]).hint);
-
-      const tilesets = project.tilesets || [];
-      const families = project.families || [];
-      const maps = project.maps || [];
-      const coverage = project.coverage || [];
-
-      const palette = (() => {
-        if (selectedTilesetId === null) return null;
-        const tileset = tilesets.find((entry) => entry.id === selectedTilesetId);
-        if (tileset === undefined) return null;
-        return h(
-          "div",
-          { className: "SPR_mePaletteWrap" },
-          h(
-            "div",
-            { className: "SPR_mePalette", style: mapPaletteBox(tileset.imageWidth, tileset.imageHeight) },
-            h("img", { className: "SPR_mePaletteImg", src: `${assetBase}${tileset.file}`, alt: tileset.name }),
-            tileset.preview.tiles.map((tile) =>
-              h("button", {
-                key: tile.id,
-                type: "button",
-                className: "SPR_mePaletteCell",
-                style: {
-                  left: mapPct(tile.rect.x, tileset.imageWidth),
-                  top: mapPct(tile.rect.y, tileset.imageHeight),
-                  width: mapPct(tile.rect.width, tileset.imageWidth),
-                  height: mapPct(tile.rect.height, tileset.imageHeight),
-                  background: tile.familyId === undefined ? "transparent" : "rgba(120,200,255,0.16)"
-                },
-                title: `${tile.name} · ${tile.familyId === undefined ? T("未分组") : tile.familyId}${tile.mask === undefined ? "" : ` · mask ${tile.mask}`}`,
-                onClick: () => {
-                  setBrush({ tile: tile.index });
-                  setSelectedTileIds([tile.id]);
-                }
-              })
-            )
-          ),
-          h("p", { className: "SPR_meHint" }, T("点一块图作为笔刷（序号 {n0}）。带底色的是已归族的块。序号是「全项目统一的图块编号」，不是第几行第几列。", { n0: brush === null ? "-" : String(brush.tile) }))
-        );
-      })();
-
-      const familyRow = h(
-        "div",
-        { className: "SPR_meFamilyRow" },
-        families.map((family) => {
-          const first = tilesets
-            .flatMap((tileset) => tileset.preview.tiles)
-            .find((tile) => tile.familyId === family.id);
-          const row = coverage.find((entry) => entry.familyId === family.id);
-          return h(
-            "button",
-            {
-              key: family.id,
-              type: "button",
-              className: "SPR_meFamilyChip",
-              "data-ok": row !== undefined && row.missing.length === 0 ? "true" : undefined,
-              title: row === undefined ? "" : T("{n0} / {n1} 个掩码已配", { n0: String(row.assigned), n1: String(row.expected) }),
-              onClick: () => {
-                if (first !== undefined) setBrush({ tile: first.index });
-                if (first !== undefined) setSelectedTilesetId(tilesetOfTile(first.index));
-              }
-            },
-            h("span", { className: "SPR_meFamilyDot", style: { background: family.color || "#888" } }),
-            family.name,
-            row === undefined || row.autotile === "single"
-              ? null
-              : h("span", { className: "SPR_meFamilyCount" }, `${row.assigned}/${row.expected}`)
-          );
-        })
-      );
-
-      function tilesetOfTile(index) {
-        for (const tileset of tilesets) {
-          const start = tileset.preview.tiles.length > 0 ? tileset.preview.tiles[0].index : 0;
-          if (index >= start && index < start + tileset.preview.tiles.length) return tileset.id;
-        }
-        return null;
-      }
-
-      const editor = h(
-        "div",
-        { className: "SPR_meEditorWrap", ref: wrapRef },
-        h(
-          "div",
-          { className: "SPR_meToolbar" },
-          h("span", { className: "SPR_meToolLabel" }, T("工具")),
-          ["paint", "erase", "fill", "rect", "pick"].map((key) =>
-            h(
-              Btn,
-              { key, on: tool === key, onClick: () => setTool(key), title: MAP_TOOL_HINTS[key] },
-              MAP_TOOL_LABELS[key]
-            )
-          ),
-          h("span", { className: "SPR_meToolLabel" }, T("撤销/重做")),
-          h(Btn, { onClick: () => void doUndo(), disabled: doc.canUndo !== true }, T("撤销")),
-          h(Btn, { onClick: () => void doRedo(), disabled: doc.canRedo !== true }, T("重做")),
-          h("span", { className: "SPR_meToolLabel" }, T("缩放")),
-          h(Btn, { onClick: () => { setZoomMode("fit"); } , on: zoomMode === "fit" }, T("适应窗口")),
-          h(Btn, { onClick: () => { setZoomMode("free"); setZoom(1); } }, "100%"),
-          h("span", { className: "SPR_meZoom" }, `${Math.round(zoom * 100)}%`)
-        ),
-        activeLayer === undefined
-          ? null
-          : h(
-              "div",
-              { className: "SPR_meToolbar" },
-              h("span", { className: "SPR_meToolLabel" }, T("当前图层")),
-              h("span", { className: "SPR_meLayerName" }, activeLayer.name),
-              h(
-                "label",
-                { className: "SPR_meCheck" },
-                h("input", {
-                  type: "checkbox",
-                  checked: rectFilled,
-                  "data-testid": "map-rect-filled",
-                  onChange: (event) => setRectFilled(event.target.checked)
-                }),
-                T("矩形填充")
-              )
-            ),
-        h("canvas", {
-          ref: canvasRef,
-          className: "SPR_meCanvas",
-          "data-testid": "map-canvas",
-          onPointerDown,
-          onPointerMove,
-          onPointerUp,
-          onPointerLeave: () => { setGhost(null); onPointerUp(); },
-          onWheel,
-          onContextMenu: (event) => event.preventDefault()
-        }),
-        h("p", { className: "SPR_meHint" }, T("左键拖动＝按当前工具涂抹；Shift + 拖动（或中键拖动）＝平移画布；滚轮＝缩放；点「适应窗口」把整张地图缩回视野。")),
-        h("p", { className: "SPR_meHint" }, T("快捷键：B 画笔 / E 橡皮 / G 填充 / R 矩形 / I 吸管，⌘Z（Ctrl+Z）撤销、⇧⌘Z 重做。光标停在输入框里时快捷键不生效。")),
-        planWarnings.length === 0 ? null : h("p", { className: "SPR_meWarn" }, planWarnings.join("；"))
-      );
-
-      const layerList = h(
-        "div",
-        { className: "SPR_meLayerList" },
-        (doc.layers || []).map((layer, index) =>
-          h(
-            "div",
-            {
-              key: layer.id,
-              className: "SPR_meLayerRow",
-              "data-active": activeLayer !== undefined && activeLayer.id === layer.id ? "true" : undefined,
-              // 拖拽排序：拖到哪一层上，就插到那一层的位置（宿主只认数组下标）
-              "data-dragging": dragLayerId === layer.id ? "true" : undefined,
-              "data-drop": dragOverId === layer.id && dragLayerId !== layer.id ? "true" : undefined,
-              onDragOver: (event) => {
-                if (dragLayerId === null || dragLayerId === layer.id) return;
-                event.preventDefault();
-                if (dragOverId !== layer.id) setDragOverId(layer.id);
-              },
-              onDragLeave: () => setDragOverId((prev) => (prev === layer.id ? null : prev)),
-              onDrop: (event) => {
-                event.preventDefault();
-                const from = dragLayerId ?? (event.dataTransfer === undefined ? "" : event.dataTransfer.getData("text/plain"));
-                setDragLayerId(null);
-                setDragOverId(null);
-                void moveLayerTo(from, index);
-              }
-            },
-            // 上行：拖拽把手 + 选层 + 显隐/锁定 + 排序/删除（一眼看清「在改哪一层」）
+            { className: "SPR_mapEdRoot" },
             h(
               "div",
-              { className: "SPR_meLayerMain" },
+              { className: "SPR_mapEdEmpty" },
+              h("p", { className: "SPR_mapEdEmptyText" }, T("还没有地图项目。")),
+              h("p", { className: "SPR_mapEdHint" }, T("选一张素材图开始，或者先用自带素材试试。建出来就是 32×32、两层，可以直接画。")),
               h(
-                "span",
-                {
-                  className: "SPR_meLayerGrip",
-                  draggable: true,
-                  title: T("按住拖我调整图层顺序（越靠上越晚画，也就盖住下面的）"),
-                  onDragStart: (event) => {
-                    setDragLayerId(layer.id);
-                    if (event.dataTransfer !== undefined) {
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", layer.id);
-                    }
-                  },
-                  onDragEnd: () => {
-                    setDragLayerId(null);
-                    setDragOverId(null);
-                  }
-                },
-                "⠿"
+                "div",
+                { className: "SPR_mapEdEmptyRow" },
+                h(Btn, { primary: true, onClick: () => fileRef.current?.click(), busy: busyKey === "upload" }, T("选一张素材图开始")),
+                h(Btn, { onClick: () => void startWithSample(), busy: busyKey === "sample" }, T("用自带素材试试"))
               ),
-              h(
-                "button",
-                {
-                  type: "button",
-                  className: "SPR_meLayerPick",
-                  "data-on": activeLayer !== undefined && activeLayer.id === layer.id ? "true" : undefined,
-                  title: T("点一下把这层设为「当前图层」，画笔只会画在它上面"),
-                  onClick: () => setActiveLayerId(layer.id)
-                },
-                layer.name
-              ),
-              // 这一层画了多少格（宿主 `doc.filled[layerId]`）：多层时一眼看出内容在哪层
-              h(
-                "span",
-                {
-                  className: "SPR_meLayerCount",
-                  title: T("这一层已画的格子数（宿主统计）")
-                },
-                filledOf(layer.id) === 0 ? T("空") : T("已画 {n0} 格", { n0: String(filledOf(layer.id)) })
-              ),
-              h(
-                "label",
-                { className: "SPR_meCheck", title: T("取消勾选＝这一层在画布上不显示（内容还在）") },
-                h("input", {
-                  type: "checkbox",
-                  checked: layer.visible,
-                  onChange: (event) => void saveDocStructure({ layers: [{ id: layer.id, visible: event.target.checked }] })
-                }),
-                T("显示")
-              ),
-              h(
-                "label",
-                { className: "SPR_meCheck", title: T("勾上＝这一层不能被画到（防止误涂）") },
-                h("input", {
-                  type: "checkbox",
-                  checked: layer.locked,
-                  onChange: (event) => void saveDocStructure({ layers: [{ id: layer.id, locked: event.target.checked }] })
-                }),
-                T("锁定")
-              ),
-              h(Btn, { onClick: () => void saveDocStructure({ moveLayer: { id: layer.id, toIndex: index - 1 } }), disabled: index === 0, title: T("上移一层（越靠上越晚画，也就盖住下面的）") }, "↑"),
-              h(Btn, { onClick: () => void saveDocStructure({ moveLayer: { id: layer.id, toIndex: index + 1 } }), disabled: index === doc.layers.length - 1, title: T("下移一层") }, "↓"),
-              h(Btn, { title: T("给这一层改个名字"), onClick: () => void renameLayer(layer) }, "✎"),
-              h(
-                Btn,
-                {
-                  danger: true,
-                  // 宿主侧「至少要留一个图层，最后一个删不掉」（只回 warning），所以只剩一层时直接禁用
-                  disabled: doc.layers.length <= 1,
-                  title: doc.layers.length <= 1 ? T("至少要留一个图层") : T("删掉这一层与它上面的内容"),
-                  onClick: () => void deleteLayer(layer)
-                },
-                T("删除")
-              )
-            ),
-            // 下行：数值字段单独一行，窄面板里不会和上面的按钮互相挤
-            h(
-              "div",
-              { className: "SPR_meLayerFields" },
-              h(NumField, {
-                label: T("高度偏移（像素）"),
-                value: layer.heightOffset,
-                step: 0.5,
-                onChange: (value) => void saveDocStructure({ layers: [{ id: layer.id, heightOffset: value }] })
-              }),
-              h(NumField, {
-                label: T("不透明度%"),
-                value: Math.round(layer.opacity * 100),
-                min: 0,
-                max: 100,
-                onChange: (value) => void saveDocStructure({ layers: [{ id: layer.id, opacity: value / 100 }] })
-              }),
-              h(
-                "label",
-                {
-                  className: "SPR_field",
-                  title: T("这一层的空格子按哪个族算邻居：整层是水时把空处也算成水，接壤的地面才会长出过渡边")
-                },
-                h("span", { className: "SPR_fieldLabel" }, T("空单元格算哪个族")),
-                h(
-                  "select",
-                  {
-                    className: "SPR_input",
-                    value: layer.baseFamilyId === undefined ? "" : layer.baseFamilyId,
-                    onChange: (event) => void saveDocStructure({ layers: [{ id: layer.id, baseFamilyId: event.target.value }] })
-                  },
-                  h("option", { value: "" }, T("不设（就是空地）")),
-                  families.map((family) => h("option", { key: family.id, value: family.id }, family.name))
-                )
-              )
+              notice === null ? null : h("div", { className: `SPR_notice SPR_notice-${notice.kind}` }, notice.text)
             )
           )
-        ),
-        h(
-          "p",
-          { className: "SPR_meCardNote" },
-          T("层类型只决定默认名字与分组：渲染顺序按上下位置，画面效果由「高度偏移」与「不透明度」决定。")
-        ),
-        h(
-          "div",
-          { className: "SPR_toolbar" },
-          h(Btn, { title: T("再开一层，用来放贴在地面上的小物件（树、石头、花）"), onClick: () => void saveDocStructure({ addLayer: { kind: "decor", name: T("装饰") } }) }, T("加装饰层")),
-          h(Btn, { title: T("再开一层，用来放要盖住地面的东西（房子、墙）"), onClick: () => void saveDocStructure({ addLayer: { kind: "object", name: T("建筑") } }) }, T("加建筑层")),
-          h(Btn, { title: T("再开一层，用来放阴影、雾气这类覆盖在整张图上的东西"), onClick: () => void saveDocStructure({ addLayer: { kind: "overlay", name: T("覆盖") } }) }, T("加覆盖层"))
-        ),
-        h("p", { className: "SPR_meCardNote" }, T("图层里的「空单元格算哪个族」：整层是水时，把空着的地方也算成水，接壤的地面才会长出过渡边；不设就是普通空地。「高度偏移」让整层上下挪几像素（做贴墙装饰那种层次）。"))
-      );
+        );
+      }
 
-      const mapList = h(
+      const saveText =
+        saving === true
+          ? T("正在保存…")
+          : savedAt === null
+            ? T("还没有改动")
+            : T("已自动保存 {n0}", { n0: MAP_clock(savedAt) });
+
+      // ── 顶栏 ─────────────────────────────────────────────────────────────
+      const menu = h(
         "div",
-        { className: "SPR_meMapList" },
-        maps.map((entry) =>
+        { className: "SPR_mapEdMenu", role: "menu" },
+        h(
+          "button",
+          {
+            type: "button",
+            className: "SPR_mapEdMenuItem",
+            onClick: () => {
+              setMenuOpen(false);
+              void createProject();
+            }
+          },
+          T("新建项目")
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "SPR_mapEdMenuItem",
+            onClick: () => {
+              setMenuOpen(false);
+              void renameProject();
+            }
+          },
+          T("重命名")
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "SPR_mapEdMenuItem",
+            "data-danger": "true",
+            onClick: () => {
+              setMenuOpen(false);
+              void deleteProject();
+            }
+          },
+          T("删除项目")
+        ),
+        h("div", { className: "SPR_mapEdMenuLabel" }, T("切换项目")),
+        projects.map((entry) =>
           h(
             "button",
             {
               key: entry.id,
               type: "button",
-              className: "SPR_meMapChip",
-              "data-active": mapId === entry.id ? "true" : undefined,
-              title: T("点一下切到这张地图"),
-              onClick: () => void switchMap(entry.id)
+              className: "SPR_mapEdMenuItem",
+              "data-on": entry.id === view.id ? "true" : undefined,
+              onClick: () => {
+                setMenuOpen(false);
+                void loadProject(entry.id);
+              }
             },
-            // 带「空 / 已画 N 格」：多张地图时一眼能看出哪张是画过的（宿主给的 filled）
-            `${entry.name} · ${entry.cols}×${entry.rows} · ${entry.filled === 0 ? T("空") : T("已画 {n0} 格", { n0: String(entry.filled) })}`
+            entry.name
+          )
+        )
+      );
+
+      const topBar = h(
+        "div",
+        { className: "SPR_mapEdTop" },
+        h(
+          "div",
+          { className: "SPR_mapEdProjWrap" },
+          h(
+            "button",
+            {
+              type: "button",
+              className: "SPR_mapEdProj",
+              "data-open": menuOpen === true ? "true" : undefined,
+              "aria-expanded": menuOpen === true ? "true" : "false",
+              onClick: () => setMenuOpen(menuOpen !== true)
+            },
+            h("span", { className: "SPR_mapEdProjName" }, view.name),
+            h("span", { className: "SPR_mapEdCaret" }, "▾")
+          ),
+          menuOpen === true ? menu : null
+        ),
+        h("span", { className: "SPR_mapEdSpacer" }),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "SPR_mapEdTopBtn",
+            "data-on": openCard === "assets" ? "true" : undefined,
+            onClick: () => setOpenCard(openCard === "assets" ? null : "assets")
+          },
+          T("素材")
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "SPR_mapEdTopBtn",
+            "data-on": openCard === "export" ? "true" : undefined,
+            onClick: () => setOpenCard(openCard === "export" ? null : "export")
+          },
+          T("导出")
+        ),
+        h("span", { className: "SPR_mapEdSave", "data-busy": saving === true ? "true" : undefined }, saveText)
+      );
+
+      // ── 左列：素材调色板 + 12 个工具格 ────────────────────────────────────
+      /**
+       * 可点的笔刷清单。
+       *
+       * ⚠️ 必须读宿主给的 `palette`，**不要自己从 `legend` 里推**：绘制图例是按
+       * 「一格一块」列出来的（拼块素材还含 16px 小格），照它做调色板会让用户点到
+       * 半个草地。A2 拼块在 `palette` 里只有一个条目（点它 = 用自动连接笔刷）。
+       */
+      const brushes = [];
+      for (const owner of tilesets) {
+        const list = Array.isArray(owner.palette) && owner.palette.length > 0 ? owner.palette : legend.filter((entry) => entry.tilesetId === owner.id);
+        for (const item of list) brushes.push({ tilesetId: owner.id, index: item.index, rect: item.rect });
+      }
+
+      const paletteTile = (entry) => {
+        const owner = tilesets.find((item) => item.id === entry.tilesetId);
+        if (owner === undefined) return null;
+        const cellW = owner.cell.width > 0 ? owner.cell.width : entry.rect.width;
+        const cellH = owner.cell.height > 0 ? owner.cell.height : entry.rect.height;
+        const scaleX = 32 / Math.max(1, cellW);
+        const scaleY = 32 / Math.max(1, cellH);
+        return h("button", {
+          key: `${entry.tilesetId}:${entry.index}`,
+          type: "button",
+          className: "SPR_mapEdTile",
+          "data-on": brush !== null && brush.index === entry.index ? "true" : undefined,
+          "data-index": String(entry.index),
+          title: T("第 {n0} 块", { n0: String(entry.index) }),
+          style: {
+            backgroundImage: `url(${assetBase}${owner.file})`,
+            backgroundSize: `${owner.imageWidth * scaleX}px ${owner.imageHeight * scaleY}px`,
+            backgroundPosition: `${-entry.rect.x * scaleX}px ${-entry.rect.y * scaleY}px`
+          },
+          onClick: (event) => {
+            const additive = event.shiftKey === true || event.ctrlKey === true || event.metaKey === true;
+            setBrush({ index: entry.index });
+            setMulti((prev) =>
+              additive === true
+                ? prev.includes(entry.index)
+                  ? prev.filter((value) => value !== entry.index)
+                  : prev.concat([entry.index])
+                : [entry.index]
+            );
+          }
+        });
+      };
+
+      const palette = h(
+        "div",
+        { className: "SPR_mapEdPalette" },
+        brushes.length === 0
+          ? h("p", { className: "SPR_mapEdHint" }, T("还没有素材，点上面的「素材」上传一张。"))
+          : h("div", { className: "SPR_mapEdPaletteGrid" }, brushes.map(paletteTile))
+      );
+
+      const toolButton = (key, label, hint, config) => {
+        const options = config === undefined ? {} : config;
+        return h(
+          "button",
+          {
+            key,
+            type: "button",
+            className: "SPR_mapEdTool",
+            title: hint,
+            "aria-label": label,
+            "data-tool": key,
+            "data-on": options.on === true ? "true" : undefined,
+            disabled: options.disabled === true,
+            onClick: options.onClick
+          },
+          options.icon === undefined ? null : h(MapToolIcon, { name: options.icon })
+        );
+      };
+
+      const tools = h(
+        "div",
+        { className: "SPR_mapEdTools" },
+        toolButton("undo", T("撤销"), T("撤销（⌘Z）"), { icon: "undo", onClick: () => void doUndo(), disabled: view.canUndo !== true }),
+        toolButton("redo", T("重做"), T("重做（⇧⌘Z）"), { icon: "redo", onClick: () => void doRedo(), disabled: view.canRedo !== true }),
+        toolButton("pen", T("画笔"), T("画笔：按住左键涂抹（B）"), { icon: "pen", on: tool === "pen", onClick: () => setTool("pen") }),
+        toolButton("eraser", T("橡皮"), T("橡皮：擦成空（E）；右键随时是橡皮"), { icon: "eraser", on: tool === "eraser", onClick: () => setTool("eraser") }),
+        toolButton("bucket", T("油漆桶"), T("油漆桶：同色连通区一次填满（G）"), { icon: "bucket", on: tool === "bucket", onClick: () => setTool("bucket") }),
+        toolButton("pipette", T("吸管"), T("吸管：吸取这一格用的图块（I）"), { icon: "pipette", on: tool === "pipette", onClick: () => setTool("pipette") }),
+        toolButton("hand", T("抓手"), T("抓手：左键拖动平移（H）；也支持空格拖或中键拖"), { icon: "hand", on: tool === "hand", onClick: () => setTool("hand") }),
+        toolButton("single", T("单层预览"), T("只显示当前这一层，底铺绿色（V）"), { icon: "single", on: single === true, onClick: () => setSingle(single !== true) }),
+        h(
+          "div",
+          { key: "layer", className: "SPR_mapEdTool SPR_mapEdLayerBtn", title: T("上一层 / 下一层；中间的数字是当前层号") },
+          h(
+            "button",
+            {
+              type: "button",
+              className: "SPR_mapEdLayerHalf",
+              "data-dir": "up",
+              "aria-label": T("上一层"),
+              disabled: safeLayerIndex >= layers.length - 1,
+              onClick: () => setLayerIndex(Math.min(layers.length - 1, safeLayerIndex + 1))
+            },
+            h(MapToolIcon, { name: "up" })
+          ),
+          h("span", { className: "SPR_mapEdLayerNum" }, String(safeLayerIndex + 1)),
+          h(
+            "button",
+            {
+              type: "button",
+              className: "SPR_mapEdLayerHalf",
+              "data-dir": "down",
+              "aria-label": T("下一层"),
+              disabled: safeLayerIndex <= 0,
+              onClick: () => setLayerIndex(Math.max(0, safeLayerIndex - 1))
+            },
+            h(MapToolIcon, { name: "down" })
           )
         ),
-        h("input", {
-          className: "SPR_input",
-          placeholder: T("新地图名字"),
-          title: T("给新地图起个名字；留空就叫「新地图」"),
-          value: newMapName,
-          onChange: (event) => setNewMapName(event.target.value)
-        }),
-        h(
-          Btn,
-          {
-            title: T("新开一张 32×32 的地图，名字取左边输入框"),
-            onClick: () =>
-              void withApi(async () => {
-                const created = await api.createMapDoc({ projectId, name: newMapName === "" ? T("新地图") : newMapName, cols: 32, rows: 32 });
-                setNewMapName("");
-                await loadProject(projectId, created.doc.id);
-              })
-          },
-          T("新建地图")
-        ),
-        h(Btn, { title: T("给当前这张地图改个名字"), onClick: () => void renameMap() }, T("重命名地图")),
-        h(Btn, { title: T("把当前这张地图连内容一起复制一份新的"), onClick: () => void withApi(async () => { await api.duplicateMapDoc({ projectId, mapId }); await loadProject(projectId); }) }, T("复制当前地图")),
-        h(
-          Btn,
-          {
-            danger: true,
-            // 宿主侧写死「至少要留一张地图」，只剩一张时直接禁用（点下去只弹错误＝像是坏了）
-            disabled: maps.length <= 1,
-            title: maps.length <= 1 ? T("至少要留一张地图") : T("删掉当前这张地图与它上面的内容"),
-            onClick: () => void deleteMap()
-          },
-          T("删除当前地图")
-        )
+        toolButton("grid", T("网格线"), T("显示 / 隐藏网格线"), { icon: "grid", on: showGrid === true, onClick: () => setShowGrid(showGrid !== true) }),
+        toolButton("gen", T("一键生成"), T("一键生成：随机铺满 / 迷宫 / 大陆"), { icon: "magic", on: openCard === "gen", onClick: () => setOpenCard(openCard === "gen" ? null : "gen") }),
+        toolButton("settings", T("设置"), T("设置：地图大小、图层、帮助"), { icon: "settings", on: openCard === "settings", onClick: () => setOpenCard(openCard === "settings" ? null : "settings") })
       );
 
-      /**
-       * 地图尺寸。
-       *
-       * 宿主侧 `saveMapDoc` 一直支持 `cols` / `rows`（缩小时把超出的格子丢掉并回 warning），
-       * 界面却没有任何入口 —— 建完就只能 32×32 用到死（真机反馈「地图多大没处改」）。
-       */
-      const mapSizeRow = h(
+      const side = h(
         "div",
-        { className: "SPR_meSliceRow" },
-        h(NumField, { label: T("宽（格）"), value: mapSizeDraft.cols, min: 1, max: 512, onChange: (value) => setMapSizeDraft((prev) => ({ ...prev, cols: value })) }),
-        h(NumField, { label: T("高（格）"), value: mapSizeDraft.rows, min: 1, max: 512, onChange: (value) => setMapSizeDraft((prev) => ({ ...prev, rows: value })) }),
-        h(
-          Btn,
-          {
-            primary: true,
-            disabled: doc === null || doc === undefined || (mapSizeDraft.cols === doc.cols && mapSizeDraft.rows === doc.rows),
-            title: T("按上面的宽高重开画布：放大只是多出空白，缩小时超出的格子会被丢掉（可以撤销）"),
-            onClick: () => void applyMapSize()
-          },
-          T("应用尺寸")
-        )
+        { className: "SPR_mapEdSide" },
+        h("div", { className: "SPR_mapEdSideTitle" }, T("素材调色板")),
+        palette,
+        tools
       );
 
-      /**
-       * 随机变体与变体种子。
-       *
-       * `maprender` 在「同一族、同一掩码有多块候选」时按 `doc.variantSeed` + 格子坐标
-       * 挑一块；关掉 `randomVariants` 就永远用第一块。这两个字段宿主一直支持、也写进了
-       * Tiled 图集属性（`dshVariantSeed`），界面却没有任何入口 —— 名词速查里讲了「变体种子」，
-       * 用户却找不到地方改它。
-       */
-      const variantRow =
-        doc === null || doc === undefined
-          ? null
+      // ── 卡片：素材 / 导出 / 设置 / 一键生成 ──────────────────────────────
+      const cardHead = (title) =>
+        h(
+          "div",
+          { className: "SPR_mapEdCardHead" },
+          h("h4", null, title),
+          h("span", { className: "SPR_mapEdSpacer" }),
+          h("button", { type: "button", className: "SPR_mapEdCardClose", "aria-label": T("关闭"), onClick: () => setOpenCard(null) }, "×")
+        );
+
+      const row = (label, control, hint?: any) =>
+        h(
+          "div",
+          { className: "SPR_mapEdRow" },
+          h("span", { className: "SPR_mapEdLabel" }, label),
+          control,
+          hint === undefined || hint === "" ? null : h("span", { className: "SPR_mapEdRowHint" }, hint)
+        );
+
+      const approvedMark = (stage) =>
+        approvedOf(stage) === true ? h("span", { className: "SPR_mapEdMark" }, "✓") : null;
+
+      const shapeOptions = [
+        ["auto", T("自动")],
+        ["plain", T("普通图块")],
+        ["corner16", T("整格自动连接")],
+        ["a2quad", T("拼块自动连接")]
+      ];
+      const shapeValue = tileset === null ? "auto" : tileset.shape === "corner16" ? "corner16" : tileset.shape === "a2quad" ? "a2quad" : "plain";
+      const speedOptions = [
+        ["0.5", T("慢")],
+        ["1", T("中")],
+        ["2", T("快")]
+      ];
+      const speedValue = String(animFps === null ? planMeta.fps : animFps);
+
+      const assetsCard = h(
+        "div",
+        { className: "SPR_mapEdCard" },
+        cardHead(T("素材")),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { onClick: () => fileRef.current?.click(), busy: busyKey === "upload" }, T("上传素材图")),
+          h(Btn, { onClick: () => void startWithSample(), busy: busyKey === "sample" }, T("用自带素材试试"))
+        ),
+        tilesets.length > 1
+          ? h(
+              "div",
+              { className: "SPR_mapEdChips" },
+              tilesets.map((entry, index) =>
+                h(
+                  "button",
+                  {
+                    key: entry.id,
+                    type: "button",
+                    className: "SPR_mapEdChip",
+                    "data-on": index === safeTsIndex ? "true" : undefined,
+                    onClick: () => setTsIndex(index)
+                  },
+                  entry.name
+                )
+              )
+            )
+          : null,
+        tileset === null
+          ? h("p", { className: "SPR_mapEdHint" }, T("还没有素材。上传一张图，或者先用自带素材试试。"))
           : h(
               "div",
-              { className: "SPR_meToolbar" },
-              h(
-                "label",
-                { className: "SPR_meCheck", title: T("关掉它，同族同掩码就永远用第一块图；打开才有随机感") },
-                h("input", {
-                  type: "checkbox",
-                  checked: doc.randomVariants !== false,
-                  onChange: (event) => void saveDocStructure({ randomVariants: event.target.checked })
-                }),
-                T("随机变体")
-              ),
-              h(NumField, {
-                label: T("变体种子"),
-                hint: T("换个数＝换一套挑法；同一个种子出的图完全一样"),
-                value: doc.variantSeed,
-                min: 0,
-                max: 999999999,
-                onChange: (value) => void saveDocStructure({ variantSeed: value })
-              }),
-              h(
-                Btn,
-                { title: T("随便换一个新种子，看看另一版铺法"), onClick: () => void saveDocStructure({ variantSeed: Math.floor(Math.random() * 1000000000) }) },
-                T("换一组")
-              )
-            );
-
-      const stageAssets = h(
-        "div",
-        { className: "SPR_meStage" },
-        h(
-          "div",
-          { className: "SPR_meCard" },
-          h("h4", null, T("导入图集")),
-          h("p", { className: "SPR_meHint" }, T("导入你自己的 tileset 图（PNG / JPEG / WebP）。原图会原样保存，切分参数随便改都能重切。")),
-          h("input", {
-            type: "file",
-            accept: "image/*",
-            multiple: true,
-            "data-testid": "map-tileset-input",
-            disabled: busy,
-            onChange: (event) => {
-              const files = event.target.files;
-              void importFiles(files === null ? [] : Array.from(files));
-              event.target.value = "";
-            }
-          }),
-          busy ? h("p", { className: "SPR_meHint" }, T("正在导入…")) : null
-        ),
-        tilesets.map((tileset) => {
-          const draft = sliceDraft[tileset.id] || {
-            mode: tileset.slice.mode,
-            tileWidth: tileset.slice.tileWidth,
-            tileHeight: tileset.slice.tileHeight,
-            offsetX: tileset.slice.offsetX,
-            offsetY: tileset.slice.offsetY,
-            spacingX: tileset.slice.spacingX,
-            spacingY: tileset.slice.spacingY
-          };
-          const setDraft = (patch) => setSliceDraft((prev) => ({ ...prev, [tileset.id]: { ...draft, ...patch } }));
-          return h(
-            "div",
-            { key: tileset.id, className: "SPR_meCard", "data-tileset": tileset.id },
-            h(
-              "div",
-              { className: "SPR_meCardHead" },
-              h("h4", null, `${tileset.name} · ${tileset.imageWidth}×${tileset.imageHeight} · ${tileset.tileCount} ${T("块")}`),
-              h(Btn, { on: selectedTilesetId === tileset.id, title: T("绘图时用这张图集当调色板（有多张图集时只有一张在生效）"), onClick: () => setSelectedTilesetId(tileset.id) }, T("选为调色板")),
-              h(Btn, { danger: true, title: T("把这张图集与它的全部图块删掉；还有地图在用它时会拒绝删除"), onClick: () => void removeTileset(tileset) }, T("移除图集"))
-            ),
-            h("p", { className: "SPR_meCardNote" }, T("格宽 / 格高 = 每块贴图的像素大小；图集四周或块之间有空隙时，把空隙填进边距 / 间距。下面那张网格就是切完的效果，点格子可以多选后归入「地形族」（一类地貌：草地 / 土路 / 水…，到②规则里再配它的过渡方案）。")),
-            h(
-              "div",
-              { className: "SPR_meSliceRow" },
-              h(NumField, { label: T("格宽"), value: draft.tileWidth, min: 1, max: 1024, onChange: (value) => setDraft({ tileWidth: value }) }),
-              h(NumField, { label: T("格高"), value: draft.tileHeight, min: 1, max: 1024, onChange: (value) => setDraft({ tileHeight: value }) }),
-              h(NumField, { label: T("左边距"), value: draft.offsetX, min: 0, max: 512, onChange: (value) => setDraft({ offsetX: value }) }),
-              h(NumField, { label: T("上边距"), value: draft.offsetY, min: 0, max: 512, onChange: (value) => setDraft({ offsetY: value }) }),
-              h(NumField, { label: T("横向间距"), value: draft.spacingX, min: 0, max: 64, onChange: (value) => setDraft({ spacingX: value }) }),
-              h(NumField, { label: T("纵向间距"), value: draft.spacingY, min: 0, max: 64, onChange: (value) => setDraft({ spacingY: value }) }),
-              h(Btn, { primary: true, title: T("按上面的格子尺寸重切一遍；已有地图的图块序号会自动对齐，对不上的格子清零并提示"), onClick: () => void saveSlice(tileset.id) }, T("应用切分"))
-            ),
-            h("p", { className: "SPR_meHint" }, T("切分建议：{n0}", {
-              n0: (tileset.suggestions || []).slice(0, 4).map((item) => item.label).join("；") || T("没有能整除的常见尺寸，请手动填")
-            })),
-            h(
-              "div",
-              { className: "SPR_mePalette", style: mapPaletteBox(tileset.imageWidth, tileset.imageHeight) },
-              h("img", { className: "SPR_mePaletteImg", src: `${assetBase}${tileset.file}`, alt: tileset.name }),
-              tileset.preview.gridLinesX.map((x, index) => h("div", { key: `x${index}`, className: "SPR_meGridV", style: { left: mapPct(x, tileset.imageWidth) } })),
-              tileset.preview.gridLinesY.map((y, index) => h("div", { key: `y${index}`, className: "SPR_meGridH", style: { top: mapPct(y, tileset.imageHeight) } })),
-              tileset.preview.tiles.map((tile) =>
-                h("button", {
-                  key: tile.id,
-                  type: "button",
-                  className: "SPR_mePaletteCell",
-                  "data-selected": selectedTileIds.includes(tile.id) ? "true" : undefined,
-                  style: {
-                    left: mapPct(tile.rect.x, tileset.imageWidth),
-                    top: mapPct(tile.rect.y, tileset.imageHeight),
-                    width: mapPct(tile.rect.width, tileset.imageWidth),
-                    height: mapPct(tile.rect.height, tileset.imageHeight)
-                  },
-                  title: `${tile.name}${tile.familyId === undefined ? "" : ` · ${tile.familyId}`}${tile.mask === undefined ? "" : ` · mask ${tile.mask}`}`,
-                  onClick: () => setSelectedTileIds((prev) => (prev.includes(tile.id) ? prev.filter((id) => id !== tile.id) : prev.concat(tile.id)))
-                })
-              )
-            ),
-            tileset.preview.warnings.length === 0 ? null : h("p", { className: "SPR_meWarn" }, tileset.preview.warnings.join("；")),
-            h(
-              "div",
-              { className: "SPR_toolbar" },
-              h("span", { className: "SPR_meHint" }, T("选中 {n0} 块", { n0: String(selectedTileIds.length) })),
-              families.length === 0
-                ? null
-                : families.map((family) =>
-                    h(
-                      Btn,
-                      {
-                        key: family.id,
-                        onClick: () => void patchTiles(tileset.id, selectedTileIds.map((id) => ({ id, familyId: family.id }))),
-                        disabled: selectedTileIds.length === 0
-                      },
-                      T("归入「{n0}」", { n0: family.name })
-                    )
-                  ),
-              h(Btn, { onClick: () => void patchTiles(tileset.id, selectedTileIds.map((id) => ({ id, familyId: undefined, mask: undefined }))), disabled: selectedTileIds.length === 0 }, T("清空分组"))
-            ),
-            families.length === 0
-              ? null
-              : h(
-                  "div",
-                  { className: "SPR_toolbar" },
-                  families.map((family) =>
-                    h(
-                      Btn,
-                      {
-                        key: family.id,
-                        onClick: () => void assignMasksInOrder(family.id, family.autotile)
-                      },
-                      T("给「{n0}」按顺序分配掩码", { n0: family.name })
-                    )
-                  )
-                )
-          );
-        })
-      );
-
-      const stageRules = h(
-        "div",
-        { className: "SPR_meStage" },
-        h(
-          "div",
-          { className: "SPR_meCard" },
-          h("h4", null, T("地形族与自动过渡")),
-          h("p", { className: "SPR_meHint" }, T("「地形族」就是一类地貌：草地、土路、水、墙……把图块按地貌归进不同的族，铺图时宿主才知道哪里该换成带过渡边缘的图块（草地边上接着土路，就换成带土路边的草地）。不归族也能画，但只能一块一块手刷，自动过渡不会生效。")),
-          h("p", { className: "SPR_meCardNote" }, T("过渡方案怎么选：边界横平竖直的（墙、路）用「四邻域 16 掩码」；要 45° 斜角与内角就选「八邻域 47 掩码」；完全不想要过渡边缘就选「单块」。优先级管「谁朝谁长边」——数字大的族会朝数字小的邻居长过渡块（草地 < 土路 < 水）；缺掩码的地方会回退成最接近的一块，并在下面标出来。")),
-          h("p", { className: "SPR_meCardNote" }, T("下面每个方框就是一个族：左边输入框是它的名字（只给你自己看，随便起），接着选它的过渡方案、填优先级，改完点「保存族」生效。「掩码」说的是这块图的哪几条边 / 角上挨着同族邻居——方案选完之后，你在①图集里把图块按顺序归族，就是在告诉宿主哪一块对应哪种掩码。")),
-          h(
-            "div",
-            { className: "SPR_meFamilyEdit" },
-            (familyDraft === null ? families : familyDraft).map((family, index) =>
-              h(
-                "div",
-                { key: family.id || `f${index}`, className: "SPR_meFamilyEditRow" },
-                h("input", {
-                  className: "SPR_input SPR_meName",
-                  value: family.name,
-                  onChange: (event) => {
-                    const next = (familyDraft === null ? families : familyDraft).slice();
-                    next[index] = { ...next[index], name: event.target.value };
-                    setFamilyDraft(next);
-                  }
-                }),
+              { className: "SPR_mapEdRows" },
+              row(
+                T("格子大小"),
                 h(
                   "select",
                   {
-                    className: "SPR_select",
-                    value: family.autotile,
+                    className: "SPR_mapEdSelect",
+                    value: String(tileset.cell.width),
                     onChange: (event) => {
-                      const next = (familyDraft === null ? families : familyDraft).slice();
-                      next[index] = { ...next[index], autotile: event.target.value };
-                      setFamilyDraft(next);
+                      const size = Number(event.target.value);
+                      void saveTileset({ cell: { width: size, height: size } });
                     }
                   },
-                  MAP_AUTOTILE_SCHEMES.map((scheme) => h("option", { key: scheme.key, value: scheme.key }, scheme.title))
+                  [8, 16, 24, 32, 48, 64].map((size) => h("option", { key: size, value: String(size) }, `${size}×${size}`))
+                )
+              ),
+              row(
+                T("这块素材怎么用"),
+                h(
+                  "select",
+                  {
+                    className: "SPR_mapEdSelect",
+                    value: shapeValue,
+                    onChange: (event) => {
+                      const value = event.target.value;
+                      /**
+                       * 「自动」＝沿用宿主导入时识别出来的形态。
+                       *
+                       * 宿主侧没有「重新识别」这个动作（`saveMapTileset` 不带 `shape`
+                       * 就等于沿用当前值），所以这里只把识别说明摆出来，不改任何东西；
+                       * 想真的重认，重新上传一次这张图即可。
+                       */
+                      if (value === "auto") {
+                        setNotice({
+                          kind: "info",
+                          text:
+                            tilesetReason === ""
+                              ? T("这张素材的用法是自动认出来的；想重新认一次，就再上传一遍这张图。")
+                              : T("这张素材的用法是自动认出来的：{n0}", { n0: tilesetReason })
+                        });
+                        return;
+                      }
+                      void saveTileset({ shape: value });
+                    }
+                  },
+                  shapeOptions.map(([value, label]) => h("option", { key: value, value }, label))
                 ),
-                h(NumField, {
-                  label: T("优先级"),
-                  // 这一格在族编辑行里只有一格宽：说明挂 title（悬停看），不占一行
-                  title: T("数字越大越「强势」：它会朝数字小的邻居长过渡块"),
-                  value: family.priority,
-                  onChange: (value) => {
-                    const next = (familyDraft === null ? families : familyDraft).slice();
-                    next[index] = { ...next[index], priority: value };
-                    setFamilyDraft(next);
-                  }
-                }),
-                h(Btn, {
-                  danger: true,
-                  onClick: () => {
-                    const next = (familyDraft === null ? families : familyDraft).filter((entry) => entry.id !== family.id);
-                    setFamilyDraft(next);
-                  }
-                }, T("移除"))
+                tilesetReason
+              ),
+              row(
+                T("动画速度"),
+                h(
+                  "select",
+                  {
+                    className: "SPR_mapEdSelect",
+                    value: speedValue,
+                    onChange: (event) => setAnimFps(Number(event.target.value))
+                  },
+                  speedOptions.map(([value, label]) => h("option", { key: value, value }, `${label} · ${value} 帧/秒`))
+                )
+              ),
+              h(
+                "div",
+                { className: "SPR_mapEdCardRow" },
+                h(Btn, { danger: true, onClick: () => void removeTileset() }, T("删除素材")),
+                h(Btn, { on: approvedOf("assets") === true, onClick: () => void toggleApproved("assets") }, T("这步看过了"), approvedMark("assets"))
               )
+            )
+      );
+
+      const exportCard = h(
+        "div",
+        { className: "SPR_mapEdCard" },
+        cardHead(T("导出")),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { primary: true, busy: busyKey === "export", onClick: () => void runExport({ png: true, json: false }) }, T("导出图片 PNG")),
+          h(Btn, { busy: busyKey === "export", onClick: () => void runExport({ png: false, json: true }) }, T("导出存档 JSON"))
+        ),
+        row(
+          T("倍率"),
+          h(
+            "select",
+            {
+              className: "SPR_mapEdSelect",
+              value: String(exportScale),
+              onChange: (event) => setExportScale(Number(event.target.value))
+            },
+            [1, 2, 3, 4].map((value) => h("option", { key: value, value: String(value) }, `${value}×`))
+          ),
+          T("只影响 PNG 的尺寸，不影响存档数据")
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("打开导出目录")),
+          h(Btn, { on: approvedOf("export") === true, onClick: () => void toggleApproved("export") }, T("这步看过了"), approvedMark("export"))
+        ),
+        exportFiles.length === 0
+          ? h("p", { className: "SPR_mapEdHint" }, T("还没有导出过。"))
+          : h(
+              "ul",
+              { className: "SPR_mapEdFiles" },
+              exportFiles.map((file) => h("li", { key: file }, h("a", { href: `${assetBase}${view.exportBase}${file}`, target: "_blank", rel: "noreferrer" }, file)))
+            )
+      );
+
+      const settingsCard = h(
+        "div",
+        { className: "SPR_mapEdCard" },
+        cardHead(T("设置")),
+        row(
+          T("地图大小"),
+          h(
+            "select",
+            {
+              className: "SPR_mapEdSelect",
+              value: String(Math.max(view.cols, view.rows)),
+              onChange: (event) => void applyMapSize(Number(event.target.value))
+            },
+            [32, 64, 128].map((size) => h("option", { key: size, value: String(size) }, `${size}×${size}`))
+          ),
+          T("改大只是多出空地；改小会丢掉范围外的格子")
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { onClick: () => void saveDoc({ addLayer: { name: T("图层 {n0}", { n0: String(layers.length + 1) }) } }, T("已加一层")) }, T("加一层")),
+          h(
+            Btn,
+            {
+              disabled: layers.length <= 1,
+              title: layers.length <= 1 ? T("至少要留一层") : T("删掉当前这一层"),
+              onClick: () => void saveDoc({ removeLayerId: activeLayer.id }, T("已删掉这一层"))
+            },
+            T("删一层")
+          ),
+          h(Btn, { onClick: () => void clearLayer() }, T("清空当前图层"))
+        ),
+        h(
+          "label",
+          { className: "SPR_mapEdCheck" },
+          h("input", { type: "checkbox", checked: showGrid === true, onChange: (event) => setShowGrid(event.target.checked) }),
+          T("网格线")
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdHelp" },
+          h("h5", null, T("帮助")),
+          h("p", null, T("左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝橡皮。")),
+          h("p", null, T("调色板里点一下选一块图当笔刷，按住 Shift 或 Ctrl 可以多选，「一键生成」会用这些图块。")),
+          h("p", null, T("地图是环绕的：出了右边会从左边的对应位置接上，不用管边界。"))
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("在访达中打开项目目录")),
+          h(Btn, { primary: true, on: approvedAll === true, onClick: () => void toggleApproved(undefined) }, T("整个模块看过了"))
+        )
+      );
+
+      const genTiles = multi.length > 0 ? multi : brush === null ? [] : [brush.index];
+      const genCard = h(
+        "div",
+        { className: "SPR_mapEdCard" },
+        cardHead(T("一键生成")),
+        h(
+          "div",
+          { className: "SPR_mapEdRadios" },
+          [
+            ["random", T("随机铺满")],
+            ["maze", T("迷宫")],
+            ["continent", T("大陆")]
+          ].map(([value, label]) =>
+            h(
+              "label",
+              { key: value, className: "SPR_mapEdRadio" },
+              h("input", { type: "radio", name: "map-gen-kind", checked: genKind === value, onChange: () => setGenKind(value) }),
+              label
+            )
+          )
+        ),
+        h(
+          "p",
+          { className: "SPR_mapEdHint" },
+          genTiles.length === 0
+            ? T("用的图块：还没选。在左边点一下选一块，按住 Shift 或 Ctrl 可以多选。")
+            : T("用的图块：{n0}", { n0: genTiles.join("、") })
+        ),
+        h(
+          "p",
+          { className: "SPR_mapEdHint" },
+          genKind === "maze"
+            ? T("迷宫：按顺序取两块，第一块当墙，第二块当路。")
+            : genKind === "continent"
+              ? T("大陆：按顺序取最多四块当四种地貌（水下 / 海面 / 草地 / 雪地）。")
+              : T("随机铺满：在选中的图块里均匀随机。")
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(NumField, { label: T("种子"), value: genSeed, onChange: (value) => setGenSeed(value) }),
+          h(Btn, { onClick: () => setGenSeed(Math.floor(Math.random() * 1000000)) }, T("换一组")),
+          h(Btn, { primary: true, busy: busyKey === "gen", onClick: () => void runGenerate() }, T("生成"))
+        )
+      );
+
+      const openCardNode =
+        openCard === "assets" ? assetsCard : openCard === "export" ? exportCard : openCard === "settings" ? settingsCard : openCard === "gen" ? genCard : null;
+
+      const canvas = h("canvas", {
+        ref: bindCanvas,
+        className: "SPR_mapEdCanvas",
+        "data-testid": "map-canvas",
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onPointerLeave: () => {
+          strokeRef.current = null;
+          currentStroke.current = null;
+          setHover(null);
+          void flushOps();
+        },
+        // ⚠️ 少了 onPointerCancel：指针被系统取消（触摸 / 手写笔被打断、指针捕获丢失）
+        // 时 `strokeRef` 不清，之后**在没按键的情况下**一次普通 pointermove 就会继续涂抹，
+        // 而且每段还各算一步撤销。`onPointerLeave` 兜不住「留在画布内被取消」这种。
+        onPointerCancel: () => {
+          strokeRef.current = null;
+          currentStroke.current = null;
+          setHover(null);
+          void flushOps();
+        },
+        onContextMenu: (event) => event.preventDefault()
+      });
+
+      return shell(
+        h(
+          "div",
+          { className: "SPR_mapEdRoot" },
+          topBar,
+          openCardNode === null ? null : h("div", { className: "SPR_mapEdCardWrap" }, openCardNode),
+          h(
+            "div",
+            { className: "SPR_mapEdBody" },
+            side,
+            h(
+              "div",
+              { className: "SPR_mapEdStage", ref: stageRef },
+              canvas,
+              truncated === true ? h("div", { className: "SPR_mapEdToast" }, T("缩得太小，放大一点。")) : null,
+              view.busy === true ? h("div", { className: "SPR_mapEdToast", "data-busy": "true" }, T("任务进行中…")) : null
             )
           ),
           h(
             "div",
-            { className: "SPR_toolbar" },
-            h(
-              Btn,
-              {
-                onClick: () => {
-                  const next = (familyDraft === null ? families : familyDraft).slice();
-                  next.push({ id: `f${Date.now().toString(36)}`, name: T("新族"), autotile: "blob47", priority: next.length, color: "#3f9b2f" });
-                  setFamilyDraft(next);
-                }
-              },
-              T("加一个族")
-            ),
-            h(Btn, { primary: true, onClick: () => void saveFamilies(), disabled: familyDraft === null }, T("保存族"))
-          )
-        ),
-        h(
-          "div",
-          { className: "SPR_meCard" },
-          h("h4", null, T("掩码覆盖率")),
-          h("p", { className: "SPR_meCardNote" }, T("这里看你给每个族配齐了没有：47 掩码方案要有 47 块不同拼接形状（16 掩码要 16 块）。缺的块运行时回退成最接近的一块，不会报错，但过渡会显得生硬。")),
-          coverage.length === 0
-            ? h("p", { className: "SPR_meHint" }, T("还没有族。「族」就是一类地貌（草地 / 土路 / 水…）：先「加一个族」，再去①图集把图块归进去，自动过渡才有依据。"))
-            : h(
-                "div",
-                { className: "SPR_meCoverage" },
-                coverage.map((row) =>
-                  h(
-                    "div",
-                    { key: row.familyId, className: "SPR_meCoverageRow", "data-ok": row.missing.length === 0 ? "true" : undefined },
-                    h("span", { className: "SPR_meName" }, row.name),
-                    h("span", null, `${row.assigned}/${row.expected}`),
-                    row.missing.length === 0 ? h("span", { className: "SPR_meOk" }, T("完整")) : h("span", { className: "SPR_meBad" }, T("缺 {n0} 块", { n0: String(row.missing.length) }))
-                  )
-                )
-              ),
-          project.previews.length === 0
-            ? null
-            : h(
-                "div",
-                { className: "SPR_meShots" },
-                project.previews.map((relative) =>
-                  h("a", { key: relative, href: `${assetBase}${relative}`, target: "_blank", rel: "noreferrer" }, h("img", { className: "SPR_meShot", src: `${assetBase}${relative}`, alt: relative }))
-                )
-              ),
-          h(
-            "div",
-            { className: "SPR_toolbar" },
-            h(Btn, { onClick: () => void runPreview(), busy: project.busy === true, title: T("把掩码覆盖率与当前地图各渲染一张 PNG，用来肉眼检查过渡是否自然") }, T("生成验收预览图")),
-            h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId })) }, T("在访达中打开项目目录"))
-          )
-        )
-      );
-
-      const stagePaint = h(
-        "div",
-        { className: "SPR_meStage" },
-        h(
-          "div",
-          { className: "SPR_meCard" },
-          h("h4", null, T("地图与图层")),
-          h("p", { className: "SPR_meCardNote" }, T("上面一行是这张项目里的地图（点名字切换）；下面每一块是一个图层，画笔只会画在当时高亮的那一层上。「高度偏移」让整层上下挪几像素，「锁定」防止误涂。")),
-          mapList,
-          h("p", { className: "SPR_meCardNote" }, T("地图尺寸随时能改：放大只是多出空白；缩小时超出范围的格子会被丢掉（宿主会告诉你丢了多少，而且可以撤销）。")),
-          mapSizeRow,
-          h("p", { className: "SPR_meCardNote" }, T("随机变体：同一族、同一拼接形状（掩码）有几块候选图时，按种子随机挑一块来铺，整片地才不会一块块都一样。换种子＝换一版铺法，同一张图 + 同一种子每次结果完全一致。")),
-          variantRow,
-          layerList
-        ),
-        h(
-          "div",
-          { className: "SPR_meCard" },
-          h("h4", null, T("调色板")),
-          h("p", { className: "SPR_meCardNote" }, T("点一块图就把它当成笔刷；点族胶囊可以快速切到那个族的第一块。带淡蓝色底的是已经归入某个族的块。")),
-          h(
-            "select",
-            {
-              className: "SPR_select",
-              value: selectedTilesetId === null ? "" : selectedTilesetId,
-              onChange: (event) => setSelectedTilesetId(event.target.value === "" ? null : event.target.value)
-            },
-            h("option", { value: "" }, T("选择图集…")),
-            tilesets.map((tileset) => h("option", { key: tileset.id, value: tileset.id }, tileset.name))
+            { className: "SPR_mapEdFoot" },
+            notice === null ? null : h("div", { className: `SPR_notice SPR_notice-${notice.kind}` }, notice.text),
+            planWarnings.length === 0
+              ? null
+              : h(
+                  "ul",
+                  { className: "SPR_mapEdWarnings" },
+                  planWarnings.map((text, index) => h("li", { key: index }, text))
+                ),
+            h("span", { className: "SPR_mapEdSpacer" }),
+            single === true || activeLayer === null
+              ? null
+              : h("span", { className: "SPR_mapEdFootText" }, T("第 {n0} 层 / 共 {n1} 层", { n0: String(safeLayerIndex + 1), n1: String(layers.length) }))
           ),
-          familyRow,
-          palette
-        ),
-        // 隐藏的图源：canvas 用它们当 drawImage 的源（避免 new Image 与克隆两份缓存）
-        h(
-          "div",
-          { style: { display: "none" } },
-          tilesets.map((tileset) =>
-            h("img", {
-              key: tileset.id,
-              // `data-tileset` 是画布归因用的：canvas 那边只拿到图源对象，
-              // 自检要靠这个属性把「这次 drawImage 用的是哪张图集」对上 host 的 legend
-              "data-tileset": tileset.id,
-              ref: (node) => {
-                imageRefs.current[tileset.id] = node;
-              },
-              src: `${assetBase}${tileset.file}`,
-              alt: "",
-              onLoad: () => setImagesReady((value) => value + 1)
-            })
-          )
-        ),
-        editor
-      );
-
-      const stageExport = h(
-        "div",
-        { className: "SPR_meStage" },
-        h(
-          "div",
-          { className: "SPR_meCard" },
-          h("h4", null, T("导出")),
-          h("p", { className: "SPR_meHint" }, T("全部本地计算，不花钱。导出目录是自包含的：图集 PNG 会一起复制过去，Tiled 直接能打开。")),
-          h("p", { className: "SPR_meCardNote" }, T("四种格式可以随便勾：合并 PNG / 分层 PNG 是给人看的图；自有 JSON 是给引擎读的完整数据（含图例）；Tiled 那两份是给 Tiled 地图编辑器打开的。右边的倍率只影响 PNG 的尺寸，不影响地图数据。")),
+          // 隐藏的图源：canvas 拿它们当 drawImage 的源（避免再建一份缓存）
           h(
             "div",
-            { className: "SPR_meToolbar" },
-            [
-              ["pngMerged", T("合并 PNG（map.png）")],
-              ["pngLayers", T("分层 PNG")],
-              ["json", T("自有 JSON")],
-              ["tiled", T("Tiled .tmj/.tsj")]
-            ].map(([key, label]) =>
-              h(
-                "label",
-                {
-                  key,
-                  className: "SPR_meCheck",
-                  title:
-                    key === "pngMerged"
-                      ? T("把所有图层合成一张图，用来快速看一眼整体效果")
-                      : key === "pngLayers"
-                        ? T("每个图层单独出一张 PNG，方便在别的软件里对位")
-                        : key === "json"
-                          ? T("本插件自己的地图格式：格子、图层、图例、族与掩码全在里面")
-                          : T("Tiled 工程文件：.tmj 是地图，.tsj 是图集定义，配套的图集 PNG 会一起复制")
+            { style: { display: "none" } },
+            tilesets.map((entry) =>
+              h("img", {
+                key: entry.id,
+                "data-tileset": entry.id,
+                ref: (node) => {
+                  imageRefs.current[entry.id] = node;
                 },
-                h("input", {
-                  type: "checkbox",
-                  checked: exportFormats[key] === true,
-                  onChange: (event) => setExportFormats((prev) => ({ ...prev, [key]: event.target.checked }))
-                }),
-                label
-              )
-            ),
-            h(
-              "select",
-              {
-                className: "SPR_select",
-                title: T("PNG 的放大倍率：1× 就是原始像素（像素画选 1×），放大用于做宣传图"),
-                value: String(exportScale),
-                onChange: (event) => setExportScale(Number(event.target.value))
-              },
-              [1, 2, 3, 4].map((value) => h("option", { key: value, value: String(value) }, `${value}×`))
-            ),
-            h(Btn, { primary: true, onClick: () => void runExport(), busy: project.busy === true }, T("导出")),
-            h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId })) }, T("在访达中打开"))
-          ),
-          project.exportFiles.length === 0
-            ? h("p", { className: "SPR_meHint" }, T("还没有导出过。"))
-            : h(
-                "ul",
-                { className: "SPR_meFileList" },
-                project.exportFiles.map((file) =>
-                  h(
-                    "li",
-                    { key: file },
-                    h(
-                      "a",
-                      {
-                        href: `${assetBase}${project.exportBase}${file}`,
-                        target: "_blank",
-                        rel: "noreferrer",
-                        // 一个文件名说明不了「拿去干什么」，逐个补一句（点开仍是查看/下载）
-                        title: exportFileHint(file)
-                      },
-                      file
-                    )
-                  )
-                )
-              )
+                src: `${assetBase}${entry.file}`,
+                alt: "",
+                onLoad: () => setImagesReady((value) => value + 1),
+                // ⚠️ 只挂 onLoad 不挂 onError 的话，素材图 404 / 解码失败时
+                // `imagesReady` 永远不递增，这张素材的格子**一条都不画**：
+                // 画布静默空白、界面零提示（只有调试钩子的 noImage 看得到）。
+                onError: () => {
+                  setImagesReady((value) => value + 1);
+                  setNotice({ kind: "error", text: T("素材图加载失败：{n0}（试试重新上传这张图）", { n0: entry.name }) });
+                }
+              })
+            )
+          )
         )
-      );
-
-      return h(
-        "div",
-        { className: "SPR_moduleBody", "data-module": "map" },
-        gateOpen ? h(MapExperimentalDialog, { onClose: closeGate }) : null,
-        h(
-          "div",
-          { className: "SPR_toolbar" },
-          h("strong", null, project.name),
-          h(
-            "select",
-            {
-              className: "SPR_select",
-              value: projectId,
-              onChange: (event) => void loadProject(event.target.value)
-            },
-            projects.map((entry) => h("option", { key: entry.id, value: entry.id }, entry.name))
-          ),
-          h(Btn, { title: T("新建一个地图项目"), onClick: createProject }, T("新建")),
-          h(Btn, { onClick: () => void renameProject() }, T("重命名")),
-          h(Btn, { onClick: () => void deleteProject(), danger: true }, T("删除项目")),
-          h(Btn, { title: T("重新读一遍宿主上的项目状态（作业跑完界面会自己刷新，平时不用点）"), onClick: () => void loadProject(projectId, mapId) }, T("刷新状态")),
-          project.busy === true ? h("span", { className: "SPR_meBusy" }, T("任务进行中…")) : null
-        ),
-        stageTabs,
-        stageHintLine,
-        notice === null ? null : h("div", { className: `SPR_notice SPR_notice-${notice.kind}` }, notice.text),
-        project.warnings.length === 0
-          ? null
-          : h(
-              "ul",
-              { className: "SPR_meWarnings" },
-              project.warnings.map((text, index) => h("li", { key: index }, text))
-            ),
-        stage === "assets" ? stageAssets : stage === "rules" ? stageRules : stage === "paint" ? stagePaint : stageExport
       );
     }
-
     // ── 模块②：图片生成 ─────────────────────────────────────────────────
     /** 模块②的 pending key：整批生成、单张重生成、抠像、上传、新建任务。 */
     const K_IMG_JOB = "img:job";
@@ -14937,17 +14730,15 @@
         saveMapProject: (payload) => call("saveMapProject", payload),
         deleteMapProject: (payload) => call("deleteMapProject", payload),
         importMapTileset: (payload) => call("importMapTileset", payload),
+        importSampleTileset: (payload) => call("importSampleTileset", payload),
         saveMapTileset: (payload) => call("saveMapTileset", payload),
         removeMapTileset: (payload) => call("removeMapTileset", payload),
-        saveMapFamilies: (payload) => call("saveMapFamilies", payload),
-        createMapDoc: (payload) => call("createMapDoc", payload),
         saveMapDoc: (payload) => call("saveMapDoc", payload),
-        deleteMapDoc: (payload) => call("deleteMapDoc", payload),
-        duplicateMapDoc: (payload) => call("duplicateMapDoc", payload),
         applyMapOps: (payload) => call("applyMapOps", payload),
         mapUndo: (payload) => call("mapUndo", payload),
         mapRedo: (payload) => call("mapRedo", payload),
         mapPlan: (payload) => call("mapPlan", payload),
+        runMapGenerate: (payload) => call("runMapGenerate", payload),
         runMapPreview: (payload) => call("runMapPreview", payload),
         runMapExport: (payload) => call("runMapExport", payload),
         cancelMapJob: (payload) => call("cancelMapJob", payload),
@@ -15026,7 +14817,7 @@
      * `mapgeom` / `mapdoc` 的真实现做黄金对照逐点比对 —— 界面复刻的那部分几何
      * 必须有守门的，否则「预览与导出错位」会以静默的方式回来。
      */
-    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, RigSemanticsPanel, MapModule, MapExperimentalDialog, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, MAP_visibleChunks, MAP_chunkKey, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection };
+    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, RigSemanticsPanel, MapModule, MapExperimentalDialog, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection };
     return bundleModule.exports;
   }
 });

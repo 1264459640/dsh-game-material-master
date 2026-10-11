@@ -1,43 +1,30 @@
 /**
- * 地图编辑器（模块六）的**自动过渡**（autotile）内核：纯函数。
+ * 地图编辑器（模块六）的**自动连接**（autotile）内核：纯函数。
  *
- * 三种方案：
- *   · `single`    一张贴图，不做过渡
- *   · `corner16`  四邻域（N/E/S/W），4 位掩码 → 16 张
- *   · `blob47`    八邻域（含四个对角），8 位掩码归约成 **47 个**规范掩码
+ * 只剩两套：
+ *   · `corner16`  四邻域整格连接（N/E/S/W），4 位掩码 → 16 张
+ *   · `a2quad`    A2 拼块：一格的四个象限各自挑形状号，照 AsLib `map20n_Number`
  *
- * ## 为什么要有「归约」
+ * 旧的 `blob47` / 族优先级 / `edgeMode` 全部删除：新模块里「同一类」由调用方
+ * 一句话回答（`NeighborAt`），宿主选块时只看「这一格是不是同一张图集」，
+ * 于是「优先级」这种约定俗成的隐式规则不再有存在的地方。
  *
- * 八邻域本来有 256 种组合，但四角的连通性只有在**两条相邻边都连通**时才看得见
- * （两条边都没接上时，角上那一格在菱形网格里根本不相邻）。归约后恰好 47 种，
- * 就是美术圈说的 blob tileset。归约表在这里是**固定表 + 断言**
- * （47 个规范输出、且幂等）—— 这正是自检里的反向验证目标：把它改成恒等映射，
- * 覆盖率断言必须变红。
+ * ## 谁负责 wrap
  *
- * ## 优先级规则（多族过渡靠它）
+ * `NeighborAt` 的坐标可能越界（`r = -1`、`c = cols`）。**取模由调用方做** ——
+ * 这里对每个方向都发一次问，问的是「那一格是不是同一类」，`at` 自己决定越界怎么答。
+ * 在宿主里就是 `wrapCell(...)` 之后查图层数据；忘了 wrap 的表现是「接缝处形状不对」，
+ * 只在贴边时才看得出来。
  *
- * 一个格子属于族 F 时，某个方向的邻居只要是「优先级 ≥ F」的族（或空单元格所属
- * 的层基础族）就算**连通**。于是草地 / 沙 / 水三族按优先级排好，各自的过渡块
- * 只会朝更低优先级的邻居长 —— 这是 Tiled / Godot 的通行做法。
+ * ## A2 为什么是「四个象限各一个形状号」
+ *
+ * AsLib 的 `drawMapBranch`（type_20n）对一格发 4 次 `drawChip`：TL / TR / BL / BR，
+ * 每个象限只看它**自己那一边的横竖邻居 + 那个角**：
+ *   TL 用 left / up / upLeft，TR 用 right / up / upRight，
+ *   BL 用 left / down / downLeft，BR 用 right / down / downRight。
+ * 所以「格子该长什么样」不是一个 0..4 的数，而是四个 0..4 的数 —— 这就是
+ * `a2QuadrantShapes` 返回元组的原因。
  */
-
-export type AutotileScheme = "single" | "corner16" | "blob47";
-
-export const AUTOTILE_SCHEMES: readonly AutotileScheme[] = ["single", "corner16", "blob47"];
-
-export function isAutotileScheme(value: unknown): value is AutotileScheme {
-  return typeof value === "string" && (AUTOTILE_SCHEMES as readonly string[]).includes(value);
-}
-
-/** 八邻域位值（与 `blob47` 的掩码一致）。 */
-export const NB_N = 1;
-export const NB_NE = 2;
-export const NB_E = 4;
-export const NB_SE = 8;
-export const NB_S = 16;
-export const NB_SW = 32;
-export const NB_W = 64;
-export const NB_NW = 128;
 
 /** 四邻域位值（与 `corner16` 的掩码一致）：N=1, E=2, S=4, W=8。 */
 export const NB4_N = 1;
@@ -45,261 +32,102 @@ export const NB4_E = 2;
 export const NB4_S = 4;
 export const NB4_W = 8;
 
-/** 八邻域展开顺序：先四边、后四角，附其位值与四邻域位值。 */
-const NEIGHBORS: Array<{ dr: number; dc: number; bit: number; edge4: number; corner: boolean }> = [
-  { dr: -1, dc: 0, bit: NB_N, edge4: NB4_N, corner: false },
-  { dr: -1, dc: 1, bit: NB_NE, edge4: 0, corner: true },
-  { dr: 0, dc: 1, bit: NB_E, edge4: NB4_E, corner: false },
-  { dr: 1, dc: 1, bit: NB_SE, edge4: 0, corner: true },
-  { dr: 1, dc: 0, bit: NB_S, edge4: NB4_S, corner: false },
-  { dr: 1, dc: -1, bit: NB_SW, edge4: 0, corner: true },
-  { dr: 0, dc: -1, bit: NB_W, edge4: NB4_W, corner: false },
-  { dr: -1, dc: -1, bit: NB_NW, edge4: 0, corner: true }
-];
-
-export type EdgeMode = "same" | "different";
+/** 「(r,c) 是不是同一类」，调用方负责 wrap（越界坐标也会被问到）。 */
+export type NeighborAt = (r: number, c: number) => boolean;
 
 /**
- * 算一个格子的八邻域掩码。
+ * 整格自动连接（16 掩码）：四邻域位序 N=1,E=2,S=4,W=8，返回 0..15。
  *
- * `connected(r, c)` 返回该方向邻居是否与本格「同类」（同族或更高优先级），
- * 越界返回 `undefined`；越界按 `edgeMode` 处理，默认 `"same"`
- * （地图边缘不做过渡，否则一圈全是过渡块，看着像被围了一圈）。
+ * 位序是**契约**（掩码是导入时一次性算好、写进图块元数据的语义值），
+ * 顺手改成别的顺序只会让所有已存的图块错位，不会报错。
  */
-export function neighborhoodMask8(
-  r: number,
-  c: number,
-  connected: (r: number, c: number) => boolean | undefined,
-  edgeMode: EdgeMode = "same"
-): number {
+export function corner16Mask(at: NeighborAt, r: number, c: number): number {
   let mask = 0;
-  for (const neighbor of NEIGHBORS) {
-    const value = connected(r + neighbor.dr, c + neighbor.dc);
-    const same = value === undefined ? edgeMode === "same" : value === true;
-    if (same) mask |= neighbor.bit;
-  }
+  if (at(r - 1, c)) mask |= NB4_N;
+  if (at(r, c + 1)) mask |= NB4_E;
+  if (at(r + 1, c)) mask |= NB4_S;
+  if (at(r, c - 1)) mask |= NB4_W;
   return mask;
 }
 
-/** 邻居是否与本格同类：优先级 ≥ 本族即算连通（空单元格由调用方折算成层基础族）。 */
-export function connectsTo(myPriority: number, neighborPriority: number | undefined): boolean {
-  if (neighborPriority === undefined) return false;
-  return neighborPriority >= myPriority;
-}
+/** `corner16` 的全集（掩码值就是下标，0..15）。 */
+export const CORNER16_MASKS: readonly number[] = Array.from({ length: 16 }, (_unused, index) => index);
+
+/** A2 的形状数：0..4（块行号）。 */
+export const A2_SHAPES = 5;
 
 /**
- * 把八邻域掩码归约成「规范掩码」（`blob47` 的 47 种之一）。
+ * A2 形状号，照 AsLib `map20n_Number(left, up, diag)`：
  *
- * 规则：**角位只在两条相邻边都连通时才有意义**，否则一律清掉。
+ * | left | up | diag | 形状 |
+ * |---|---|---|---|
+ * | 否 | 否 | * | 0 |
+ * | 否 | 是 | * | 1 |
+ * | 是 | 否 | * | 2 |
+ * | 是 | 是 | 否 | 3 |
+ * | 是 | 是 | 是 | 4 |
  *
- * ⚠️ 清掉与「强制点亮」是两回事：写成「两条边连通就把角点亮」的话，
- * 角位就完全由边位决定，规范掩码只剩 16 种，`blob47` 退化成 `corner16`
- * （自检里「恰好 47 个」那条会当场变红 —— 这就是它存在的意义）。
- * 正确做法是：两条边连通时**保留输入的角位**。
+ * `diag` 只在两条边都接上时才有意义（否则那个角在网格上根本不相邻）——
+ * 写成「两边接上就点亮角」的话形状 3 会永远消失，`A2_SHAPES` 也就退化成 4 种。
  */
-export function canonicalBlobMask(mask: number): number {
-  const raw = mask & 0xff;
-  let out = raw & (NB_N | NB_E | NB_S | NB_W);
-  if ((raw & NB_N) !== 0 && (raw & NB_E) !== 0 && (raw & NB_NE) !== 0) out |= NB_NE;
-  if ((raw & NB_S) !== 0 && (raw & NB_E) !== 0 && (raw & NB_SE) !== 0) out |= NB_SE;
-  if ((raw & NB_S) !== 0 && (raw & NB_W) !== 0 && (raw & NB_SW) !== 0) out |= NB_SW;
-  if ((raw & NB_N) !== 0 && (raw & NB_W) !== 0 && (raw & NB_NW) !== 0) out |= NB_NW;
-  return out;
-}
-
-/** `blob47` 的全部规范掩码（恰好 47 个）。 */
-export const BLOB47_MASKS: readonly number[] = (() => {
-  const out: number[] = [];
-  for (let mask = 0; mask < 256; mask++) {
-    const canonical = canonicalBlobMask(mask);
-    if (!out.includes(canonical)) out.push(canonical);
+export function a2Shape(left: boolean, up: boolean, diag: boolean): 0 | 1 | 2 | 3 | 4 {
+  if (left) {
+    if (up) return diag ? 4 : 3;
+    return 2;
   }
-  return out.sort((a, b) => a - b);
-})();
-
-/** 八邻域掩码 → 该方案真正用到的掩码（`corner16` 抽四边位，`single` 恒 0）。 */
-export function maskForScheme(scheme: AutotileScheme, mask8: number): number {
-  if (scheme === "corner16") {
-    let out = 0;
-    for (const neighbor of NEIGHBORS) {
-      if (neighbor.corner) continue;
-      if ((mask8 & neighbor.bit) !== 0) out |= neighbor.edge4;
-    }
-    return out;
-  }
-  if (scheme === "single") return 0;
-  return canonicalBlobMask(mask8);
+  if (up) return 1;
+  return 0;
 }
 
-/** 某方案需要覆盖的掩码全集。 */
-export function expectedMasks(scheme: AutotileScheme): number[] {
-  if (scheme === "single") return [0];
-  if (scheme === "corner16") return Array.from({ length: 16 }, (_unused, index) => index);
-  return [...BLOB47_MASKS];
+/** 一格四个象限各自的形状号（TL, TR, BL, BR），元组顺序与 `A2_QUADRANT_ORDER` 一致。 */
+export function a2QuadrantShapes(at: NeighborAt, r: number, c: number): [number, number, number, number] {
+  const left = at(r, c - 1);
+  const right = at(r, c + 1);
+  const up = at(r - 1, c);
+  const down = at(r + 1, c);
+  return [
+    a2Shape(left, up, at(r - 1, c - 1)), // TL
+    a2Shape(right, up, at(r - 1, c + 1)), // TR
+    a2Shape(left, down, at(r + 1, c - 1)), // BL
+    a2Shape(right, down, at(r + 1, c + 1)) // BR
+  ];
 }
+
+/** 象限名的顺序（画验收图 / 调试用），与 `a2QuadrantShapes` 的元组一一对应。 */
+export const A2_QUADRANT_ORDER: readonly ["TL", "TR", "BL", "BR"] = ["TL", "TR", "BL", "BR"];
 
 /** 掩码的位数（算 Hamming 距离用）。 */
-function bitWidth(scheme: AutotileScheme): number {
-  return scheme === "corner16" ? 4 : 8;
-}
-
 function popcount(value: number): number {
-  let n = 0;
-  let v = value >>> 0;
-  while (v !== 0) {
-    v &= v - 1;
-    n++;
+  let count = 0;
+  let rest = value >>> 0;
+  while (rest !== 0) {
+    rest &= rest - 1;
+    count++;
   }
-  return n;
+  return count;
 }
 
 export function hammingDistance(a: number, b: number): number {
   return popcount((a ^ b) >>> 0);
 }
 
-// ── 族的索引与解析 ────────────────────────────────────────────────────────
-
-export interface FamilyLike {
-  id: string;
-  name?: string;
-  autotile: AutotileScheme;
-  priority: number;
-  edgeMode?: EdgeMode;
-}
-
-export interface TileLike {
-  id: string;
-  familyId?: string;
-  /** 该贴图在族里的掩码（`single` 忽略）。 */
-  mask?: number;
-  /** 同掩码多张 = 变体，按权重挑。 */
-  weight?: number;
-}
-
-export interface FamilyPlan {
-  familyId: string;
-  scheme: AutotileScheme;
-  priority: number;
-  edgeMode: EdgeMode;
-  /** 规范掩码 → 候选贴图 id（同掩码多张 = 变体）。 */
-  byMask: Map<number, string[]>;
-  /** 一个掩码都没配时的兜底贴图（族的第一张）。 */
-  baseTileIds: string[];
-}
-
-export function buildFamilyPlans(
-  families: readonly FamilyLike[],
-  tiles: readonly TileLike[]
-): { plans: Map<string, FamilyPlan>; warnings: string[] } {
-  const warnings: string[] = [];
-  const plans = new Map<string, FamilyPlan>();
-  const byFamily = new Map<string, TileLike[]>();
-  for (const tile of tiles) {
-    if (tile.familyId === undefined) continue;
-    const list = byFamily.get(tile.familyId);
-    if (list === undefined) byFamily.set(tile.familyId, [tile]);
-    else list.push(tile);
-  }
-  for (const family of families) {
-    const scheme = isAutotileScheme(family.autotile) ? family.autotile : "single";
-    const plan: FamilyPlan = {
-      familyId: family.id,
-      scheme,
-      priority: Number.isFinite(family.priority) ? family.priority : 0,
-      edgeMode: family.edgeMode === "different" ? "different" : "same",
-      byMask: new Map(),
-      baseTileIds: []
-    };
-    const own = byFamily.get(family.id) ?? [];
-    for (const tile of own) {
-      if (plan.baseTileIds.length === 0) plan.baseTileIds.push(tile.id);
-      const mask = maskForScheme(scheme, typeof tile.mask === "number" ? tile.mask : 0);
-      const list = plan.byMask.get(mask);
-      if (list === undefined) plan.byMask.set(mask, [tile.id]);
-      else list.push(tile.id);
-    }
-    if (own.length === 0) warnings.push(`族「${family.name ?? family.id}」下面一张贴图都没有。`);
-    else if (scheme !== "single" && plan.byMask.size < expectedMasks(scheme).length) {
-      warnings.push(
-        `族「${family.name ?? family.id}」缺 ${expectedMasks(scheme).length - plan.byMask.size} 个掩码，` +
-          `缺的地方会回退到最近的一个（界面里会标黄）。`
-      );
-    }
-    plans.set(family.id, plan);
-  }
-  return { plans, warnings };
-}
-
-export interface MaskResolution {
-  tileId?: string;
-  /** `exact` 命中；`nearest` 回退到最近的已配掩码；`base` 完全没有掩码；`none` 该族没有贴图。 */
-  mode: "exact" | "nearest" | "base" | "none";
-  distance: number;
-  wanted: number;
-}
-
 /**
- * 把一个掩码解析成贴图 id。
+ * 缺掩码回退：Hamming 最近的已配置掩码，**并列取掩码值最小的**；一个都没配
+ * 返回 `undefined`（调用方再退「图集的第一块」）。
  *
- * 缺掩码时**必须回退而不是留空**：留空在菱形地图上就是一个透明洞，
- * 而且不报任何错（旧模块的「白色菱形洞」就是这么来的）。
- * 回退规则是确定的：Hamming 距离最近的已配掩码，并列取掩码值最小的那个。
+ * 为什么必须回退而不是留空：留空在屏幕上就是一个透明洞，而且不报任何错
+ * （旧模块的「白色洞」就是这么来的）。并列取最小是为了确定性 —— 同样的地图
+ * 每次算出来必须是同一块，否则「导出和预览不一样」这类问题永远查不清。
  */
-export function resolveMask(plan: FamilyPlan, mask8: number, pick: (candidates: string[]) => string): MaskResolution {
-  const wanted = maskForScheme(plan.scheme, mask8);
-  const exact = plan.byMask.get(wanted);
-  if (exact !== undefined && exact.length > 0) return { tileId: pick(exact), mode: "exact", distance: 0, wanted };
-  let bestMask: number | undefined;
+export function nearestMask(mask: number, configured: readonly number[]): number | undefined {
+  let best: number | undefined;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (const candidate of plan.byMask.keys()) {
-    const distance = hammingDistance(candidate, wanted);
-    if (distance < bestDistance || (distance === bestDistance && bestMask !== undefined && candidate < bestMask)) {
+  for (const candidate of configured) {
+    const distance = hammingDistance(mask, candidate);
+    if (distance < bestDistance || (distance === bestDistance && best !== undefined && candidate < best)) {
       bestDistance = distance;
-      bestMask = candidate;
+      best = candidate;
     }
   }
-  if (bestMask !== undefined) {
-    const candidates = plan.byMask.get(bestMask) ?? [];
-    if (candidates.length > 0) {
-      return { tileId: pick(candidates), mode: "nearest", distance: bestDistance, wanted };
-    }
-  }
-  if (plan.baseTileIds.length > 0) return { tileId: pick(plan.baseTileIds), mode: "base", distance: -1, wanted };
-  return { mode: "none", distance: -1, wanted };
-}
-
-export interface CoverageRow {
-  familyId: string;
-  scheme: AutotileScheme;
-  expected: number;
-  assigned: number;
-  /** 缺的规范掩码（升序）。 */
-  missing: number[];
-}
-
-/** 覆盖率报告：界面里那张 47/16 格矩阵就是按它渲染的。 */
-export function coverageReport(families: readonly FamilyLike[], tiles: readonly TileLike[]): CoverageRow[] {
-  const { plans } = buildFamilyPlans(families, tiles);
-  return families.map((family) => {
-    const plan = plans.get(family.id);
-    const expected = expectedMasks(plan?.scheme ?? "single");
-    const assigned = expected.filter((mask) => (plan?.byMask.get(mask)?.length ?? 0) > 0);
-    return {
-      familyId: family.id,
-      scheme: plan?.scheme ?? "single",
-      expected: expected.length,
-      assigned: assigned.length,
-      missing: expected.filter((mask) => !assigned.includes(mask))
-    };
-  });
-}
-
-/** 掩码（规范值）→ 画格子矩阵时的可读标签，例如 `blob47` 的 `N,E,SE`。 */
-export function describeMask(scheme: AutotileScheme, mask: number): string {
-  if (scheme === "single") return "唯一块";
-  const names: Array<[number, string]> = scheme === "corner16"
-    ? [[NB4_N, "N"], [NB4_E, "E"], [NB4_S, "S"], [NB4_W, "W"]]
-    : [[NB_N, "N"], [NB_NE, "NE"], [NB_E, "E"], [NB_SE, "SE"], [NB_S, "S"], [NB_SW, "SW"], [NB_W, "W"], [NB_NW, "NW"]];
-  const on = names.filter(([bit]) => (mask & bit) !== 0).map(([, label]) => label);
-  return on.length === 0 ? "孤立" : on.join("+");
+  return best;
 }

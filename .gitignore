@@ -15,6 +15,13 @@ yarn.lock
 # Computer Use 的截图 / 观察产物（agent 真机验收时落在工作区里，不入库）
 .dsh-computer-use/
 
+# agent / 自检用的草稿目录（临时探针脚本，跑完就该删，别让它们混进提交）
+scripts/tmp/
+
+# 模块六内置素材的**生成产物**：`scripts/make-map-sample-tileset.mjs --local` 一键重来，
+# 运行时也不读它们（插件是内存里现渲染的），所以不入库；目录里的 README.md 说明怎么生成。
+research/map-sample/*.png
+
 # 调研任务的原始 AI 产物
 # research/<任务>/ 下每个调研任务自成一套：报告 + tools/（算法参考实现）+ out/（交付与验证图）
 # + probe/（原始 AI 生成图，可重新生成但**会真实计费**）。

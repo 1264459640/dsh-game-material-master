@@ -5,7 +5,7 @@
  * 但「原子写 + 读文件 + 日志裁剪」这几件事是一样的，抽在这里避免重复。
  */
 
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -69,17 +69,36 @@ export async function writeJsonAtomic(file: string, value: unknown): Promise<voi
  * `project.json.fa69b405.tmp`。它们不会被读，只会越积越乱，
  * 所以在读项目时顺手扫一次。
  */
-export async function sweepTempFiles(dir: string): Promise<void> {
+/**
+ * 清掉目录里**陈旧**的 `*.tmp`（原子写留下的中间态）。
+ *
+ * ⚠️ **不能见到 `*.tmp` 就删**：`writeJsonAtomic` 是「写 tmp → rename」，而读路径
+ * （`readMapProject` / `readTileProject`）会顺手扫一次目录。删除所有 tmp 的话，
+ * 读与写并发时正在写的那个中间文件会被读路径删掉，紧接着 `rename` 报 `ENOENT`
+ * —— 真机与自检各撞到过一次（`project.json.<hex>.tmp -> project.json`）。
+ * 所以只清「超过 `staleMs` 没动过」的那些（崩溃留下的残骸），默认 5 分钟。
+ */
+export async function sweepTempFiles(dir: string, staleMs = 5 * 60 * 1000): Promise<void> {
   let names: string[];
   try {
     names = await readdir(dir);
   } catch {
     return;
   }
+  const now = Date.now();
   await Promise.all(
     names
       .filter((name) => name.endsWith(".tmp"))
-      .map((name) => rm(join(dir, name), { force: true }).catch(() => undefined))
+      .map(async (name) => {
+        const file = join(dir, name);
+        try {
+          const info = await stat(file);
+          if (now - info.mtimeMs < staleMs) return; // 可能正有人写：别动它
+          await rm(file, { force: true });
+        } catch {
+          // 已经被人删掉了 / 读不到属性：都不是错误
+        }
+      })
   );
 }
 

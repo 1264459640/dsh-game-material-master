@@ -33,7 +33,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 | **② Image generation** | Prompt (optionally with reference images) → images → green-screen keying | Clean transparent PNG character art / props |
 | **③ Sequence frames** | First/last frame or a reference video → generate video → extract frames → key | A horizontally laid out, loopable sequence |
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
-| **⑥ Map editor** (experimental, **fully local, zero cost**) | Import your own tileset → slicing and terrain families → auto-tiling → multi-layer assembly | Layered/merged PNG + own JSON + **Tiled `.tmj`/`.tsj`** |
+| **⑥ Map editor** (experimental, **fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon) | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles) |
 | ~~④ Rigged animation~~ | Part extraction → assembly → skeletal animation → Spine / DragonBones atlas | **Experimental, not covered in this document** |
 
 > 💡 **Module ⑤ "Map tile generation" is built on one idea: geometry by code, content by AI.**
@@ -43,12 +43,13 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 > re-assembling with the same seed is pixel-identical. Measured: letting the model draw the diamond freely
 > gives ratios of 1.03–1.55 (nowhere near 2:1), while template filling hits 100%.
 
-> 💡 **Module ⑥ "Map editor" takes the other road: it never generates art, it imports your own tileset.**
-> Import an atlas → slice it by grid or rectangles → assign tiles to terrain families (auto-tiling supports
-> **single tile / 16-mask / 47-mask blob**) → assemble several maps and layers (each layer can have a height
-> offset) → export PNG, own JSON and **Tiled `.tmj`/`.tsj`** (tileset images are copied alongside, so Tiled opens
-> it directly). Both square top-down and 2:1 isometric grids are supported, and **not a single model call is
-> made — so nothing is billed**.
+> 💡 **Module ⑥ "Map editor" is modelled after the RPG Map Maker in [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) and rebuilt as one screen, icon-only, with no jargon.**
+> The asset palette and twelve icon buttons sit on the left, the canvas on the right. **Pick one tileset image and start
+> painting** — its shape (RPG Maker A2 autotile block / a 16-tile whole-cell autotile set / a plain grid) is detected
+> from the image dimensions, and a single dropdown in "Assets" fixes it if the guess is wrong; the map **wraps around
+> on all four sides**, so painting past the right edge continues at the left; a built-in tileset is one click away
+> ("try the built-in tileset"), and you can generate random terrain, a maze or a continent in one go.
+> **Not a single model call is made — so nothing is billed.**
 
 > 🏷️ **Creating anything in any of the six modules asks for a name first**: the field is pre-filled with the
 > default (just press Enter to keep it), and cancelling creates nothing. Map projects can also be renamed later.
@@ -328,9 +329,9 @@ Everything in the UI that you can click, change or approve is bilingual.
 ├── projects/<id>/      eight-direction sheet (source / images / videos / frames / keyed / preview / out)
 ├── image-jobs/<id>/    image generation
 ├── sequence-jobs/<id>/ sequence frames
-└── rig-jobs/<id>/      rigged animation (experimental: sheet / parts / layout / rig / atlas)
+├── rig-jobs/<id>/      rigged animation (experimental: sheet / parts / layout / rig / atlas)
 ├── tile-jobs/<id>/     map tiles (template / raw / cell / decor / map / export)
-└── map-jobs/<id>/      map editor (tilesets / maps / preview / export)
+└── map-jobs/<id>/      map editor (project.json / map.json / tilesets / preview / export)
 ```
 
 > Map tiles keep the **raw generation output** in `raw/`: after changing regularisation parameters such as
@@ -386,6 +387,26 @@ The screenshots in this document were taken by Playwright against the real UI; t
   manual dragging (neither of those steps costs anything).
 - MiniMax occasionally rejects content on moderation (about 10% in practice); just reword to a more neutral
   prompt and retry.
+
+## Credits
+
+- **Module ⑥ "Map editor" is modelled after the RPG Map Maker in
+  [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master).** What was borrowed is its **interaction and
+  layout** (one screen: tile palette plus an icon toolbar on the left, canvas on the right; the pen / eraser /
+  bucket / pipette / hand tools together with single-layer preview, layer up-down and undo-redo; click a
+  palette tile to pick a brush, a red frame marking the current one, wheel to zoom, drag to pan) and two
+  **geometry conventions**:
+  1. **The map wraps around** — camera and hit-testing both work modulo the map size, so painting past the
+     right edge continues from the left;
+  2. **A2 auto-tiling** — a 64×160 sheet is 2 variants × 5 shapes; each cell is drawn as four 16px quadrants,
+     and each quadrant is picked from one 5-state table over left / up / up-left. Both the small-cell index
+     formula and the fact that "1-based index − 1 == AsLib's chip index" come from its `AsMap.hpp`.
+
+  Its code is **CC0**; this plugin re-implements the behaviour in TypeScript and **does not copy its source**.
+- ⚠️ **The `Picture/MapChip/*_pipo.png` tiles shipped in the AsLib repository belong to a third party and are
+  not bundled here** (its README states "Third party content is copyrighted by its respective owners").
+  The built-in tileset is generated procedurally on this machine by `scripts/make-map-sample-tileset.mjs`,
+  to the same A2 spec.
 
 ## License
 

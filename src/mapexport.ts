@@ -1,72 +1,68 @@
 /**
- * 地图编辑器（模块六）的**导出**：PNG（分层 / 合并）、自有 JSON、Tiled `.tmj` + `.tsj`。
+ * 地图编辑器（模块六）的**导出**：`map.png`（合并所有层）+ `map.json` + `manifest.json`。
  *
- * ## 两条与旧模块不同的口径
+ * ## 为什么只剩三个文件
  *
- * 1. **导出目录自包含**：图集 PNG 会复制进 `export/<mapId>/`，`.tsj` 里的 `image`
- *    写裸文件名。指向 `../tilesets/` 在 Tiled 里也能开，但用户一挪目录就裂图。
- * 2. **Tiled 里写的是「渲染后的真相」**：自动过渡已经解析成具体贴图（gid），
- *    同时把族的掩码表写进 `wangsets`，所以在 Tiled 里继续刷也会自动过渡。
+ * 旧实现导 PNG（分层 + 合并）+ 自有 JSON + Tiled 的 `.tmj` / `.tsj`（含 wangsets、
+ * firstgid、图集 PNG 拷贝）。删掉的理由：
  *
- * ## 关于 wangsets
+ * - **Tiled 那套没人验证得了**：本机联不上 Tiled 本体，wangsets 的位序只能照文档写，
+ *   自检断言的是「我们写出来的字段」，不是「Tiled 读得懂」。等于把风险留在发布里。
+ * - **分层 PNG 是重复的**：合并图 + `map.json` 里的每层语义序号已经能还原每一层，
+ *   多出来的文件只会各自过期（旧模块就出过「改了地图，分层图还是旧的」）。
+ * - **图集拷贝进导出目录**让「导出」变成一个会写出十几 MB 的操作，且拷来的图集
+ *   与项目里的原图会分叉。
  *
- * 本机**无法联网核对 Tiled 本体**（DNS 被拦），这里按 JSON 格式文档的形态写：
- * - `blob47` → `type: "mixed"`，`wangid` 8 位，顺序 top / top-right / right /
- *   bottom-right / bottom / bottom-left / left / top-left（正好是 N/NE/E/SE/S/SW/W/NW）
- * - `corner16` → `type: "edge"`，只用下标 0/2/4/6（top / right / bottom / left）
- * - 值 0 = 不连通、1 = 连通（对应 `colors[0]`）
- * 自检按这个形态逐字段断言；**能不能在 Tiled 里被认出来需要人工开一次 Tiled 确认**
- * （ENGINEERING.md 里写明这是「待人工确认」的一条）。
+ * ## 两条口径
+ *
+ * 1. `map.json` 里 `layers[].data` 写的是**语义序号**（1-based 全局图块序号，0 = 空），
+ *    不是解析后的贴图 —— 自己格式要能继续改（A2 的形状是渲染时现算的）。
+ * 2. `map.png` 走 `maprender.rasterize`，也就是**与界面预览同一份绘制计划**。
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { copyFile } from "node:fs/promises";
-import { type Bitmap } from "./bitmap.js";
-import { encodePng } from "./png.js";
+import { decodeFile, type Bitmap } from "./bitmap.js";
 import { type MapDoc } from "./mapdoc.js";
-import { heightOffsetPixels } from "./mapgeom.js";
-import { buildFamilyPlans, maskForScheme, type FamilyLike } from "./mapauto.js";
-import { flatTiles, type MapTileset } from "./maptiles.js";
-import { buildPlan, rasterize, type RenderContext } from "./maprender.js";
+import { flatTiles } from "./maptiles.js";
+import { bitmapToPng, planBounds, rasterize, type PlanBounds, type RenderContext } from "./maprender.js";
+// ⚠️ `mapgen` 反过来也 import 本文件（`runExportStage` 调 `exportMap`）。ESM 的循环
+// 引用对「只在函数体里用到的绑定」是安全的（下面只在调用时读 `mapAssetPath`）。
+import { mapAssetPath } from "./mapgen.js";
 
-export interface MapFamily extends FamilyLike {
-  name: string;
-  /** 界面里给族标色（同时写进 Tiled 的 wangset colors）。 */
-  color?: string;
-}
+export const OWN_JSON_FORMAT = "dsh-gem-map@2";
 
 export interface ExportFormatOptions {
-  pngMerged?: boolean;
-  pngLayers?: boolean;
+  /** 合并 PNG（默认 true）。 */
+  png?: boolean;
+  /** `map.json`（默认 true）。 */
   json?: boolean;
-  tiled?: boolean;
+  /** 整数缩放（像素画专用，最近邻）。 */
+  scale?: number;
 }
 
+/** 网关 / 深链接用的选项形状（`mapId` 只为兼容旧参数，单项目单地图后不再使用）。 */
 export interface ExportOptions {
-  scale?: number;
+  mapId?: string;
   formats?: ExportFormatOptions;
 }
 
 export interface ExportedFile {
-  /** 相对 `export/<mapId>/` 的路径。 */
+  /** 相对导出目录的路径。 */
   path: string;
   bytes: number;
-  kind: "image" | "json" | "tileset-image" | "tileset-json";
+  kind: string;
 }
 
 export interface ExportManifest {
   files: ExportedFile[];
   warnings: string[];
+  bounds: PlanBounds;
   mapPng?: string;
   mapJson?: string;
-  tiledMap?: string;
-  bounds: { originX: number; originY: number; width: number; height: number };
 }
 
-export const OWN_JSON_FORMAT = "dsh-gem-map@1";
-
-/** 文件名安全化：图层 / 图集名字直接进路径会踩到 `/`、`:` 与超长名。 */
+/** 文件名安全化：名字直接进目录会踩到 `/`、`:` 与超长名。 */
 export function safeFileName(input: string, fallback = "map"): string {
   const cleaned = (input ?? "")
     .replace(/[^\p{L}\p{N}_-]+/gu, "_")
@@ -75,317 +71,102 @@ export function safeFileName(input: string, fallback = "map"): string {
   return cleaned === "" ? fallback : cleaned;
 }
 
-// ── gid 映射 ──────────────────────────────────────────────────────────────
-
-export interface GidMap {
-  /** 图集 id → firstgid。 */
-  firstgid: Map<string, number>;
-  /** 全局图块序号 → gid。 */
-  gidOfIndex: Map<number, number>;
-  total: number;
-}
-
-export function buildGidMap(tilesets: readonly MapTileset[]): GidMap {
-  const firstgid = new Map<string, number>();
-  const gidOfIndex = new Map<number, number>();
-  let next = 1;
-  for (const tileset of tilesets) {
-    firstgid.set(tileset.id, next);
-    for (let position = 0; position < tileset.tiles.length; position++) gidOfIndex.set(next + position, next + position);
-    next += tileset.tiles.length;
-  }
-  return { firstgid, gidOfIndex, total: next - 1 };
-}
-
-// ── 自有 JSON ─────────────────────────────────────────────────────────────
-
-export function buildOwnJson(context: RenderContext, doc: MapDoc, project: { id: string; name: string }): Record<string, unknown> {
+/**
+ * `map.json`。
+ *
+ * ⚠️ `tilesets[].image` 是**相对项目目录**的路径（`tilesets/<id>.png`）：导出目录里
+ * 只有三个文件，图集原图不拷贝（见文件头）。要用 `legend` 自己拼图的调用方，得回项目
+ * 目录取这些图 —— 这条写在这里，免得读 `map.json` 的人以为它是相对导出目录的。
+ *
+ * `project` 按契约留在签名上（旧版写过 `project` 段），`dsh-gem-map@2` 的形态里不带它：
+ * 一张地图就是一个项目，再套一层只是重复。
+ */
+export function buildOwnJson(context: RenderContext, doc: MapDoc, project: { id: string; name: string }): object {
+  void project;
   return {
     format: OWN_JSON_FORMAT,
-    project: { id: project.id, name: project.name },
-    map: {
-      id: doc.id,
-      name: doc.name,
-      cols: doc.cols,
-      rows: doc.rows,
-      variantSeed: doc.variantSeed,
-      randomVariants: doc.randomVariants
-    },
-    grid: context.grid,
+    grid: { tileWidth: context.grid.tileWidth, tileHeight: context.grid.tileHeight, wrap: context.grid.wrap },
+    cols: doc.cols,
+    rows: doc.rows,
     tilesets: context.tilesets.map((tileset) => ({
       id: tileset.id,
       name: tileset.name,
-      image: `${safeFileName(tileset.name, tileset.id)}.png`,
-      imageWidth: tileset.imageWidth,
-      imageHeight: tileset.imageHeight,
-      slice: tileset.slice,
-      tileCount: tileset.tiles.length,
-      tiles: tileset.tiles.map((tile) => ({
-        id: tile.id,
-        rect: tile.rect,
-        name: tile.name,
-        familyId: tile.familyId ?? null,
-        mask: typeof tile.mask === "number" ? tile.mask : null,
-        weight: typeof tile.weight === "number" ? tile.weight : null,
-        anchorX: typeof tile.anchorX === "number" ? tile.anchorX : null,
-        anchorY: typeof tile.anchorY === "number" ? tile.anchorY : null
-      }))
+      image: tileset.file,
+      cell: { width: tileset.cell.width, height: tileset.cell.height },
+      shape: tileset.shape,
+      variants: tileset.variants,
+      tileCount: tileset.tiles.length
     })),
-    families: context.families.map((family) => ({
-      id: family.id,
-      name: (family as MapFamily).name ?? family.id,
-      autotile: family.autotile,
-      priority: family.priority,
-      edgeMode: family.edgeMode ?? "same"
-    })),
-    layers: doc.layers.map((layer) => ({
-      id: layer.id,
-      name: layer.name,
-      kind: layer.kind,
-      heightOffset: layer.heightOffset,
-      opacity: layer.opacity,
-      visible: layer.visible,
-      locked: layer.locked,
-      baseFamilyId: layer.baseFamilyId ?? null,
-      /** 存的是**语义值**（全局图块序号），不是解析后的贴图 —— 自己格式要能继续改。 */
-      data: [...(doc.data[layer.id] ?? [])]
-    })),
-    legend: flatTiles(context.tilesets).map((tile) => ({
-      index: tile.index,
-      tilesetId: tile.tilesetId,
-      id: tile.id,
-      rect: tile.rect,
-      name: tile.name,
-      familyId: tile.familyId ?? null,
-      mask: typeof tile.mask === "number" ? tile.mask : null
-    }))
+    legend: flatTiles(context.tilesets).map((flat) => ({ index: flat.index, tilesetId: flat.tilesetId, rect: flat.tile.rect })),
+    layers: doc.layers.map((layer) => ({ name: layer.name, data: [...(doc.data[layer.id] ?? [])] }))
   };
 }
-
-// ── Tiled ─────────────────────────────────────────────────────────────────
-
-export function buildTiledTileset(tileset: MapTileset, families: readonly MapFamily[], firstgid: number): Record<string, unknown> {
-  const wangsets: Array<Record<string, unknown>> = [];
-  const { plans } = buildFamilyPlans(
-    families,
-    tileset.tiles.map((tile) => ({ id: tile.id, familyId: tile.familyId, mask: tile.mask, weight: tile.weight }))
-  );
-  for (const family of families) {
-    const plan = plans.get(family.id);
-    if (plan === undefined || plan.scheme === "single" || plan.byMask.size === 0) continue;
-    const type = plan.scheme === "blob47" ? "mixed" : "edge";
-    const wangtiles: Array<{ tileid: number; wangid: number[] }> = [];
-    tileset.tiles.forEach((tile, position) => {
-      if (tile.familyId !== family.id) return;
-      const mask = maskForScheme(plan.scheme, typeof tile.mask === "number" ? tile.mask : 0);
-      const wangid = plan.scheme === "blob47"
-        ? [mask & 1 ? 1 : 0, mask & 2 ? 1 : 0, mask & 4 ? 1 : 0, mask & 8 ? 1 : 0, mask & 16 ? 1 : 0, mask & 32 ? 1 : 0, mask & 64 ? 1 : 0, mask & 128 ? 1 : 0]
-        : [mask & 1 ? 1 : 0, 0, mask & 2 ? 1 : 0, 0, mask & 4 ? 1 : 0, 0, mask & 8 ? 1 : 0, 0];
-      wangtiles.push({ tileid: position, wangid });
-    });
-    if (wangtiles.length === 0) continue;
-    wangsets.push({
-      name: family.name ?? family.id,
-      type,
-      tile: -1,
-      colors: [{ color: family.color ?? "#f00000", name: family.name ?? family.id, probability: 1, tile: -1 }],
-      wangtiles
-    });
-  }
-  const json: Record<string, unknown> = {
-    type: "tileset",
-    version: "1.10",
-    tiledversion: "1.10.2",
-    name: safeFileName(tileset.name, tileset.id),
-    image: `${safeFileName(tileset.name, tileset.id)}.png`,
-    imagewidth: tileset.imageWidth,
-    imageheight: tileset.imageHeight,
-    tilewidth: tileset.slice.tileWidth,
-    tileheight: tileset.slice.tileHeight,
-    tilecount: tileset.tiles.length,
-    columns: Math.max(1, Math.round(tileset.imageWidth / (tileset.slice.tileWidth + tileset.slice.spacingX))),
-    margin: 0,
-    spacing: tileset.slice.spacingX,
-    firstgid
-  };
-  const withMeta = tileset.tiles
-    .map((tile, position) => ({ tile, position }))
-    .filter(({ tile }) => tile.familyId !== undefined);
-  if (tileset.slice.mode === "rects") {
-    // 非均匀图集必须逐块给矩形（Tiled 的 per-tile x/y/width/height）
-    json.tiles = tileset.tiles.map((tile) => ({
-      id: tileset.tiles.indexOf(tile),
-      x: tile.rect.x,
-      y: tile.rect.y,
-      width: tile.rect.width,
-      height: tile.rect.height,
-      ...(tile.familyId === undefined
-        ? {}
-        : {
-            properties: [
-              { name: "family", type: "string", value: tile.familyId },
-              ...(typeof tile.mask === "number" ? [{ name: "mask", type: "int", value: tile.mask }] : [])
-            ]
-          })
-    }));
-  } else if (withMeta.length > 0) {
-    json.tiles = withMeta.map(({ tile, position }) => ({
-      id: position,
-      properties: [
-        { name: "family", type: "string", value: tile.familyId as string },
-        ...(typeof tile.mask === "number" ? [{ name: "mask", type: "int", value: tile.mask }] : [])
-      ]
-    }));
-  }
-  if (wangsets.length > 0) json.wangsets = wangsets;
-  return json;
-}
-
-/**
- * 逐格算出 Tiled 的 gid（自动过渡已解析）。
- *
- * 只走 `buildPlan` 这一条路：计划是唯一渲染真源，gid 从它的 op 反查
- * （op 自带格号），不再另写一套「格子 → 贴图」逻辑 —— 那样必然分叉成两份口径。
- */
-function layerGids(context: RenderContext, doc: MapDoc, layerIndex: number, gids: GidMap): number[] {
-  const data = new Array(doc.cols * doc.rows).fill(0);
-  const plan = buildPlan(context, doc, { includeLegend: false });
-  for (const chunk of plan.chunks) {
-    for (const op of chunk.ops) {
-      if (op.l !== layerIndex) continue;
-      if (op.r < 0 || op.c < 0 || op.r >= doc.rows || op.c >= doc.cols) continue;
-      const gid = gids.gidOfIndex.get(op.t);
-      if (gid === undefined) continue;
-      data[op.r * doc.cols + op.c] = gid;
-    }
-  }
-  return data;
-}
-
-/**
- * `.tmj`。
- *
- * `layers[].data` 写的是**解析后的 gid**（视觉真相）；层高同时写 Tiled 的
- * `offsety` 和一条 `properties.heightOffset` —— 只写 properties 的话 Tiled 里
- * 看不出层高，只写 offsety 的话语义信息丢了。
- */
-export function buildTiledMap(context: RenderContext, doc: MapDoc, project: { name: string }, gids: GidMap): Record<string, unknown> {
-  const layers = doc.layers.map((layer, index) => ({
-    type: "tilelayer",
-    id: index + 1,
-    name: layer.name,
-    width: doc.cols,
-    height: doc.rows,
-    x: 0,
-    y: 0,
-    visible: layer.visible,
-    opacity: layer.opacity,
-    offsetx: 0,
-    offsety: heightOffsetPixels(context.grid, layer.heightOffset),
-    data: layerGids(context, doc, index, gids),
-    properties: [{ name: "heightOffset", type: "float", value: layer.heightOffset }]
-  }));
-  return {
-    type: "map",
-    version: "1.10",
-    tiledversion: "1.10.2",
-    orientation: context.grid.kind === "iso2to1" ? "isometric" : "orthogonal",
-    renderorder: "right-down",
-    infinite: false,
-    width: doc.cols,
-    height: doc.rows,
-    tilewidth: context.grid.tileWidth,
-    tileheight: context.grid.tileHeight,
-    nextlayerid: doc.layers.length + 1,
-    nextobjectid: 1,
-    tilesets: context.tilesets.map((tileset) => ({
-      firstgid: gids.firstgid.get(tileset.id) ?? 1,
-      source: `${safeFileName(tileset.name, tileset.id)}.tsj`
-    })),
-    layers,
-    properties: [
-      { name: "dshProject", type: "string", value: project.name },
-      { name: "dshMapId", type: "string", value: doc.id },
-      { name: "dshVariantSeed", type: "int", value: doc.variantSeed }
-    ]
-  };
-}
-
-// ── 落盘 ──────────────────────────────────────────────────────────────────
 
 export interface ExportInput {
-  dir: string;
-  context: RenderContext;
-  doc: MapDoc;
   project: { id: string; name: string };
-  families: readonly MapFamily[];
-  /** tilesetId → 已解码图集（调用方解一次）。 */
-  lookup: Map<string, Bitmap>;
-  /** 图集文件的绝对路径（复制进导出目录用）。 */
-  tilesetFiles?: Map<string, string>;
-  options?: ExportOptions;
+  doc: MapDoc;
+  context: RenderContext;
+  /** 导出目录（`<项目目录>/export/<安全名>/`）。 */
+  dir: string;
+  formats?: ExportFormatOptions;
+  /** 已经解码好的图集（tilesetId → 位图）。不给就按项目目录自己解一遍。 */
+  lookup?: Map<string, Bitmap>;
 }
 
+/** 解出导出用的图集位图。解不出来的留给 `rasterize` 报警（不能静默缺图）。 */
+async function decodeTilesets(projectId: string, context: RenderContext): Promise<Map<string, Bitmap>> {
+  const out = new Map<string, Bitmap>();
+  for (const tileset of context.tilesets) {
+    const file = mapAssetPath(projectId, tileset.file);
+    const bitmap = await decodeFile(file).catch(() => undefined);
+    if (bitmap !== undefined) out.set(tileset.id, bitmap);
+  }
+  return out;
+}
+
+/**
+ * 导出：`map.png` + `map.json` + `manifest.json`（后两者可关）。
+ *
+ * 会抛错的地方只有一处：图超过 `MAX_RENDER_PIXELS`（那是明确的用户错误，不是坏数据）。
+ * 其余问题（图集解不出来、地图是空的、缺掩码）一律进 `warnings` 并继续导出 ——
+ * 导出失败时用户至少还能拿到 `map.json` 里的数据。
+ */
 export async function exportMap(input: ExportInput): Promise<ExportManifest> {
-  const { dir, context, doc, lookup } = input;
-  const scale = Math.max(1, Math.round(input.options?.scale ?? 1));
-  const formats: ExportFormatOptions = input.options?.formats ?? { pngMerged: true, pngLayers: true, json: true, tiled: true };
+  const { dir, context, doc } = input;
+  const formats = input.formats ?? {};
+  const wantPng = formats.png !== false;
+  const wantJson = formats.json !== false;
+  const scale = Math.max(1, Math.round(formats.scale ?? 1));
   const files: ExportedFile[] = [];
   const warnings: string[] = [];
-  const manifest: ExportManifest = { files, warnings, bounds: { originX: 0, originY: 0, width: 0, height: 0 } };
+  const manifest: ExportManifest = { files, warnings, bounds: planBounds(context, doc) };
   await mkdir(dir, { recursive: true });
 
-  const write = async (path: string, content: Buffer | string, kind: ExportedFile["kind"]) => {
+  const write = async (path: string, content: Buffer | string, kind: string): Promise<void> => {
     const data = typeof content === "string" ? Buffer.from(content, "utf8") : content;
     await writeFile(join(dir, path), data);
     files.push({ path, bytes: data.length, kind });
   };
-  const writeJson = (path: string, value: unknown, kind: ExportedFile["kind"]) => write(path, `${JSON.stringify(value, null, 2)}\n`, kind);
+  const writeJson = (path: string, value: unknown): Promise<void> => write(path, `${JSON.stringify(value, null, 2)}\n`, "json");
 
-  if (formats.pngMerged === true || formats.pngLayers === true) {
-    const merged = formats.pngMerged === true ? rasterize(context, doc, lookup, { scale }) : undefined;
-    if (merged !== undefined) {
-      manifest.bounds = merged.bounds;
-      warnings.push(...merged.warnings);
-      if (merged.drawn === 0) warnings.push("这张地图所有图层都是空的，导出的 PNG 是全透明的。");
-      await write("map.png", encodePng(merged.bitmap.rgba, merged.bitmap.width, merged.bitmap.height), "image");
-      manifest.mapPng = "map.png";
-    }
-    if (formats.pngLayers === true) {
-      for (let index = 0; index < doc.layers.length; index++) {
-        const layer = doc.layers[index];
-        if (layer.visible !== true) continue;
-        const raster = rasterize(context, doc, lookup, { scale, layerIds: [layer.id] });
-        const path = `layer-${index + 1}-${safeFileName(layer.name, layer.id)}.png`;
-        await write(path, encodePng(raster.bitmap.rgba, raster.bitmap.width, raster.bitmap.height), "image");
-        if (merged === undefined) manifest.bounds = raster.bounds;
-      }
-    }
+  if (wantPng) {
+    const lookup = input.lookup ?? (await decodeTilesets(input.project.id, context));
+    const raster = rasterize(context, doc, lookup, { scale });
+    manifest.bounds = raster.bounds;
+    warnings.push(...raster.warnings);
+    if (raster.drawn === 0) warnings.push("这张地图所有图层都是空的，导出的 PNG 是全透明的。");
+    await write("map.png", bitmapToPng(raster.bitmap), "image");
+    manifest.mapPng = "map.png";
   }
 
-  if (formats.json === true) {
-    await writeJson("map.json", buildOwnJson(context, doc, input.project), "json");
+  if (wantJson) {
+    await writeJson("map.json", buildOwnJson(context, doc, input.project));
     manifest.mapJson = "map.json";
   }
 
-  if (formats.tiled === true) {
-    const gids = buildGidMap(context.tilesets);
-    for (const tileset of context.tilesets) {
-      const base = safeFileName(tileset.name, tileset.id);
-      await writeJson(`${base}.tsj`, buildTiledTileset(tileset, input.families, gids.firstgid.get(tileset.id) ?? 1), "tileset-json");
-      const source = input.tilesetFiles?.get(tileset.id);
-      if (source !== undefined) {
-        await copyFile(source, join(dir, `${base}.png`));
-        files.push({ path: `${base}.png`, bytes: tileset.imageWidth * tileset.imageHeight, kind: "tileset-image" });
-      } else {
-        warnings.push(`图集「${tileset.name}」的源文件找不到，导出目录里没有它的 PNG（Tiled 会裂图）。`);
-      }
-    }
-    await writeJson("map.tmj", buildTiledMap(context, doc, input.project, gids), "json");
-    manifest.tiledMap = "map.tmj";
-  }
-
-  // 清单自己也要落盘：验收包（`game_material_review`）与「在文件夹中显示」都读它
-  await writeJson("manifest.json", { ...manifest, files: [...manifest.files, { path: "manifest.json", bytes: 0, kind: "json" }] }, "json");
+  // 清单自己也要落盘：验收包（`game_material_review`）与「在文件夹中显示」都读它。
+  // 盘上的 files 里补一条 manifest.json（bytes 0 —— 序列化那一刻还不知道自己的大小）；
+  // `write` 随后往 `files` 里 push 的是带真实字节数的那条，返回值与旧实现一致地含它。
+  await writeJson("manifest.json", { ...manifest, files: [...manifest.files, { path: "manifest.json", bytes: 0, kind: "json" }] });
   return manifest;
 }

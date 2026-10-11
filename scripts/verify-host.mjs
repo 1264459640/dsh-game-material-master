@@ -65,8 +65,8 @@ async function main() {
 
   const invocations = captured.manifest?.invocations ?? [];
   // 方法数是**清单完整性**的锚点：新增 / 删除远程方法时必须同步改这个数字。
-  // 它拦住的是「加了方法却忘了写进 METHODS」这类静默不一致。
-  check("manifest 方法数为 132（新增远程方法时同步改这个数）", invocations.length === 132, `实际 ${invocations.length}`);
+  // 模块六重做时删了 4 个（族 / 多地图）加了 2 个（一键生成 / 内置素材），132 → 130。
+  check("manifest 方法数为 130（新增远程方法时同步改这个数）", invocations.length === 130, `实际 ${invocations.length}`);
   const ids = new Set(invocations.map((i) => i.id));
   check("方法 id 唯一", ids.size === invocations.length);
   check("所有方法都声明在 gameStudio 服务下", invocations.every((i) => i.service === "gameStudio" && i.namespace === "gameStudio"));

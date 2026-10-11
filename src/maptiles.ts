@@ -1,19 +1,38 @@
 /**
  * 地图编辑器（模块六）的**图集（tileset）模型与切分**。
  *
- * 一个项目可以导入多张图集；每张图集按「网格切分」或「显式矩形列表」切成若干
- * 图块；每个图块带元数据（所属族、掩码、权重、锚点、标签）。
+ * 一个项目可以导入多张图集；每张图集按**自动识别出来的形态**切成图块：
+ *
+ *   · `plain`    正方形网格：按 `cell` 行优先逐格切；`animRows` 时**同一列的每一行
+ *                是同一块的一帧**（地形动画，AsLib 的「逐行动画」）
+ *   · `corner16` 整格自动连接：切法与 plain 完全相同，只是每块会挂一个 4 位掩码
+ *   · `a2quad`   A2 拼块：一格的四个象限从素材里各取一个小格（详见 `buildTiles`）
  *
  * ## 两条铁律
  *
- * 1. **图块 id 由矩形派生**（`t{x}_{y}`），不是数组下标。重新切分（改间距、改格
- *    尺寸）之后，同一个矩形的元数据仍然挂在同一个 id 上；用下标的话会静默漂移。
- * 2. **单元格里存的是「全局图块序号」（1-based，0 = 空）**，不是图块 id —— 导出
- *    Tiled 的 gid、渲染计划、chunk 增量都靠它。序号由 `flatTiles()` 唯一决定，
- *    顺序即「图集顺序 → 图集内切分顺序（行优先）」。
+ * 1. **图块 id 由矩形派生**（`t{x}_{y}`），不是数组下标。重新切分（改格尺寸、改形态）
+ *    之后，同一个矩形的元数据仍然挂在同一个 id 上；用下标的话会静默漂移。
+ * 2. **单元格里存的是「全局图块序号」（1-based，0 = 空）**，不是图块 id ——
+ *    绘制计划、脏 chunk、`map.json` 都靠它。序号由 `flatTiles()` 唯一决定，
+ *    顺序 = 图集顺序 → `tiles` 数组顺序，别的地方不许按下标自己算。
+ *
+ * ## A2 的真实几何（照 AsLib，`AsMap.hpp` 的 `drawMapBranch` / `map20n_Number`）
+ *
+ *   一张 A2 图：小格边长 `S = imageHeight / 10`（10 行小格），横向 `imageWidth % S === 0`。
+ *   一个「逻辑块」（= 屏幕上一格）= 2×2 个小格。于是：
+ *     · **块行号 0..4 = 形状号**（5 种），**块列号 = 变体号**（素材里横着排了几种）
+ *     · 逻辑块尺寸 = 2S（32px 的块 = 16px 的小格），逻辑块列数 = `imageWidth / (2S)`
+ *     · `detectLayout(64, 160)` → S=16、块 32×32、2 变体 × 5 形状
+ *       （AsLib 要求「小格列数（= NumX）是偶数」，否则变体凑不成对）
+ *   小格的行列号与小格内的象限是一一对应的：
+ *     `smallRow = 2 * shape + (0 上 / 1 下)`，`smallCol = 2 * variant + (0 左 / 1 右)`
+ *   这跟 AsLib 的 chip 下标 `NumX * 2 * shape + tm_id(+1)(+NumX)` 逐项相等 ——
+ *   我们把 `tiles` 按小格行优先展开，于是 **1-based 序号 − 1 = AsLib 的 chip 下标**。
+ *   渲染端（`maprender.ts`）按这个对应关系挑象限块，别自己另立一套顺序。
  */
 
 import { pngSize, type Bitmap } from "./bitmap.js";
+import { A2_SHAPES } from "./mapauto.js";
 
 export interface MapRect {
   x: number;
@@ -22,47 +41,40 @@ export interface MapRect {
   height: number;
 }
 
+/** 图集的切分形态。 */
+export type TilesetShape = "plain" | "a2quad" | "corner16";
+
 export interface MapTile {
   /** 由矩形派生的稳定 id（`t{x}_{y}`）。 */
   id: string;
   rect: MapRect;
   name: string;
-  familyId?: string;
-  /** 族内掩码（`blob47` 用 8 位、`corner16` 用 4 位）。 */
+  /** 仅 corner16：该块对应的掩码（导入 / 手动切换形态时由宿主按位序一次性算好）。 */
   mask?: number;
-  /** 同掩码多张 = 变体，按权重挑。 */
-  weight?: number;
-  tags?: string[];
-  solid?: boolean;
-  /** 贴图锚点（归一化，默认底边中点），比一格大的贴图靠它对齐。 */
-  anchorX?: number;
-  anchorY?: number;
-}
-
-export interface MapSlice {
-  mode: "grid" | "rects";
-  offsetX: number;
-  offsetY: number;
-  spacingX: number;
-  spacingY: number;
-  tileWidth: number;
-  tileHeight: number;
-  /** `mode = "rects"` 时使用。 */
-  rects?: MapRect[];
+  /** 仅 a2quad：该小格在素材里的形状号 0..4、变体号（>=0）、动画帧号（>=0）。 */
+  shape?: number;
+  variant?: number;
+  frame?: number;
 }
 
 export interface MapTileset {
   id: string;
   name: string;
-  /** 相对项目目录的路径（`tilesets/<id>.<ext>`）。 */
+  /** 相对项目目录的路径（`tilesets/<id>.png`）。 */
   file: string;
   imageWidth: number;
   imageHeight: number;
-  slice: MapSlice;
+  /** 逻辑块尺寸（A2 下 = 2×2 个小格合起来的那个块）。 */
+  cell: { width: number; height: number };
+  shape: TilesetShape;
+  /** 普通形态 + 逐行动画：每一行是一帧（同列同块）。 */
+  animRows: boolean;
+  /** a2quad：变体数；普通：动画帧数（`animRows` 时 = 行数），否则 1。 */
+  variants: number;
   tiles: MapTile[];
 }
 
-export const COMMON_TILE_SIZES = [8, 16, 24, 32, 48, 64, 96, 128] as const;
+export const COMMON_TILE_SIZES = [8, 16, 24, 32, 48, 64] as const;
 
 export function tileIdFor(rect: MapRect): string {
   return `t${rect.x}_${rect.y}`;
@@ -72,207 +84,213 @@ export function rectKey(rect: MapRect): string {
   return `${rect.x},${rect.y},${rect.width},${rect.height}`;
 }
 
-export function normalizeSlice(input: unknown, imageWidth: number, imageHeight: number): MapSlice {
-  const raw = (input ?? {}) as Record<string, unknown>;
-  const int = (value: unknown, fallback: number, min = 0): number => {
-    const n = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
-    return Number.isFinite(n) ? Math.max(min, Math.round(n)) : fallback;
-  };
-  const mode = raw.mode === "rects" ? "rects" : "grid";
-  const slice: MapSlice = {
-    mode,
-    offsetX: int(raw.offsetX, 0),
-    offsetY: int(raw.offsetY, 0),
-    spacingX: int(raw.spacingX, 0),
-    spacingY: int(raw.spacingY, 0),
-    tileWidth: int(raw.tileWidth, Math.min(32, imageWidth)),
-    tileHeight: int(raw.tileHeight, Math.min(32, imageHeight))
-  };
-  if (mode === "rects") {
-    slice.rects = Array.isArray(raw.rects)
-      ? (raw.rects as unknown[])
-          .map((piece) => {
-            const r = (piece ?? {}) as Record<string, unknown>;
-            return {
-              x: int(r.x, 0),
-              y: int(r.y, 0),
-              width: int(r.width, 0),
-              height: int(r.height, 0)
-            };
-          })
-          .filter((rect) => rect.width > 0 && rect.height > 0)
-      : [];
-  }
-  return slice;
-}
-
-export interface SliceResult {
-  rects: MapRect[];
+export interface TileLayoutGuess {
+  cell: { width: number; height: number };
+  shape: TilesetShape;
+  /** plain：列数；a2quad：**逻辑块**列数（= 变体数）。 */
   cols: number;
+  /** plain：行数；a2quad：**逻辑块**行数（≤ 5 = 形状数）。 */
   rows: number;
-  /** 网格切分时右侧 / 底部剩下的像素（>0 说明尺寸不是整数倍）。 */
-  remainderX: number;
-  remainderY: number;
-  warnings: string[];
+  /** `buildTiles` 实际会切出的图块数（a2quad 下是**小格**数 = 4 × cols × rows）。 */
+  count: number;
+  /** 给人看的中文。 */
+  reason: string;
 }
 
 /**
- * 切分。**余数不静默吞掉**：图集宽 130、格宽 32 时右边剩 2 像素，
- * 界面要明确写出来，否则用户会以为「少了最后一列」是程序坏了。
+ * plain 兜底的试算顺序：**先 ≤32 的降序**（32 → 24 → 16 → 8），再 >32 的升序（48 → 64）。
+ *
+ * 为什么不直接取「能整除的最大尺寸」：像素画工作流的默认口径就是 32px，而「最大」
+ * 会把 2×2 个 32px 道具并成一个 64px 格 —— 那是**静默改掉用户素材的语义**（一块里
+ * 装四个道具），比报错难查得多。48 / 64 只在前面的都试不出来时才轮到。
+ *
+ * 举例（都是 32px 网格）：`256×192` = 8 列 × 6 行 —— 若取最大会得到 64px / 4×3；
+ * `96×96` = 3×3 —— 若取最大会得到 48px。注意 `256×160`（8×5）**轮不到这一分支**：
+ * 它会先命中上面的 A2 判据（高 = 5 × 32、宽能被 32 整除），那正是内置道具图走
+ * `importSampleTileset` 的 `known` 通道显式声明形态、不经自动识别的原因。
  */
-export function sliceRects(slice: MapSlice, imageWidth: number, imageHeight: number): SliceResult {
-  const warnings: string[] = [];
-  if (slice.tileWidth < 1 || slice.tileHeight < 1) {
-    return { rects: [], cols: 0, rows: 0, remainderX: 0, remainderY: 0, warnings: ["瓦片尺寸必须是正整数。"] };
-  }
-  if (slice.mode === "rects") {
-    const rects = (slice.rects ?? []).filter(
-      (rect) => rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= imageWidth && rect.y + rect.height <= imageHeight
-    );
-    if (rects.length !== (slice.rects ?? []).length) {
-      warnings.push(`有 ${(slice.rects ?? []).length - rects.length} 个矩形超出图集范围，已忽略。`);
-    }
-    return { rects, cols: 0, rows: 0, remainderX: 0, remainderY: 0, warnings };
-  }
-  const usableWidth = imageWidth - slice.offsetX;
-  const usableHeight = imageHeight - slice.offsetY;
-  const stepX = slice.tileWidth + slice.spacingX;
-  const stepY = slice.tileHeight + slice.spacingY;
-  const cols = Math.floor((usableWidth + slice.spacingX) / stepX);
-  const rows = Math.floor((usableHeight + slice.spacingY) / stepY);
-  if (cols <= 0 || rows <= 0) {
+const PLAIN_PREFERRED_SIZES: readonly number[] = [
+  ...COMMON_TILE_SIZES.filter((size) => size <= 32).reverse(),
+  ...COMMON_TILE_SIZES.filter((size) => size > 32)
+];
+
+/**
+ * 自动识别切分方式。
+ *
+ * **先试 A2**（`imageHeight === 5 × 块边长` 且 `imageWidth` 能被块边长整除，从小到大），
+ * 免得 64×160 的草地被当成普通网格；再按 `PLAIN_PREFERRED_SIZES` 找能整除两者的
+ * 正方形网格；两个都不成立时退回 32×32，并在 reason 里说清为什么要裁像素。
+ *
+ * ⚠️ **尺寸判据天生有二义性，这里不是 bug**：`256×160` 既可能是「8 变体 × 5 形状的
+ * 拼块图」，也可能是「8×5 的 32px 普通网格」（AsLib 靠清单文件里的 `type` 列区分，
+ * 光看尺寸分不开）。这里的取舍是**优先给拼块结论**；内置素材那条路不吃这个判据
+ * （`mapgen.importSampleTileset` 带显式的 `shape` / `cell` / `animRows`），
+ * 用户自己导入的图靠界面上「这块素材怎么用」的下拉改（`saveMapTileset`）。
+ */
+export function detectLayout(imageWidth: number, imageHeight: number): TileLayoutGuess {
+  for (const size of COMMON_TILE_SIZES) {
+    if (imageHeight !== size * A2_SHAPES || imageWidth % size !== 0) continue;
     return {
-      rects: [],
-      cols: 0,
-      rows: 0,
-      remainderX: Math.max(0, usableWidth),
-      remainderY: Math.max(0, usableHeight),
-      warnings: [`按 ${slice.tileWidth}×${slice.tileHeight} 切不出任何一块：图集是 ${imageWidth}×${imageHeight}，偏移 ${slice.offsetX},${slice.offsetY}。`]
+      ...layoutFor("a2quad", { width: size, height: size }, imageWidth, imageHeight),
+      reason: `识别到：拼块自动连接（${imageWidth / size} 种变体 × ${A2_SHAPES} 种形状）`
     };
   }
-  const rects: MapRect[] = [];
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      rects.push({
-        x: slice.offsetX + col * stepX,
-        y: slice.offsetY + row * stepY,
-        width: slice.tileWidth,
-        height: slice.tileHeight
-      });
-    }
+  for (const size of PLAIN_PREFERRED_SIZES) {
+    if (imageWidth < size || imageHeight < size) continue;
+    if (imageWidth % size !== 0 || imageHeight % size !== 0) continue;
+    return {
+      ...layoutFor("plain", { width: size, height: size }, imageWidth, imageHeight),
+      reason: `识别到：正方形网格 ${size}×${size}（${imageWidth / size} 列 × ${imageHeight / size} 行）`
+    };
   }
-  const remainderX = usableWidth - (cols * stepX - slice.spacingX);
-  const remainderY = usableHeight - (rows * stepY - slice.spacingY);
-  if (remainderX > 0) warnings.push(`右侧还剩 ${remainderX} 像素不足一格（已裁掉）。`);
-  if (remainderY > 0) warnings.push(`底部还剩 ${remainderY} 像素不足一格（已裁掉）。`);
-  return { rects, cols, rows, remainderX, remainderY, warnings };
+  return {
+    ...layoutFor("plain", { width: 32, height: 32 }, imageWidth, imageHeight),
+    reason: `没找到能整除 ${imageWidth}×${imageHeight} 的常见尺寸，先按 32×32 切：右侧 / 底部不足一格的部分会被裁掉。`
+  };
 }
 
-/** 常见网格建议（尺寸能整除图集才会出现）。 */
-export function suggestGrids(imageWidth: number, imageHeight: number): Array<{ tileWidth: number; tileHeight: number; cols: number; rows: number; label: string }> {
-  const out: Array<{ tileWidth: number; tileHeight: number; cols: number; rows: number; label: string }> = [];
-  for (const size of COMMON_TILE_SIZES) {
-    if (imageWidth % size !== 0 || imageHeight % size !== 0) continue;
-    out.push({ tileWidth: size, tileHeight: size, cols: imageWidth / size, rows: imageHeight / size, label: `${size}×${size} 正方形` });
+/**
+ * 按指定的形态与格尺寸算切分结果（用户在图集设置里改形态 / 格尺寸时走这条）。
+ *
+ * 只取**完整的块**：横向 / 纵向不足一个块的像素被裁掉（`Math.floor`），
+ * 因为半个块既挑不出象限也对不上邻接。A2 还要求格尺寸是偶数（小格 = 块 / 2）。
+ */
+export function layoutFor(
+  shape: TilesetShape,
+  cell: { width: number; height: number },
+  imageWidth: number,
+  imageHeight: number
+): TileLayoutGuess {
+  if (!Number.isInteger(cell.width) || !Number.isInteger(cell.height) || cell.width < 1 || cell.height < 1) {
+    throw new Error(`图块尺寸必须是正整数，收到 ${cell.width}×${cell.height}`);
   }
-  for (const size of COMMON_TILE_SIZES) {
-    const height = size / 2;
-    if (!Number.isInteger(height)) continue;
-    if (imageWidth % size !== 0 || imageHeight % height !== 0) continue;
-    out.push({ tileWidth: size, tileHeight: height, cols: imageWidth / size, rows: imageHeight / height, label: `${size}×${height} 2:1 等距` });
+  if (shape === "a2quad") {
+    if (cell.width % 2 !== 0 || cell.height % 2 !== 0) {
+      throw new Error(`A2 拼块要求逻辑块尺寸是偶数（小格 = 逻辑块 / 2），收到 ${cell.width}×${cell.height}`);
+    }
+    const cols = Math.floor(imageWidth / cell.width);
+    // 形状只有 0..4：第 6 行以后永远选不到，切出来只会让序号表里多出用不上的块。
+    const rows = Math.min(A2_SHAPES, Math.floor(imageHeight / cell.height));
+    if (cols < 1 || rows < 1) {
+      return {
+        cell: { width: cell.width, height: cell.height },
+        shape,
+        cols: 0,
+        rows: 0,
+        count: 0,
+        reason: `素材 ${imageWidth}×${imageHeight} 比一个逻辑块 ${cell.width}×${cell.height} 还小，切不出图块。`
+      };
+    }
+    return {
+      cell: { width: cell.width, height: cell.height },
+      shape,
+      cols,
+      rows,
+      count: cols * 2 * rows * 2,
+      reason: `已设为：拼块自动连接（${cols} 种变体 × ${rows} 种形状）`
+    };
   }
-  return out;
+  const cols = Math.floor(imageWidth / cell.width);
+  const rows = Math.floor(imageHeight / cell.height);
+  if (cols < 1 || rows < 1) {
+    return {
+      cell: { width: cell.width, height: cell.height },
+      shape,
+      cols: 0,
+      rows: 0,
+      count: 0,
+      reason: `素材 ${imageWidth}×${imageHeight} 比一个图块 ${cell.width}×${cell.height} 还小，切不出图块。`
+    };
+  }
+  const count = cols * rows;
+  const reason = shape === "corner16"
+    ? `已设为：整格自动连接（${cell.width}×${cell.height} 切 ${cols} 列 × ${rows} 行，16 种邻接）`
+    : `已设为：正方形网格 ${cell.width}×${cell.height}（${cols} 列 × ${rows} 行）`;
+  return { cell: { width: cell.width, height: cell.height }, shape, cols, rows, count, reason };
 }
 
 /**
  * 按切分结果生成图块表，并**保留已有元数据**。
  *
- * 保留的判据是矩形（`tileIdFor`）；切分变化后仍存在的矩形继续带着族 / 掩码 /
- * 权重，消失的丢弃，新出现的给默认值。界面上的编辑不会被一次改格尺寸全抹掉。
- */
-export function buildTiles(slice: MapSlice, imageWidth: number, imageHeight: number, previous: readonly MapTile[] = []):
-  { tiles: MapTile[]; result: SliceResult } {
-  const result = sliceRects(slice, imageWidth, imageHeight);
-  const byId = new Map(previous.map((tile) => [tile.id, tile]));
-  const tiles: MapTile[] = result.rects.map((rect) => {
-    const id = tileIdFor(rect);
-    const old = byId.get(id);
-    return {
-      id,
-      rect,
-      name: old?.name ?? id,
-      familyId: old?.familyId,
-      mask: old?.mask,
-      weight: old?.weight,
-      tags: old?.tags,
-      solid: old?.solid,
-      anchorX: old?.anchorX,
-      anchorY: old?.anchorY
-    };
-  });
-  return { tiles, result };
-}
-
-/**
- * 元数据合并（`saveMapTileset` 用）：按 id 合并，不认识的 id 丢掉。
+ * 保留的判据是矩形派生的 id（`tileIdFor`）：改格尺寸后仍然存在的矩形**把旧 tile 上的
+ * 字段原样带过来** —— 界面上按位序配好的 16 张连接块、改过的名字不会因为一次
+ * 「改格尺寸」全被抹掉。消失的 id 丢弃，新出现的给默认值。
  *
- * ⚠️ 判据是「**键在不在**」而不是「值是不是 undefined」：界面只提交改过的字段时，
- * 缺的键必须保留原值。写成 `patch.familyId === undefined ? undefined : …` 的话，
- * 只改一个名称就会把整个族 / 掩码静默清空。
+ * ⚠️ 这里**不做白名单拷贝**，只覆盖由几何算出来的那几项（`id` / `rect` / `shape` /
+ * `variant` / `frame`）。白名单是旧实现踩过的坑：`MapTile` 以后加一个字段
+ * （锚点、通行、标签……），白名单没跟上就会在每次重切时静默清空 —— 而且只有
+ * 「改过那个字段、又改了格尺寸」的用户才会遇到。反过来，几何派生项**必须**覆盖：
+ * 沿用旧值会让块号与 rect 对不上，静默错位。
+ *
+ * 顺序（= `flatTiles` 的 1-based 序号顺序，改了就等同于换了一套语义值）：
+ *   · plain / corner16：行优先逐格；`animRows` 时 `frame` = 行号（同列共用一个逻辑块）
+ *   · a2quad：小格行优先；`shape` = 块行号、`variant` = 块列号、`frame` = 0
  */
-export function mergeTileMeta(current: readonly MapTile[], incoming: readonly MapTile[]): MapTile[] {
-  const out = current.map((tile) => ({ ...tile }));
-  const index = new Map(out.map((tile, position) => [tile.id, position]));
-  const has = (patch: MapTile, key: keyof MapTile) => Object.prototype.hasOwnProperty.call(patch, key);
-  for (const patch of incoming) {
-    const position = index.get(patch.id);
-    if (position === undefined) continue;
-    const base = out[position];
-    const next: MapTile = { ...base };
-    if (has(patch, "name") && typeof patch.name === "string" && patch.name !== "") next.name = patch.name;
-    if (has(patch, "familyId")) {
-      next.familyId = typeof patch.familyId === "string" && patch.familyId !== "" ? patch.familyId : undefined;
-    }
-    if (has(patch, "mask")) {
-      next.mask = typeof patch.mask === "number" && Number.isFinite(patch.mask) ? Math.round(patch.mask) : undefined;
-    }
-    if (has(patch, "weight")) {
-      next.weight = typeof patch.weight === "number" && Number.isFinite(patch.weight) ? patch.weight : undefined;
-    }
-    if (has(patch, "tags")) {
-      next.tags = Array.isArray(patch.tags) ? patch.tags.filter((tag): tag is string => typeof tag === "string") : undefined;
-    }
-    if (has(patch, "solid")) next.solid = typeof patch.solid === "boolean" ? patch.solid : undefined;
-    if (has(patch, "anchorX")) {
-      next.anchorX = typeof patch.anchorX === "number" && Number.isFinite(patch.anchorX) ? patch.anchorX : undefined;
-    }
-    if (has(patch, "anchorY")) {
-      next.anchorY = typeof patch.anchorY === "number" && Number.isFinite(patch.anchorY) ? patch.anchorY : undefined;
-    }
-    out[position] = next;
-  }
-  return out;
-}
+export function buildTiles(
+  input: {
+    shape: TilesetShape;
+    cell: { width: number; height: number };
+    imageWidth: number;
+    imageHeight: number;
+    animRows?: boolean;
+  },
+  previous: readonly MapTile[] = []
+): MapTile[] {
+  const { shape, cell, imageWidth, imageHeight } = input;
+  const previousById = new Map(previous.map((tile) => [tile.id, tile]));
+  const tileOf = (rect: MapRect, shapeAt: number | undefined, variant: number | undefined, frame: number): MapTile => {
+    const id = tileIdFor(rect);
+    const old = previousById.get(id);
+    // 先整份继承旧 tile（含以后新增的字段），再覆盖几何派生项。
+    const tile: MapTile = old === undefined ? { id, rect, name: id } : { ...old };
+    tile.id = id;
+    tile.rect = rect;
+    if (typeof tile.name !== "string" || tile.name === "") tile.name = id;
+    if (shapeAt === undefined) delete tile.shape;
+    else tile.shape = shapeAt;
+    if (variant === undefined) delete tile.variant;
+    else tile.variant = variant;
+    tile.frame = frame;
+    return tile;
+  };
 
-/** 同一张图集里两个图块指向同一个矩形（允许，但要提示）。 */
-export function duplicateRects(tilesets: readonly MapTileset[]): Array<{ tilesetId: string; rect: MapRect; tileIds: string[] }> {
-  const out: Array<{ tilesetId: string; rect: MapRect; tileIds: string[] }> = [];
-  for (const tileset of tilesets) {
-    const seen = new Map<string, string[]>();
-    for (const tile of tileset.tiles) {
-      const key = rectKey(tile.rect);
-      const list = seen.get(key);
-      if (list === undefined) seen.set(key, [tile.id]);
-      else list.push(tile.id);
+  if (shape === "a2quad") {
+    if (cell.width % 2 !== 0 || cell.height % 2 !== 0) {
+      throw new Error(`A2 拼块要求逻辑块尺寸是偶数（小格 = 逻辑块 / 2），收到 ${cell.width}×${cell.height}`);
     }
-    for (const [, ids] of seen) {
-      if (ids.length > 1) {
-        const first = tileset.tiles.find((tile) => tile.id === ids[0]);
-        if (first !== undefined) out.push({ tilesetId: tileset.id, rect: first.rect, tileIds: ids });
+    const smallWidth = cell.width / 2;
+    const smallHeight = cell.height / 2;
+    // 只切完整的逻辑块：横向留半块的话，那一列凑不齐左右象限（AsLib 要求小格列数是偶数）。
+    const smallCols = Math.floor(imageWidth / cell.width) * 2;
+    const smallRows = Math.min(A2_SHAPES, Math.floor(imageHeight / cell.height)) * 2;
+    const tiles: MapTile[] = [];
+    for (let smallRow = 0; smallRow < smallRows; smallRow++) {
+      for (let smallCol = 0; smallCol < smallCols; smallCol++) {
+        tiles.push(
+          tileOf(
+            { x: smallCol * smallWidth, y: smallRow * smallHeight, width: smallWidth, height: smallHeight },
+            Math.floor(smallRow / 2),
+            Math.floor(smallCol / 2),
+            0
+          )
+        );
       }
     }
+    return tiles;
   }
-  return out;
+
+  const cols = Math.floor(imageWidth / cell.width);
+  const rows = Math.floor(imageHeight / cell.height);
+  const animRows = input.animRows === true;
+  const tiles: MapTile[] = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      tiles.push(
+        tileOf({ x: col * cell.width, y: row * cell.height, width: cell.width, height: cell.height }, undefined, undefined, animRows ? row : 0)
+      );
+    }
+  }
+  return tiles;
 }
 
 // ── 全局图块索引 ─────────────────────────────────────────────────────────
@@ -280,23 +298,17 @@ export function duplicateRects(tilesets: readonly MapTileset[]): Array<{ tileset
 export interface FlatTile {
   /** 1-based 全局序号（0 留给「空」）。 */
   index: number;
-  id: string;
   tilesetId: string;
-  tilesetName: string;
-  rect: MapRect;
-  name: string;
-  familyId?: string;
-  mask?: number;
-  weight?: number;
-  anchorX: number;
-  anchorY: number;
+  tile: MapTile;
+  /** 图层数据里真正存的那个数（= `index`），单独留一个字段省得调用方两处口径来回换。 */
+  value: number;
 }
 
 /**
  * 展平成一个全项目通用的索引。
  *
- * 顺序 = 图集顺序 → 图集内切分顺序，**因此只要不动图集顺序与切分参数，
- * 序号就稳定**；这也是 `applyMapOps` 里存的序号能跨会话读回来的前提。
+ * 顺序 = 图集顺序 → `tileset.tiles` 数组顺序，**因此只要不动图集顺序与切分参数，
+ * 序号就稳定**；这也是 `applyOps` 里存的序号能跨会话读回来的前提。
  * 序号的唯一真源是这里，别的任何地方都不许自己按数组下标算。
  */
 export function flatTiles(tilesets: readonly MapTileset[]): FlatTile[] {
@@ -304,19 +316,7 @@ export function flatTiles(tilesets: readonly MapTileset[]): FlatTile[] {
   let index = 1;
   for (const tileset of tilesets) {
     for (const tile of tileset.tiles) {
-      out.push({
-        index,
-        id: tile.id,
-        tilesetId: tileset.id,
-        tilesetName: tileset.name,
-        rect: tile.rect,
-        name: tile.name,
-        familyId: tile.familyId,
-        mask: tile.mask,
-        weight: tile.weight,
-        anchorX: typeof tile.anchorX === "number" ? tile.anchorX : 0.5,
-        anchorY: typeof tile.anchorY === "number" ? tile.anchorY : 1
-      });
+      out.push({ index, tilesetId: tileset.id, tile, value: index });
       index++;
     }
   }
@@ -324,63 +324,10 @@ export function flatTiles(tilesets: readonly MapTileset[]): FlatTile[] {
 }
 
 export function flatIndexByValue(tilesets: readonly MapTileset[]): Map<number, FlatTile> {
-  return new Map(flatTiles(tilesets).map((tile) => [tile.index, tile]));
+  return new Map(flatTiles(tilesets).map((flat) => [flat.value, flat]));
 }
 
-/** 图集里用到的族 id（删族 / 删图集前查引用）。 */
-export function tilesUsingFamily(tilesets: readonly MapTileset[], familyId: string): FlatTile[] {
-  return flatTiles(tilesets).filter((tile) => tile.familyId === familyId);
-}
-
-// ── 缩略图（界面与验收图共用同一份坐标）──────────────────────────────────
-
-export interface TilesetPreview {
-  tilesetId: string;
-  name: string;
-  imageWidth: number;
-  imageHeight: number;
-  slice: MapSlice;
-  /** 网格线：切分参数的可视化（界面直接画）。 */
-  gridLinesX: number[];
-  gridLinesY: number[];
-  tiles: Array<{ id: string; index: number; rect: MapRect; name: string; familyId?: string; mask?: number }>;
-  warnings: string[];
-}
-
-export function tilesetPreview(tileset: MapTileset, startIndex: number): TilesetPreview {
-  const { rects, cols, rows, warnings } = sliceRects(tileset.slice, tileset.imageWidth, tileset.imageHeight);
-  const gridLinesX: number[] = [];
-  const gridLinesY: number[] = [];
-  if (tileset.slice.mode === "grid") {
-    for (let col = 0; col <= cols; col++) gridLinesX.push(tileset.slice.offsetX + col * (tileset.slice.tileWidth + tileset.slice.spacingX) - tileset.slice.spacingX);
-    for (let row = 0; row <= rows; row++) gridLinesY.push(tileset.slice.offsetY + row * (tileset.slice.tileHeight + tileset.slice.spacingY) - tileset.slice.spacingY);
-  }
-  const byId = new Map(tileset.tiles.map((tile) => [tile.id, tile]));
-  return {
-    tilesetId: tileset.id,
-    name: tileset.name,
-    imageWidth: tileset.imageWidth,
-    imageHeight: tileset.imageHeight,
-    slice: tileset.slice,
-    gridLinesX,
-    gridLinesY,
-    tiles: rects.map((rect, offset) => {
-      const id = tileIdFor(rect);
-      const tile = byId.get(id);
-      return {
-        id,
-        index: startIndex + offset,
-        rect,
-        name: tile?.name ?? id,
-        familyId: tile?.familyId,
-        mask: tile?.mask
-      };
-    }),
-    warnings
-  };
-}
-
-// ── 图像尺寸探测 ─────────────────────────────────────────────────────────
+// ── 图像尺寸探测 / 裁剪 ──────────────────────────────────────────────────
 
 /** 从文件头拿尺寸；PNG 之外的类型回落到 ffmpeg（见 `bitmap.probeImageSize`）。 */
 export function sizeFromBytes(bytes: Buffer): { width: number; height: number } | undefined {

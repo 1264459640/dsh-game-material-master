@@ -67,8 +67,13 @@ const approvedSchema = z.object({
  */
 const setReviewModeSchema = z.object({
   id: z.string(),
-  /** 四个模块都要能设审核模式——骨骼动画（rig）早期漏了，见 index.ts 的注释。 */
-  module: z.enum(["sprite", "image", "sequence", "rig"]),
+  /**
+   * 六个模块都要能设审核模式。
+   *
+   * ⚠️ 这个枚举漏一个模块，那条模块的「固定流程必须问清审核模式」就落不了地
+   * （骨骼动画与地图地块都踩过：走到宿主才抛「未知模块」）。模块六（map）同理。
+   */
+  module: z.enum(["sprite", "image", "sequence", "rig", "tile", "map"]),
   reviewMode: z.enum(["auto", "manual"])
 });
 const runImageSchema = z.object({ projectId: z.string(), key: z.string(), prompt: z.string().optional() });
@@ -578,23 +583,27 @@ const saveTileMapCellsSchema = z.object({
 // ── 地图编辑器（模块六）──────────────────────────────────────────────────
 //
 // ⚠️ 同样的硬约束：typert 按 schema 校验 payload，**schema 里没有的键会被静默丢掉**。
-// 尤其是 `applyMapOps` 的 `ops` —— 少了它，界面画什么都不生效，而且不报错。
+// 尤其是 `applyMapOps` 的 `ops` 与 `mapPlan` 的 `view` —— 少了它们，界面画什么都不
+// 生效 / 一张图都拉不下来，而且不报错。
+//
+// 单项目 = 单张地图：`mapId` 只剩 `getMapProject` 里那个兼容位（老深链接带的），
+// 其它方法的 payload 一律不带 mapId。
 const mapProjectIdSchema = z.object({ projectId: z.string() });
 const mapGetSchema = z.object({
   projectId: z.string(),
+  /** 仅兼容旧深链接：单项目单地图后它没有意义，宿主忽略。 */
   mapId: z.string().optional(),
   lang: z.string().optional()
 });
 const createMapProjectSchema = z.object({
   name: z.string().optional(),
   grid: z.record(z.string(), z.unknown()).optional(),
-  lang: z.string().optional()
+  cols: z.number().optional(),
+  rows: z.number().optional()
 });
 const saveMapProjectSchema = z.object({
   projectId: z.string(),
-  name: z.string().optional(),
-  /** 网格类型 / 瓦片尺寸 / 层高步长。改它只影响渲染，不作废任何东西。 */
-  grid: z.record(z.string(), z.unknown()).optional()
+  name: z.string().optional()
 });
 const importMapTilesetSchema = z.object({
   projectId: z.string(),
@@ -606,38 +615,29 @@ const saveMapTilesetSchema = z.object({
   projectId: z.string(),
   tilesetId: z.string(),
   name: z.string().optional(),
-  slice: z.record(z.string(), z.unknown()).optional(),
-  /** 逐块元数据补丁：只提交改过的字段（缺的键保留原值）。 */
-  tiles: z.array(z.record(z.string(), z.unknown())).optional()
+  /** 逻辑块尺寸；不给就沿用当前值。 */
+  cell: z.record(z.string(), z.unknown()).optional(),
+  /** `plain` / `a2quad` / `corner16`。 */
+  shape: z.string().optional(),
+  animRows: z.boolean().optional()
 });
 const removeMapTilesetSchema = z.object({ projectId: z.string(), tilesetId: z.string() });
-const saveMapFamiliesSchema = z.object({
-  projectId: z.string(),
-  families: z.array(z.record(z.string(), z.unknown()))
-});
-const createMapDocSchema = z.object({
-  projectId: z.string(),
-  name: z.string().optional(),
-  cols: z.number().optional(),
-  rows: z.number().optional()
-});
-const mapDocIdSchema = z.object({ projectId: z.string(), mapId: z.string() });
 const saveMapDocSchema = z.object({
   projectId: z.string(),
-  mapId: z.string(),
   name: z.string().optional(),
   cols: z.number().optional(),
   rows: z.number().optional(),
-  variantSeed: z.number().optional(),
-  randomVariants: z.boolean().optional(),
+  /** 图层改名补丁：`[{id, name}]`。 */
   layers: z.array(z.record(z.string(), z.unknown())).optional(),
   addLayer: z.record(z.string(), z.unknown()).optional(),
   removeLayerId: z.string().optional(),
-  moveLayer: z.record(z.string(), z.unknown()).optional()
+  moveLayer: z.record(z.string(), z.unknown()).optional(),
+  clearLayerId: z.string().optional(),
+  /** 地图四周是否环绕（落在项目网格上）。 */
+  wrap: z.boolean().optional()
 });
 const applyMapOpsSchema = z.object({
   projectId: z.string(),
-  mapId: z.string(),
   /**
    * 笔画 id（一次拖拽 / 一次填充一个）。
    *
@@ -647,30 +647,45 @@ const applyMapOpsSchema = z.object({
   stroke: z.string().optional(),
   /**
    * 编辑操作：`{kind:"paint"|"fill"|"rect"|"replace", …}`。
-   * 返回脏 chunk 的计划补丁，界面拿它替换缓存即可。
+   * 返回脏 chunk 与该丢的客户端缓存 key。
    */
-  ops: z.array(z.record(z.string(), z.unknown()))
+  ops: z.array(z.record(z.string(), z.unknown())),
+  /** 客户端已经有的 chunk key（未 wrap）；宿主据此回 `dropKeys`。 */
+  have: z.array(z.string()).optional()
 });
+const mapHaveSchema = z.object({ projectId: z.string(), have: z.array(z.string()).optional() });
 const mapPlanSchema = z.object({
   projectId: z.string(),
-  mapId: z.string(),
-  /** 只取这几个 chunk（`"cx,cy"`）；不给就是前若干个（有上限）。 */
-  chunks: z.array(z.string()).optional()
+  /**
+   * 视口矩形（画布像素坐标）。
+   *
+   * ⚠️ 必须逐键声明：typert 会**静默丢掉** schema 之外的键，只写
+   * `z.record(...)` 之外的东西都行，但漏一个字段就是「计划永远算的是 0×0 视口」。
+   */
+  view: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
+  /** 客户端已有的 chunk key（未 wrap）。 */
+  have: z.array(z.string()).optional(),
+  /** 只算这几个层号（0 起）。 */
+  layerIds: z.array(z.number()).optional()
 });
-const runMapPreviewSchema = z.object({
+const runMapGenerateSchema = z.object({
   projectId: z.string(),
-  mapId: z.string().optional()
+  kind: z.enum(["random", "maze", "continent"]),
+  /** 用哪些图块序号（1-based 全局序号；0 = 空）。不给就用项目里全部图块。 */
+  tiles: z.array(z.number()).optional(),
+  seed: z.number().optional(),
+  layerId: z.string().optional()
 });
+const runMapPreviewSchema = z.object({ projectId: z.string() });
 const runMapExportSchema = z.object({
   projectId: z.string(),
-  mapId: z.string().optional(),
   scale: z.number().optional(),
   formats: z.record(z.string(), z.unknown()).optional()
 });
 const setMapApprovedSchema = z.object({
   projectId: z.string(),
+  /** 空 = 四个阶段全打。 */
   stage: z.string().optional(),
-  mapId: z.string().optional(),
   approved: z.boolean()
 });
 
@@ -796,24 +811,22 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "cancelTileJob", payload: tileIdSchema, result: okSchema },
   { method: "revealTileProject", payload: tileIdSchema, result: okSchema },
 
-  // 地图编辑器（模块六）
+  // 地图编辑器（模块六，单项目 = 单张地图）
   { method: "listMapProjects", result: z.object({ projects: z.array(jsonObject) }) },
   { method: "createMapProject", payload: createMapProjectSchema, result: jsonObject },
   { method: "getMapProject", payload: mapGetSchema, result: projectViewSchema },
   { method: "saveMapProject", payload: saveMapProjectSchema, result: jsonObject },
   { method: "deleteMapProject", payload: mapProjectIdSchema, result: okSchema },
   { method: "importMapTileset", payload: importMapTilesetSchema, result: jsonObject },
+  { method: "importSampleTileset", payload: mapProjectIdSchema, result: jsonObject },
   { method: "saveMapTileset", payload: saveMapTilesetSchema, result: jsonObject },
   { method: "removeMapTileset", payload: removeMapTilesetSchema, result: jsonObject },
-  { method: "saveMapFamilies", payload: saveMapFamiliesSchema, result: jsonObject },
-  { method: "createMapDoc", payload: createMapDocSchema, result: jsonObject },
   { method: "saveMapDoc", payload: saveMapDocSchema, result: jsonObject },
-  { method: "deleteMapDoc", payload: mapDocIdSchema, result: okSchema },
-  { method: "duplicateMapDoc", payload: mapDocIdSchema, result: jsonObject },
   { method: "applyMapOps", payload: applyMapOpsSchema, result: jsonObject },
-  { method: "mapUndo", payload: mapDocIdSchema, result: jsonObject },
-  { method: "mapRedo", payload: mapDocIdSchema, result: jsonObject },
+  { method: "mapUndo", payload: mapHaveSchema, result: jsonObject },
+  { method: "mapRedo", payload: mapHaveSchema, result: jsonObject },
   { method: "mapPlan", payload: mapPlanSchema, result: jsonObject },
+  { method: "runMapGenerate", payload: runMapGenerateSchema, result: jsonObject },
   { method: "runMapPreview", payload: runMapPreviewSchema, result: startedSchema },
   { method: "runMapExport", payload: runMapExportSchema, result: startedSchema },
   { method: "cancelMapJob", payload: mapProjectIdSchema, result: okSchema },

@@ -21,7 +21,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 序列帧生成 | `sequence` | 正式 |
 | 骨骼动画生成 | `rig` | **实验性**（页签带角标、进入弹窗、模块内常驻提示条） |
 | 45°地图地块生成 | `tile` | **实验性**（45° 等距地块 → 拼成地图；AI 生成地块） |
-| 地图编辑器 | `map` | **实验性**（导入自己的 tileset → 自动过渡 → 多图层 → 导出 Tiled；**全本地零计费**） |
+| 地图编辑器 | `map` | **实验性**（参照 AsLib 的 RPG Map Maker：一屏、纯图标、零术语；地图环绕、素材自动识别与自动连接、动画地块、内置素材、一键生成；**全本地零计费**） |
 
 ---
 
@@ -36,8 +36,11 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | `lib/` **入库**（不是构建产物目录） | 包直接以 `main: lib/index.js` 发布，`npm publish` 不触发构建 |
 | 生成类调用必须带 loading 反馈，批量任务要按 `job.targets` 盖住**还没轮到**的方向 | 不盖遮罩时界面看着完全正常，只是「点了没反应」，用户会反复点——每次点击都真实计费。`verify-client.mjs` / `verify-feedback.mjs` 会拦 |
 | 新增产物子目录时，`SERVABLE_DIRS`（`src/index.ts`）必须同步加一条 | 静态资源路由按**第一段路径**比对白名单，漏掉就 403。界面只表现为「图裂了」、不报错——转圈截帧的 `turn/` 就踩过。模块六是**四处**同步：`SERVABLE_MAP_DIRS` / `AssetScope` 类型 / `resolveAssetTarget` 分支 / `SCOPES` 数组，`verify-map-gateway.mjs` 会真调一遍路由 |
-| 模块六：**客户端只能执行宿主下发的绘制计划**，不许自己算变体 / 过渡 / 裁剪 / 坐标变换 | 界面里唯一允许复刻的是那四个 `MAP_*` 坐标函数（命中测试必需），且有黄金对照盯着。多写一套口径就是旧模块「预览好看、导出位移」的老路，`verify-map-client.mjs` 会扫源码拦 |
-| 模块六：**派生数据不落盘**（占格 / 垫底 / 掩码解析 / 包围盒一律现算） | 旧模块存了 `buildings` / `buildingGround` / `map.pixel` 三份缓存，各自都出过「过期后凭空多出一栋楼」这类 bug |
+| 模块六：**客户端只能执行宿主下发的绘制计划**，不许自己算变体 / 形状 / chunk / 坐标变换 | 界面里唯一允许复刻的是 `MAP_pointToCell` / `MAP_cellAnchor` / `MAP_cellTopLeft` / `MAP_lineCells` 四个坐标函数（命中测试必需），且有黄金对照盯着；**连「哪些 chunk 可见」都由宿主算**（`mapPlan({view})` 回 `visibleKeys`）。多写一套口径就是旧模块「预览好看、导出位移」的老路，`verify-map-client.mjs` 会扫源码拦 |
+| 模块六：**环绕（wrap）是默认行为**，凡涉及「邻居」的地方都必须先取模 | 网格、命中测试、绘制范围、脏块、自动连接的邻域判断都要 wrap。漏掉一处的表现是「接缝处形状不对 / 撤销后画面花掉」，只在贴边时看得出来 —— `verify-map.mjs` 里有「画第 0 行必须连带弄脏最后一行」这条断言，且配了非环绕的反向验证 |
+| 模块六：**界面文案不许出现旧术语** | 用户对第一版的反馈就是「门槛太高、专业名词太多」。`verify-map.mjs` 与 `verify-map-client.mjs` 各扫一遍**模块六那一段**（`模块六 · 地图编辑器` 到下一个分节注释），`地形族 / 掩码 / 优先级 / 切分 / 图集 / 变体种子 / 高度偏移 / Tiled / 等距` 0 命中，`chunk` 按**词边界**判（所以协议字段 `"chunks"` 可以照实写 —— 曾经为了骗过这条自检写出过 `"chu" + "nks"`，那种写法比术语本身更坏）。⚠️ **只有模块六这一段**：`图集`（模块④ Spine 图集）与 `等距`（模块⑤ 45° 地块）在别处是正确的词，全文件扫会误伤 |
+| 模块六：**派生数据不落盘**（形状判定 / 动画帧 / 视口范围 / chunk 一律现算） | 落盘的只有素材原图、`project.json`、`map.json`（每层每格的语义序号）。旧模块存了 `buildings` / `buildingGround` / `map.pixel` 三份缓存，各自都出过「过期后凭空多出一栋楼」这类 bug |
+| 模块六：A2 素材在**图层数据里存的是「代表序号」**，一小格不是一笔 | 调色板对 A2 素材只出一个笔刷（`MapViewTileset.palette`），`maprender` 见到所属素材 `shape === "a2quad"` 就展开成 4 条象限 op。少了这条分支，用户拿自动连接笔刷刷下去只会画出一个 16px 小格 —— 不报错 |
 | 界面文案一律写 `T("中文原文")`，并往 `src/client.ts` 的词条表补英文 | 中文原文就是 key；漏翻不会报错，只是那一条一直是中文。`verify-i18n.mjs` 会拦 |
 | **模块级**（工厂顶层）出现 `T()` 的文案表要同步加进 `staticTextRebuilders` | 模块顶层的 `T()` 在插件 load 时就求值了，那时 locale 服务还没挂上，此后永远停在中文。实测表现：切英文后方向名 / 模块页签不动。函数体内的 `T()` 不受影响 |
 | 浏览器半区往宿主加字段时，`src/wire.ts` 里那条方法的 `payload:` schema 必须同步加 | typert 按声明的 schema 校验 payload，**schema 里没有的键会被静默丢掉**。实测：给 `getProject` 带上 `lang` 却没进 schema，宿主永远读到 `undefined`，表现是「切了英文提示词还是中文」且不报任何错 |
@@ -67,14 +70,18 @@ node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115
 node scripts/verify-tile-gateway.mjs   # 地图地块走真实网关（81 项：payload / 验收 / 作废边界 / 建筑 / 布局冻住 / 保存往返）
 node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项，拦「遮罩没出现」「地图不显示」这类静默问题）
 
-node scripts/verify-map.mjs            # 地图编辑器几何 / 自动过渡 / 切分内核（100 项，含 4 条反向验证）
-node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（128 项，含导出的 .tmj/.tsj 逐字段校验）
-node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（81 项，含资源路由 403 / 目录穿越 / 并发提交）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（115 项：坐标函数与宿主逐点一致、drawImage 序列 == 宿主计划、实验性弹窗、就地小字 / 删除与改名改尺寸入口 / 小字与悬停解释 / 空态四步引导）
+node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接内核（112 项，含反向验证与术语黑名单）
+node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（212 项，含 A2 每格 4 条 op、动画循环、dropKeys、导出逐字段）
+node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（153 项，含资源路由 403 / 目录穿越 / 并发提交）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（161 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划）
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的
 `T("…")` 原文，直接输出可粘贴的条目。加了新界面文案时先跑它。
+
+`scripts/make-map-sample-tileset.mjs` 是模块六**内置素材**的生成器：默认纯程序化、确定性
+（同一输入两次生成逐字节一致，`--check` 会断言形状/变体真的互不相同）；`--ark --yes` 会改用
+火山引擎生成纹理再本地合成，**这一步真实计费**，别顺手跑。
 
 其余脚本（`verify-rig*.mjs`、`e2e-*.mjs` 等）的覆盖范围见 ENGINEERING.md 的「自检脚本」表。
 `e2e-map.mjs` 是模块六的**真实链路端到端**（不联网、不花钱）：它会**故意把产物留在**
@@ -123,18 +130,27 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 
 下一次发布请**在表中追加一行**，写明版本、UTC 时间与内容。
 
-### ⏳ 已改好版本号、**尚未发布**：`0.5.0`
+### ⏳ 已改好版本号、**尚未发布**：`0.6.0`
 
-`package.json` 已是 `0.5.0`，但**还没有** `npm publish`（发布由用户决定）。内容：
+`package.json` 已是 `0.6.0`，但**还没有** `npm publish`（发布由用户决定）。
+（`0.5.0` 从未发布；它当初的模块六实现已被下面这次重做整体取代，所以这里只写 0.6.0 的内容。）内容：
 
-> 新增模块六「**地图编辑器**」（实验性，**全本地零计费**，`feat(map)`）：导入自己的 tileset →
-> 按网格或矩形切分 → 地形族与自动过渡（`single` / `corner16` / `blob47`）→ 多图层拼图
-> （每层高度偏移）→ 导出 PNG（分层/合并）+ 自有 JSON + **Tiled `.tmj`/`.tsj`**。
-> 支持正方形俯视与 2:1 等距两种格网。架构上立了四条规矩：客户端只执行宿主下发的绘制计划
-> （预览 = 导出）、画布渲染（chunk 化 + 视口裁剪）、宿主是唯一写者（op + 脏 chunk 补丁 +
-> 逆操作撤销栈）、派生数据不落盘。`tilemedia.ts` 改名 `bitmap.ts`（全插件共用）。
-> 新增 4 个自检脚本（424 项）+ `e2e-map.mjs`；既有脚本里「五个模块」的硬编码改为按
-> `STUDIO_MODULES` 派生。模块五（地图地块）保留不废弃。
+> **模块六「地图编辑器」推倒重做**（`feat(map)`，实验性，**全本地零计费**）：参照
+> [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) 的 **RPG Map Maker** 改成**一屏、纯图标、零术语** ——
+> 左侧素材调色板 + 12 个图标按钮，右侧画布，选一张素材图就能开画。
+> 素材形态（RPG Maker A2 拼块 / 整格 16 块 / 普通图块）由尺寸**自动识别**，识别错了一个下拉改；
+> **地图四周环绕**（相机、命中、绘制范围、脏块、邻域判断全部取模）；一格的 A2 自动连接由宿主
+> 展开成 **4 条象限 op**（客户端仍然只 `drawImage`）；**动画地块**走 op 上的 `cycle` + 全局帧号；
+> 自带一套**程序化生成的内置素材**（4 张 A2 + 1 张道具，水有 2 帧动画；AsLib 的 pipo 素材是第三方
+> 版权，不打包）；新增**一键生成**（随机铺满 / 迷宫 / 大陆，同种子逐字节可复现）。
+> 编辑协议新增 **`dropKeys`**：界面把缓存的 chunk key 报上来，宿主只回「真正失效的那几个」，
+> 于是界面里连 chunk 计算都没有；`mapPlan` 改成按视口查询（`view` + `have`）。
+> **删除**：2:1 等距、多地图、图层高度 / 不透明度 / 类型 / 锁定、地形族与掩码编辑器、掩码覆盖率、
+> Tiled `.tmj`/`.tsj` 导出、带图例的自有 JSON、切片 contact sheet；`map-jobs/<id>/maps/` 目录消失
+> （单张地图直接落 `map.json`）。wire 方法删 4 个（`saveMapFamilies` / `createMapDoc` /
+> `deleteMapDoc` / `duplicateMapDoc`）、加 2 个（`runMapGenerate` / `importSampleTileset`）。
+> 自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。
+> ⚠️ **改完必须重启 DSH**（宿主半区），且对话面方法枚举会在重启后更新。
 
 发布时按下面的流程走，并**把这段挪进上面的「已发布版本」表**（补上 UTC 时间）。
 

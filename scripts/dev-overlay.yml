@@ -14,11 +14,16 @@
 # ⚠️ `base` 会被 `new URL(base, ctx.baseUrl)` 解析后再 fileURLToPath，所以**必须写成
 # file:// URL**；写成 `D:/...` 会被当成 `d:` scheme 而抛 ERR_INVALID_URL_SCHEME。
 #
+# ⚠️ 这条路径**是机器相关的**：必须指向**你这个 checkout** 的 `lib/` 绝对路径。
+# 本仓库当前的 checkout 在 /Users/kuangshensheng/codes/dsh-game-material-master，
+# 换机器 / 挪目录时改这一行（原来这里写的是另一台机器的 D:/Workspace/...，
+# 在本机启动会直接失败 —— 真机上踩到过一次）。
+#
 # 不用于生产：正式启动走用户 profile 的 patch 层，本文件只在测试时通过 --patch 注入。
 - insert:
     - id: gmm-dev-hmr
       name: '@deepseek-ai/cordis-plugin-hmr'
       config:
-        base: file:///D:/Workspace/myworks/dsh-game-material-master/lib
+        base: file:///Users/kuangshensheng/codes/dsh-game-material-master/lib
         root: ["."]
         debounce: 150

@@ -8,7 +8,7 @@
  *
  * | 工具 | 作用 |
  * |---|---|
- * | `game_material_call` | 万能通道：45 个远程方法逐个可调，覆盖全部功能 |
+ * | `game_material_call` | 万能通道：插件全部远程方法逐个可调，覆盖全部功能 |
  * | `game_material_status` | 读一眼当前进度（项目 / 任务 / 阶段 / 是否有任务在跑） |
  * | `game_material_wait` | 阻塞等待到「没有任务在跑」或超时，回来就是可审查状态 |
  * | `game_material_review` | 出一个**验收包**：每个产物的绝对 URL、状态、通过标记、深链接 |
@@ -177,23 +177,22 @@ export const METHOD_MODULE: Record<string, ModuleKey> = {
   runTileExport: "tile",
   cancelTileJob: "tile",
   revealTileProject: "tile",
+  // 模块六 地图编辑器（单项目 = 单张地图，全本地零计费）
   listMapProjects: "map",
   createMapProject: "map",
   getMapProject: "map",
   saveMapProject: "map",
   deleteMapProject: "map",
   importMapTileset: "map",
+  importSampleTileset: "map",
   saveMapTileset: "map",
   removeMapTileset: "map",
-  saveMapFamilies: "map",
-  createMapDoc: "map",
   saveMapDoc: "map",
-  deleteMapDoc: "map",
-  duplicateMapDoc: "map",
   applyMapOps: "map",
   mapUndo: "map",
   mapRedo: "map",
   mapPlan: "map",
+  runMapGenerate: "map",
   runMapPreview: "map",
   runMapExport: "map",
   cancelMapJob: "map",
@@ -677,15 +676,18 @@ const CALL_DESCRIPTION = [
   "  ★ 四个阶段：generate → review → map → export。**没有「先做模板」这一步** —— 等距参考图在 runTileItems 开始时",
   "    按各建筑地块的占格形状自动渲染（形状 / 格子尺寸没变就直接复用，免费、不额外调用）。",
   "  ★ 几何交给代码、内容交给 AI：参考图由本机渲染，AI 只填菱形内部；生成后本地量一次、仿射对齐回标准菱形。",
-  "地图编辑器（模块六，**全本地、零计费**；与模块五不同：它是「导入自己的 tileset」而不是让 AI 画地块）：",
-  "  listMapProjects() / createMapProject({name,grid?}) / getMapProject({projectId,mapId?,lang?}) / saveMapProject({projectId,name?,grid?}) / deleteMapProject({projectId}) /",
-  "  importMapTileset({projectId,name,data:图集图片base64}) / saveMapTileset({projectId,tilesetId,name?,slice?,tiles?})【改切分会重排图块序号，宿主按「图集 id + 图块 id」自动平移每张地图的格子】/",
-  "  removeMapTileset({projectId,tilesetId})【还有地图在用会被拒绝】/ saveMapFamilies({projectId,families:[{id,name,autotile:'single'|'corner16'|'blob47',priority,edgeMode?}]}) /",
-  "  createMapDoc({projectId,name,cols,rows}) / saveMapDoc({projectId,mapId,name?,cols?,rows?,variantSeed?,randomVariants?,layers?,addLayer?,removeLayerId?,moveLayer?}) / deleteMapDoc / duplicateMapDoc /",
-  "  applyMapOps({projectId,mapId,ops})【★ agent 也能画地图：ops = [{kind:'paint',layerId,cells:[{r,c,tile}]}, {kind:'fill',layerId,r,c,tile}, {kind:'rect',layerId,r0,c0,r1,c1,tile,filled}, {kind:'replace',layerId,from,to}]；tile 用 getMapProject 的 legend 里的 index（从 1 开始，0 = 空）。返回脏 chunk 的计划补丁】/",
-  "  mapUndo({projectId,mapId}) / mapRedo({projectId,mapId})【宿主持撤销栈，界面不用管】/ mapPlan({projectId,mapId,chunks?})【绘制计划：每项 = {l 层, r,c 格号, t 图块序号, x,y 目标像素, a 不透明度}，界面画布与导出 PNG 执行同一份】/",
-  "  runMapPreview({projectId,mapId?})【本地免费：切片 contact sheet + 掩码覆盖矩阵 + 地图渲染图】/ runMapExport({projectId,mapId?,scale?,formats?})【本地免费：map.png + layer-*.png + map.json + map.tmj + *.tsj，目录自包含】/ cancelMapJob / setMapApproved({projectId,stage,mapId?,approved}) / revealMapProject",
-  "  ★ 四个阶段：assets（图集）→ rules（族与自动过渡）→ paint（地图）→ export。**没有任何一步需要 API Key**。",
+  "地图编辑器（模块六，**全本地、零计费**；导入自己的素材图，四步：素材图 → 自动连接 → 环绕画布 → 导出 PNG/存档）：",
+  "  listMapProjects() / createMapProject({name,grid?,cols?,rows?}) / getMapProject({projectId,lang?}) / saveMapProject({projectId,name}) / deleteMapProject({projectId}) /",
+  "  importMapTileset({projectId,name,data:素材图base64}) / importSampleTileset({projectId})【内置素材：本机现算、零成本，4 张自动连接图 + 1 张道具图】/",
+  "  saveMapTileset({projectId,tilesetId,name?,cell?,shape?,animRows?})【形态由尺寸自动识别，改形态/删素材会让图块序号平移，宿主按「素材 id + 图块 id」自动重新映射每格】/ removeMapTileset({projectId,tilesetId}) /",
+  "  saveMapDoc({projectId,name?,cols?,rows?,layers?,addLayer?,removeLayerId?,moveLayer?,clearLayerId?,wrap?})【地图只有一张：改尺寸/图层/环绕都走它】/",
+  "  applyMapOps({projectId,ops,stroke?,have?})【★ agent 也能画：ops = [{kind:'paint',layerId,cells:[{r,c,tile}]}, {kind:'fill',layerId,r,c,tile}, {kind:'rect',layerId,r0,c0,r1,c1,tile,filled}, {kind:'replace',layerId,from,to}]；tile 取 getMapProject 的 view.tilesets[].palette[].index（1 起，0 = 空）。have = 界面已有的 chunk key，宿主只回真正失效的 dropKeys】/",
+  "  mapUndo({projectId,have?}) / mapRedo({projectId,have?})【宿主持撤销栈，界面不用管】/ mapPlan({projectId,view:{x,y,width,height},have?,layerIds?})【绘制计划：每项 = {l 层, r,c 格号, t 图块序号, x,y 目标像素, a 不透明度, cycle? 动画帧序}，界面画布与导出 PNG 执行同一份】/",
+  "  runMapGenerate({projectId,kind:'random'|'maze'|'continent',tiles?,seed?,layerId?})【一键铺满：整层一次提交、一次撤销；同种子逐字节可复现】/",
+  "  runMapPreview({projectId})【验收预览图 preview/map.png】/ runMapExport({projectId,scale?,formats?})【map.png + map.json（存档）+ manifest.json，目录自包含】/",
+  "  cancelMapJob({projectId}) / setMapApproved({projectId,stage?,approved})【stage 空 = 四阶段全打】/ revealMapProject({projectId})",
+  "  ★ 四个阶段：素材（assets）→ 自动连接（rules，宿主自动完成、界面不显示）→ 地图（paint）→ 导出（export）。**没有任何一步需要 API Key**。",
+  "  ★ 地图四周**环绕**：视口范围可以越出边界，宿主会把这些格子映射回图内；一张地图就一个 `map.json`，没有多地图。",
   "    生成的几何报告看 game_material_review 返回的 variants[].geomMode —— measured 是量测成功，template 是回退模板几何。",
   "    出现 template 多半是模型不对：必须用 Seedream 5.0 系列；4.0 会把 2:1 等距菱形画成近正方形（实测比例 1.058）。",
   "说明：key 是方向英文字面量（front/back/downLeft/downRight/upLeft/upRight/left/right）；data 是原始文件字节的 base64（不带 data: 前缀）；",
@@ -821,7 +823,7 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
             tileProjects: tiles,
             mapProjects: maps,
             links,
-            hint: "用 game_material_status({module,id}) 看某个目标的细节；八方向图的四步是 images → videos → frames → sheet，45°地图地块是 generate → review → map → export，地图编辑器是 assets → rules → paint → export（全本地，不花钱）。"
+            hint: "用 game_material_status({module,id}) 看某个目标的细节；八方向图的四步是 images → videos → frames → sheet，45°地图地块是 generate → review → map → export，地图编辑器是 assets（素材）→ rules（自动连接）→ paint（地图）→ export（导出），全本地不花钱。"
           };
         }
         // ⚠️ 这里**不能**再按 module 短路：`status({module:'tile', id})` 也走到这里，
@@ -1065,17 +1067,19 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
             .filter((key) => stage === undefined || key === stage)
             .map((key) => ({ stage: key, ...mapStages[key] }));
           packet.grid = snapshot.grid;
+          packet.cols = snapshot.cols;
+          packet.rows = snapshot.rows;
+          // 素材带**绝对 URL**（模型要直接贴给用户点）；调色板也跟着给，方便「让 agent
+          // 自己画一张」时挑序号。
           packet.tilesets = snapshot.tilesets;
-          packet.families = snapshot.families;
-          packet.coverage = snapshot.coverage;
-          packet.maps = snapshot.maps;
-          packet.doc = snapshot.doc;
-          packet.previews = snapshot.previewUrls;
-          packet.exportFiles = snapshot.exportFiles;
+          packet.layers = snapshot.layers;
+          packet.filled = snapshot.filled;
+          packet.preview = snapshot.previewUrls;
+          packet.previewUrls = snapshot.previewUrls;
           packet.exportBaseUrl = snapshot.exportBaseUrl;
-          packet.progress = snapshot.progress;
-          packet.nextActions = snapshot.nextActions;
-          if (snapshot.exportWarnings.length > 0) packet.warnings = snapshot.exportWarnings;
+          packet.exportFiles = snapshot.exportFiles;
+          packet.warnings = [...(snapshot.warnings ?? []), ...(snapshot.exportWarnings ?? [])];
+          packet.nextActions = (snapshot.nextActions ?? []).map((action: any) => `${action.step}：${action.why}`);
         } else if (module === "tile") {
           // ⚠️ 地图地块的 `stages` 是**对象**（{generate, review, map, export}），
           // 不是数组。之前它掉进了 `else`（骨骼动画）分支，那边无条件当成数组用
@@ -1145,7 +1149,6 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
           index: { type: "integer", description: "图片任务：只对某一张生效。" },
           step: { type: "string", enum: ["video", "frames", "sheet"], description: "序列帧：只对某一步生效。" },
           part: { type: "string", description: "骨骼动画：stage=parts 时只对某个部件生效。" },
-          mapId: { type: "string", description: "地图编辑器：只对某张地图生效（省略即整个项目）。" },
           approved: { type: "boolean", description: "true = 通过，false = 取消通过。" }
         },
         required: ["id", "approved"]
@@ -1182,9 +1185,9 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
         if (module === "map") {
           const stage = asString(args?.stage) || undefined;
           if (stage !== undefined && !(MAP_STAGES as readonly string[]).includes(stage)) throw new Error(`未知阶段：${stage}（可选：${MAP_STAGES.join(" / ")}）`);
-          const mapId = asString(args?.mapId) || undefined;
-          await (gateway as any).setMapApproved({ projectId: id, stage, mapId, approved });
-          return { module, id, stage: stage ?? null, mapId: mapId ?? null, approved, ...openInfo({ module: "map", jobId: id, stage }, "点开看验收结果") };
+          // 单项目 = 单张地图：没有 mapId 这个维度了（打勾永远打整个项目）。
+          await (gateway as any).setMapApproved({ projectId: id, stage, approved });
+          return { module, id, stage: stage ?? null, approved, ...openInfo({ module: "map", jobId: id, stage }, "点开看验收结果") };
         }
 
         if (module === "tile") {
@@ -1405,19 +1408,20 @@ function intakeFor(module: ModuleKey, id: string, told: Set<string>, config: any
     known.默认动画 = "idle 待机 / walk 行走 / run 奔跑 / wave 挥手 / jump 跳跃 / attack 攻击";
   }
   if (module === "map") {
-    // ⚠️ 这里**故意不加** API Key 阻塞：整条链路（导入图集 / 切分 / 自动过渡 /
-    // 画地图 / 导出）全在本地，一次模型调用都没有。写了阻塞就是让用户白配一次 Key。
-    known.全本地不花钱 = "导入自己的 tileset → 切分 → 定过渡规则 → 画地图 → 导出：一次模型调用都没有，不需要任何 API Key";
-    known.四个阶段 = "① 图集（导入 PNG，按网格或矩形切分）→ ② 规则（地形族 + 自动过渡掩码）→ ③ 地图（多张地图 / 多图层 / 每层高度偏移）→ ④ 导出（PNG 分层与合并 + map.json + Tiled .tmj/.tsj）";
-    known.两种网格 = "正方形俯视（主流 16×16 / 32×32 tileset）或 2:1 正交等距（瓦片宽必须是高的 2 倍，如 64×32）";
-    known.三种自动过渡 = "single 单块 / corner16 四邻域 16 掩码 / blob47 八邻域 47 掩码；缺哪个掩码就回退到最近的一个（界面里会标出来）";
-    known.预览等于导出 = "界面画布与导出 PNG 执行的是**同一份渲染计划**（宿主算、客户端只执行），所以不存在「预览好看、导出位移」";
+    // ⚠️ 这里**故意不加** API Key 阻塞：整条链路（导入素材 / 自动连接 / 画地图 /
+    // 导出）全在本地，一次模型调用都没有。写了阻塞就是让用户白配一次 Key。
+    known.全本地不花钱 = "导入自己的素材图 → 自动连接 → 环绕画布上画 → 导出 PNG：一次模型调用都没有，不需要任何 API Key";
+    known.四个阶段 = "① 素材（导入 PNG，形态按尺寸自动识别）→ ② 自动连接（宿主自动完成，界面不显示）→ ③ 地图（一张地图 / 多图层 / 四周环绕）→ ④ 导出（map.png + map.json）";
+    known.单张地图 = "一个项目就是一张地图（`map.json`）：改尺寸 / 图层 / 环绕都在 saveMapDoc 里，没有「多张地图」这一层";
+    known.三种自动连接 = "拼块自动连接（RPG Maker A2 那种一格 4 象限的图）/ 整格 16 块 / 普通图块；形态与格子尺寸由素材尺寸自动识别，识别错了用 saveMapTileset 改";
+    known.内置素材 = "importSampleTileset 可以装一套内置素材（4 张自动连接图 + 1 张道具图），本机现算、零成本";
+    known.一键生成 = "runMapGenerate 支持 random（随机铺满）/ maze（迷宫）/ continent（大陆），整层一次提交、一次撤销，同种子逐字节可复现";
+    known.预览等于导出 = "界面画布与导出 PNG 执行的是**同一份绘制计划**（宿主算、客户端只执行），所以不存在「预览好看、导出位移」";
     if (target?.grid) known.当前网格 = target.grid;
     if (target?.reviewMode) known.审核模式 = target.reviewMode;
-    ask("tileset", "素材从哪来？把图集 PNG 的**本机绝对路径**给我（可以多张），或者你自己在界面「① 图集」里上传。", "这个模块是「导入派」：不生成素材，只把已有图集切成可用地块。", "用 game_material_upload({module:'map', id, kind:'tileset', path})，或 game_material_call 的 importMapTileset({projectId, name, data}) 传 base64。");
-    ask("grid", "地图是正方形俯视还是 2:1 等距？（正方形 32×32；等距常见 64×32 / 32×16）", "它决定格子几何、导出 Tiled 的 orientation，以及要不要按 2:1 校验。", "用 createMapProject({name, grid:{kind:'square'|'iso2to1', tileWidth, tileHeight}}) 或 saveMapProject({projectId, grid})。");
-    ask("families", "要哪些地形族、谁盖谁？（例如 草地 < 土路 < 水；顺序就是优先级）", "自动过渡靠它：高优先级的族会朝低优先级的邻居长过渡块。", "用 saveMapFamilies({projectId, families:[{id,name,autotile:'blob47'|'corner16'|'single', priority}]})。");
-    ask("mapLayout", "要几张地图、多大？要分几层（地面/装饰/建筑/覆盖）？", "多张地图共用一个图集；图层可以各自设高度偏移与不透明度。", "用 createMapDoc({projectId, name, cols, rows}) 与 saveMapDoc({projectId, mapId, layers|addLayer|cols|rows})。");
+    ask("tileset", "素材从哪来？把素材图 PNG 的**本机绝对路径**给我（可以多张），或者你自己在界面「素材」里上传；也可以先用内置素材试手。", "这个模块是「导入派」：不生成素材，只把已有素材图切成可用地块。", "用 game_material_upload({module:'map', id, kind:'tileset', path})，或 game_material_call 的 importMapTileset({projectId, name, data}) 传 base64，或 importSampleTileset({projectId}) 装内置素材。");
+    ask("mapSize", "地图多大？（默认 32×32；改尺寸用 saveMapDoc 的 cols / rows）要分几层？（默认两层：图层 1 / 图层 2）", "尺寸与图层决定画布和最终 PNG 的像素大小；地图四周默认**环绕**。", "用 saveMapDoc({projectId, cols, rows, addLayer:{name}, wrap})。");
+    ask("generate", "先一键铺一层再手改，还是直接手画？（一键生成：随机铺满 / 迷宫 / 大陆；也可以让 agent 直接拿坐标系画）", "一键生成是本地计算、不花钱，同一个种子结果完全一样，随时能撤销。", "用 runMapGenerate({projectId, kind:'random'|'maze'|'continent', tiles?, seed?, layerId?})，或 applyMapOps({projectId, ops}) 直接画。");
   }
   if (module === "tile") {
     if (config?.arkApiKeySet !== true) {
@@ -1717,6 +1721,37 @@ function renderRigStageDetail(stage: any): string[] {
   return lines;
 }
 
+/** 模块六四个阶段的显示名（key 与对话面契约不变，变的只是中文名）。 */
+const MAP_STAGE_LABELS: Record<string, string> = { assets: "素材", rules: "自动连接", paint: "地图", export: "导出" };
+
+/**
+ * 地图编辑器的验收摘要：素材 / 阶段 / 地图 / 预览图 / 导出产物。
+ *
+ * 这里的每一条都是**能点开的绝对 URL** —— 模型把它贴进回复，用户点一下就能看图。
+ * 判定依据用 `Array.isArray(value.tilesets)`（只有模块六的快照有这个字段）。
+ */
+function renderMapSummary(value: any): string[] {
+  const lines: string[] = [];
+  if (Array.isArray(value.stages)) {
+    lines.push(
+      `  阶段：${value.stages
+        .map((stage: any) => `${MAP_STAGE_LABELS[stage.stage] ?? stage.stage}：${stage.status}${stage.approved ? " · 已通过" : ""}${stage.error ? ` · ${stage.error}` : ""}`)
+        .join("  ")}`
+    );
+  }
+  if (typeof value.cols === "number" && typeof value.rows === "number") lines.push(`  地图：${value.cols}×${value.rows}，已画 ${value.filled ?? 0} 格`);
+  for (const layer of value.layers ?? []) lines.push(`    · ${layer.name}：${layer.filled} 格`);
+  for (const tileset of value.tilesets ?? []) {
+    lines.push(`  素材「${tileset.name}」${tileset.imageWidth}×${tileset.imageHeight} · ${tileset.reason ?? ""} · ${tileset.tileCount} 块 · 笔刷 ${tileset.palette?.length ?? 0} 个`);
+    if (typeof tileset.url === "string") lines.push(`      ${tileset.url}`);
+  }
+  for (const url of value.previewUrls ?? value.preview ?? []) lines.push(`  验收预览图：${url}`);
+  if (typeof value.exportBaseUrl === "string" && value.exportBaseUrl !== "") lines.push(`  导出目录：${value.exportBaseUrl}`);
+  for (const file of value.exportFiles ?? []) lines.push(`      ${file}`);
+  for (const warning of value.warnings ?? []) lines.push(`  ⚠ ${warning}`);
+  return lines;
+}
+
 function renderStatus(value: any): string {
   if (Array.isArray(value.projects)) {
     const lines = [
@@ -1745,6 +1780,9 @@ function renderStatus(value: any): string {
       for (const detail of renderRigStageDetail(stage)) lines.push(detail);
     }
   }
+  // 地图编辑器（模块六）：它的阶段是**对象**（不是数组），素材 / 预览图 / 导出清单
+  // 也不在通用字段里，单独一段。
+  if (Array.isArray(value.tilesets)) for (const line of renderMapSummary(value)) lines.push(line);
   // 八方向图：阶段①的两种生成方式差异很大，状态里必须写明走的是哪条、
   // 转圈视频与八个截帧位置各是什么——否则 agent 只能对着一张张方向图猜。
   if (value.imageMode !== undefined && value.turn !== undefined) {
@@ -1800,6 +1838,9 @@ function renderWait(value: any): string {
 function renderReview(value: any): string {
   const lines = [`${value.name}（${value.id}）验收包${value.busy ? " — ⏳ 仍有任务在跑" : ""}`];
   if (value.qa !== null && value.qa !== undefined) lines.push(renderRigQa(value.qa));
+  // 地图编辑器（模块六）：产物形状和别的模块完全不同（素材 + 一张地图 + 导出清单），
+  // 单独走一段，免得掉进下面按 cells / items 迭代的通用分支。
+  if (value.module === "map") lines.push(...renderMapSummary(value));
   if (Array.isArray(value.stages)) {
     for (const stage of value.stages) {
       lines.push(`${stage.title}${stage.stale ? " · 需重做" : ""}`);
