@@ -250,6 +250,28 @@ Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，回传界面
 隐藏后页签与菜单同时消失（**不用刷新页面**）、深链接指向被隐藏模块时落到第一个可见模块、
 全隐藏时的空态。
 
+### 在外部浏览器里真机验收（Playwright 怎么进去）
+
+桌面端的 web 服务（默认 `127.0.0.1:19387`）**只认启动时那一次 token**：`GET /?token=…` 校验通过后
+写入绑定 authority 的签名 cookie，此后 `/` 与 `/api/*` 全靠它；**token 每个进程重新随机**，
+打印在启动那一行 stdout 里。所以「随手拿个浏览器开 19387」永远是 401——外部浏览器没有别的渠道拿到它
+（插件自己的静态资源路由不在认证范围，所以图能 200、根路径还是 401，很容易误判成「权限问题」）。
+
+要一个**自己可控的浏览器**（Playwright / 自己的 Chrome），就单独开一个验证用 profile：
+
+```bash
+dsh plugin --profile gmmweb add /path/to/dsh-game-material-master   # 建 profile 并把插件 link 进去
+# 再把 "@deepseek-ai/dsh-web-app" 手动补进该 profile 的 package.json → dsh.profile.bundles
+dsh --profile gmmweb --port 19388     # 打印 http://127.0.0.1:19388/?token=… 并用默认浏览器打开
+```
+
+- `desktop` profile **不能**用 CLI 起（会报 `profile "desktop" is managed exclusively by the Electron application`），
+  所以必须单开一个；它和桌面端**共用 `$DSH_HOME`**，插件数据（`game-material-master/` 下的项目）两边都看得到。
+- token 就在启动输出那一行（`dsh web: http://127.0.0.1:19388/?token=…`）；`--no-open` 只决定要不要开浏览器。
+- 把这个 URL 喂给 Playwright，就能用**元素级选择器 + JS 量尺寸 + 元素截图**做真机验收，
+  比 Computer Use 的坐标点击稳得多。Computer Use 仍然有用（能看真实窗口、能截图），
+  但 Electron 里**网页的 AX 树不暴露**（只有一堆 `AXGroup`），只能靠截图 + 坐标，容易点偏。
+
 ### 新建项目 / 任务时的命名：三态返回值
 
 六个模块的「新建」都先问一个名字（`askNewName()`，与既有的「重命名」同一套
