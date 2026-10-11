@@ -1248,6 +1248,41 @@ try {
     );
     check("每一批提交都把本地缓存的 chunk key 报上去（have，宿主据此只回失效的块）", submits.every((submit) => Array.isArray(submit.have)) && submits.some((submit) => submit.have.length > 0), submits.map((submit) => submit.have.length).join(","));
     check("画布重画用的还是宿主的计划（改动后 drawn 仍等于计划条数）", windowStub.__mapDrawStats?.noImage === 0 && windowStub.__mapDrawStats?.noLegend === 0, JSON.stringify(windowStub.__mapDrawStats ?? null));
+    /**
+     * ⚠️ 拖动期间**一帧都不能是空的**。
+     *
+     * 真机踩过：提交完一批 op 之后宿主回的 `dropKeys` 里就有刚画的那一块，客户端当时是
+     * **直接把它从缓存里删掉**，于是从「删掉」到「重拉回来」之间这块是空的 —— 一块 = 整张
+     * 地图（32×32 地图在 `MAP_CHUNK_SIZE = 32` 下只有一块）时，就是**拖动期间每 40ms 全屏闪
+     * 一下**（真机实测 266 个采样里 77 个是空屏）。所以这里按帧断言：旧内容要一直留到新内容回来。
+     */
+    const strokeFrames = drawFrames.slice(framesBefore).map((frame) => frame.length);
+    check(
+      "拖动过程中没有一帧是空的（旧内容留到新内容回来，不闪全屏）",
+      strokeFrames.length > 0 && strokeFrames.every((size) => size > 0),
+      `帧大小 ${strokeFrames.join(",")}`
+    );
+    // 重拉回来之后，**改动过的那几格**必须画的是新贴图。
+    // 只比位置抓不到「内容还是旧的」：同一格重画后位置不变、贴图源矩形变了。
+    const beforeTileAt = new Map(planBefore.chunks.flatMap((chunk) => chunk.ops).map((op) => [`${op.x},${op.y}`, op.t]));
+    // 注意也要算上「原来这一格是空的」：那时 beforeTileAt 里没有这个位置，
+    // 画上去就是新增的 op（`undefined !== t` 自然成立）。
+    const changedOps = planAfter.chunks
+      .flatMap((chunk) => chunk.ops)
+      .filter((op) => beforeTileAt.get(`${op.x},${op.y}`) !== op.t);
+    const rectOfTile = new Map((planAfter.legend || []).map((entry) => [entry.index, entry.rect]));
+    const drawnByPos = new Map(frameOf().map((draw) => [`${draw.dx},${draw.dy}`, draw]));
+    const stillStale = changedOps.filter((op) => {
+      const draw = drawnByPos.get(`${op.x},${op.y}`);
+      const rect = rectOfTile.get(op.t);
+      if (draw === undefined || rect === undefined) return true;
+      return draw.sx !== rect.x || draw.sy !== rect.y;
+    });
+    check(
+      "重拉回来后改动过的那几格画的是新贴图（不是留在旧内容上）",
+      changedOps.length > 0 && stillStale.length === 0,
+      `改动了 ${changedOps.length} 格，仍画旧贴图 ${stillStale.length} 格`
+    );
 
     // 撤销
     const undoButton = byTool(tree, "undo")[0];

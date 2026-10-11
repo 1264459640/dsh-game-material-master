@@ -6253,10 +6253,23 @@
        */
       const fetchedRef = React.useRef(new Map());
 
+      /**
+       * 「内容可能已经过期、正等着重拉」的那几个块。
+       *
+       * ⚠️ 这里**故意不把 key 从 `planRef` 里删掉**。删掉的话，从「提交完」到「增量计划
+       * 回来」之间这段时间里这一块是**没有内容的** —— 画布会整块变空再变回来。
+       * 一块 = 整张地图（32×32 的地图在块尺寸 32 下只有 1 块）时，
+       * 拖动笔刷期间每 40ms 闪一次全屏，真机表现就是「画布一直闪烁」。
+       * 现在改成：旧内容继续画，只是**不再向宿主声明「我有」**（`have` 里剔掉），
+       * 于是宿主会把新内容重发一次，`applyQuery` 收到后把这个 key 移出集合。
+       */
+      const staleRef = React.useRef(new Set());
+
       /** 换项目 / 换层 / 大改之后：把计划整份作废（下次渲染重新问宿主）。 */
       const clearPlan = React.useCallback(() => {
         planRef.current = new Map();
         fetchedRef.current = new Map();
+        staleRef.current = new Set();
         visibleRef.current = [];
         setPlanOps(new Map());
         setVisibleKeys([]);
@@ -6322,6 +6335,8 @@
         const next = new Map(planRef.current);
         for (const entry of incoming) {
           next.set(entry.key, Array.isArray(entry.ops) ? entry.ops : []);
+          // 这一份已经是新的了：不用再重拉
+          staleRef.current.delete(entry.key);
           // 记下这一份是「按哪个视口」取回来的：视口再变大时它就不够画了
           if (view !== undefined) fetchedRef.current.set(entry.key, view);
         }
@@ -6378,6 +6393,8 @@
               const size = viewportRef.current;
               const currentView = { x: pan.x, y: pan.y, width: size.w / zoom, height: size.h / zoom };
               const have = [...planRef.current.keys()].filter((key) => {
+                // 待重拉的键不算「我有」：宿主据此把新内容发回来
+                if (staleRef.current.has(key)) return false;
                 const fetched = fetchedRef.current.get(key);
                 return fetched !== undefined && viewCovers(fetched, currentView);
               });
@@ -6571,15 +6588,9 @@
       const applyResult = React.useCallback((result) => {
         if (result === undefined || result === null) return;
         const drop = Array.isArray(result.dropKeys) ? result.dropKeys : [];
-        if (drop.length > 0) {
-          const next = new Map(planRef.current);
-          for (const key of drop) {
-            next.delete(key);
-            fetchedRef.current.delete(key);
-          }
-          planRef.current = next;
-          setPlanOps(next);
-        }
+        // 只标记「待重拉」，**不删缓存**：删除会让这一块在重拉回来之前没有内容，
+        // 拖动时就是整块闪一下（详见 staleRef 的注释）。画面本身不用重画。
+        for (const key of drop) staleRef.current.add(key);
         setView((prev) => (prev === null ? prev : { ...prev, canUndo: result.canUndo === true, canRedo: result.canRedo === true }));
         if (Array.isArray(result.skipped) && result.skipped.length > 0) {
           setNotice({ kind: "error", text: result.skipped.slice(0, 2).join("；") });
@@ -6813,10 +6824,16 @@
         }
         const hit = cellFromEvent(event);
         if (hit === null) {
-          setHover(null);
+          setHover((prev) => (prev === null ? prev : null));
           return;
         }
-        setHover(hit);
+        /**
+         * ⚠️ 同一格内移动**不要**换新对象。`hover` 是绘制回调的依赖，换对象 = 整幅重画；
+         * 拖动时每秒几十个 `pointermove`，一格又往往走上好几个事件，于是每秒几十次
+         * 「清屏 + 重画所有条目」——真机表现就是画布一直在闪、CPU 一直满。
+         * 红框是按格对齐的，格号没变画面就没变，返回同一个对象让 React 直接跳过这次渲染。
+         */
+        setHover((prev) => (prev !== null && prev.r === hit.r && prev.c === hit.c ? prev : hit));
         if (stroke !== null && stroke !== undefined && stroke.mode === "paint") {
           if (stroke.from.r !== hit.r || stroke.from.c !== hit.c) {
             paintCells(stroke.from, hit, stroke.tile);
