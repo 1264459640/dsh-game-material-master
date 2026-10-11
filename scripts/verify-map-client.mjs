@@ -902,6 +902,55 @@ try {
     "图层按钮有上 / 下两个半块，且当前是第 1 层（下一层禁用）",
     layerHalves.length === 2 && layerHalves.find((node) => node.props["data-dir"] === "down").props.disabled === true && layerHalves.find((node) => node.props["data-dir"] === "up").props.disabled === false
   );
+
+  // ── 工具格上方的小标签（名称 + 快捷键 + 介绍）────────────────────────────
+  // 真机反馈：只有原生 `title` 时，说明要等一秒、样式不受控；自绘标签若用 absolute
+  // 又会被祖先的 overflow 裁掉「按钮正上方」那一段。两条都在这里钉住。
+  {
+    const rect = () => ({ left: 120, top: 400, width: 40, height: 40, right: 160, bottom: 440 });
+    const tipOf = (current) => byClass(current, "SPR_mapEdTip")[0];
+    check(
+      "工具格不再挂原生 title（否则会和自绘标签叠成两个框）",
+      toolNodes.every((node) => node.props.title === undefined),
+      toolNodes.filter((node) => node.props.title !== undefined).map((node) => node.props["data-tool"]).join(",")
+    );
+    check(
+      "每个具名工具格的 aria-label 是「名称：介绍（快捷键）」（图层那个是复合容器，由两个半块各自带名字）",
+      byTool(tree, "pen").length === 1 &&
+        [...collect(tree, (node) => typeof node.props?.["data-tool"] === "string")].every(
+          (node) => typeof node.props["aria-label"] === "string" && node.props["aria-label"].includes("：")
+        ) &&
+        byClass(tree, "SPR_mapEdLayerHalf").every((node) => ["上一层", "下一层"].includes(node.props["aria-label"])),
+      String(byTool(tree, "undo")[0]?.props["aria-label"])
+    );
+    check("没悬浮时不渲染小标签", tipOf(tree) === undefined);
+    const penNode = byTool(tree, "pen")[0];
+    penNode.props.onMouseEnter({ currentTarget: { getBoundingClientRect: rect } });
+    tree = await renderTree(() => MapModule({ api }));
+    let tip = tipOf(tree);
+    const tipText = tip === undefined ? "" : textOf(tip);
+    check("悬浮「画笔」弹出小标签", tip !== undefined, tipText.slice(0, 40));
+    check("小标签里有名称、快捷键与介绍", tipText.includes("画笔") && tipText.includes("B") && tipText.includes("按住左键涂抹"), tipText);
+    check(
+      "小标签挂在被悬浮按钮的正上方（坐标是 hover 时现算的）",
+      tip !== undefined && tip.props.style.left === "140px" && tip.props.style.top === "392px",
+      tip === undefined ? "" : `${tip.props.style.left} / ${tip.props.style.top}`
+    );
+    // 键盘聚焦也要能看到（只用鼠标的话键盘用户永远没有说明）
+    penNode.props.onMouseLeave();
+    tree = await renderTree(() => MapModule({ api }));
+    check("移开鼠标后小标签收起", tipOf(tree) === undefined);
+    byTool(tree, "bucket")[0].props.onFocus({ currentTarget: { getBoundingClientRect: rect } });
+    tree = await renderTree(() => MapModule({ api }));
+    check("键盘聚焦也弹小标签（介绍里有「连通区」）", textOf(tipOf(tree) ?? null).includes("连通区"), textOf(tipOf(tree) ?? null));
+    // 图层按钮是复合控件（上下两个半块 + 层号），它的说明也走同一张标签
+    byClass(tree, "SPR_mapEdLayerBtn")[0].props.onMouseEnter({ currentTarget: { getBoundingClientRect: rect } });
+    tree = await renderTree(() => MapModule({ api }));
+    check("图层按钮也有小标签（讲清上下半块与层号）", textOf(tipOf(tree) ?? null).includes("上一层") && textOf(tipOf(tree) ?? null).includes("层号"), textOf(tipOf(tree) ?? null));
+    byClass(tree, "SPR_mapEdLayerBtn")[0].props.onMouseLeave();
+    tree = await renderTree(() => MapModule({ api }));
+    check("图层按钮移开后也收起", tipOf(tree) === undefined);
+  }
   // 切到第 2 层：层号变 2，且「下一层」变成禁用、「上一层」变可用
   layerHalves.find((node) => node.props["data-dir"] === "up").props.onClick();
   tree = await renderTree(() => MapModule({ api }));
@@ -1182,7 +1231,7 @@ try {
 
     // 撤销
     const undoButton = byTool(tree, "undo")[0];
-    check("有撤销按钮（图标按钮 + title 提示）", undoButton !== undefined && String(undoButton.props.title).includes("撤销"));
+    check("有撤销按钮（图标按钮 + aria-label，说明走自绘小标签）", undoButton !== undefined && String(undoButton.props["aria-label"]).includes("撤销"));
     undoButton.props.onClick();
     tree = await renderTree(() => MapModule({ api }));
     const restored = await G.mapPlan(projectId, { view: beforeView, have: [] });
@@ -1368,6 +1417,12 @@ try {
   check("调色板可滚动（overflow:auto，条目多了滚轮能滚）", /\.SPR_mapEdPalette\{[^}]*overflow:auto/.test(clientSource));
   check("调色板是 8 列 32px 网格", clientSource.includes(".SPR_mapEdPaletteGrid{display:grid;grid-template-columns:repeat(8,32px)"));
   check("工具格是 6 列 × 2 行", clientSource.includes(".SPR_mapEdTools{display:grid;grid-template-columns:repeat(6,1fr)"));
+  // 工具小标签：固定定位才不会被祖先的 overflow 裁掉「按钮正上方」那段；坐标要夹在视口内。
+  check(
+    "工具小标签用 position:fixed + translate(-50%,-100%)（absolute 会被 overflow 裁掉）",
+    /\.SPR_mapEdTip\{position:fixed[^}]*translate\(-50%,-100%\)/.test(clientSource)
+  );
+  check("工具小标签贴边时被夹在视口内", /Math\.max\(half, Math\.min\(center, viewWidth - half\)\)/.test(clientSource));
   check("选中的笔刷是红框（outline 2px 红，AsLib 同款）", /\.SPR_mapEdTile\[data-on="true"\]\{outline:2px solid #e23b2b/.test(clientSource));
   check("画布用 image-rendering:pixelated / touch-action:none（像素画不糊、触摸不滚动）", /\.SPR_mapEdCanvas\{[^}]*image-rendering:pixelated[^}]*touch-action:none/.test(clientSource));
   /**

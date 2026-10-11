@@ -1133,6 +1133,36 @@
         "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
       "选一张素材图开始":
         "Choose a tile image to start",
+      "{n0}：{n1}":
+        "{n0}: {n1}",
+      "{n0}：{n1}（{n2}）":
+        "{n0}: {n1} ({n2})",
+      "撤回上一步":
+        "Undo the last step",
+      "把刚撤回的一步再做回来":
+        "Redo the step you just undid",
+      "按住左键涂抹，铺当前选中的那块图":
+        "Hold the left button to paint the currently selected tile",
+      "把这格擦成空；右键随时是橡皮":
+        "Erase this cell; right-click is always the eraser",
+      "同色的连通区一次填满":
+        "Fill a connected run of the same tile in one go",
+      "吸取这一格用的图块，变成当前笔刷":
+        "Pick up the tile used in this cell and make it the current brush",
+      "拖动平移画布；空格拖或中键拖也行":
+        "Drag to pan the canvas; space-drag or middle-drag works too",
+      "只显示当前这一层，底铺绿色":
+        "Show only the current layer on a green backdrop",
+      "上半换上一层、下半换下一层；中间的数字是当前层号":
+        "Click the upper half for the layer above, the lower half for the one below; the number in the middle is the current layer",
+      "显示或隐藏格线，方便数格子":
+        "Show or hide the grid lines so cells are easier to count",
+      "随机铺满 / 迷宫 / 大陆：用选中的图块一键铺满整层":
+        "Random fill / maze / continent: fill the whole layer with the selected tiles in one click",
+      "地图大小、图层、帮助":
+        "Map size, layers and help",
+      "图层":
+        "Layer",
       "素材图加载失败：{n0}（试试重新上传这张图）":
         "Could not load the tile image: {n0} (try uploading it again)",
       "用自带素材试试":
@@ -1151,46 +1181,22 @@
         "Tile {n0}",
       "还没有素材，点上面的「素材」上传一张。":
         "No tile image yet: click \"Image\" above to upload one.",
-      "撤销（⌘Z）":
-        "Undo (Cmd+Z)",
-      "重做（⇧⌘Z）":
-        "Redo (Shift+Cmd+Z)",
-      "画笔：按住左键涂抹（B）":
-        "Brush: hold the left button to paint (B)",
-      "橡皮：擦成空（E）；右键随时是橡皮":
-        "Eraser: wipe to empty (E); the right button always erases",
       "油漆桶":
         "Paint bucket",
-      "油漆桶：同色连通区一次填满（G）":
-        "Paint bucket: fill the connected area in one go (G)",
-      "吸管：吸取这一格用的图块（I）":
-        "Eyedropper: pick the tile used in this cell (I)",
       "抓手":
         "Hand",
-      "抓手：左键拖动平移（H）；也支持空格拖或中键拖":
-        "Hand: drag with the left button to pan (H); space-drag and middle-drag work too",
       "单层预览":
         "Single layer",
-      "只显示当前这一层，底铺绿色（V）":
-        "Show only the current layer on a green backdrop (V)",
-      "上一层 / 下一层；中间的数字是当前层号":
-        "Up or down one layer; the number in the middle is the current layer",
       "上一层":
         "Layer up",
       "下一层":
         "Layer down",
       "网格线":
         "Grid lines",
-      "显示 / 隐藏网格线":
-        "Show or hide the grid lines",
       "一键生成":
         "Generate",
-      "一键生成：随机铺满 / 迷宫 / 大陆":
-        "Generate: random fill / maze / continent",
       "设置":
         "Settings",
-      "设置：地图大小、图层、帮助":
-        "Settings: map size, layers, help",
       "素材调色板":
         "Tile palette",
       "自动":
@@ -2130,6 +2136,13 @@
 .SPR_mapEdTool[data-on="true"]{background:linear-gradient(#fbe3ad,#e0b268);box-shadow:inset 0 0 0 2px #d23b2c}
 .SPR_mapEdTool:disabled{opacity:.4;cursor:default}
 .SPR_mapEdLayerBtn{flex-direction:column;gap:0;padding:1px;background:linear-gradient(#e6bd7d,#c9974f)}
+/* 工具格上方的小标签（名称 + 快捷键 + 介绍）。
+   position:fixed —— 祖先里有 overflow 容器，absolute 会被裁掉「按钮正上方」那一段。 */
+.SPR_mapEdTip{position:fixed;z-index:60;pointer-events:none;transform:translate(-50%,-100%);max-width:236px;padding:6px 8px;border-radius:6px;border:1px solid #6b4a22;background:#2b2b2b;color:#f3e7d3;box-shadow:0 6px 16px rgba(0,0,0,.4);font-size:11px;line-height:1.5;text-align:left}
+.SPR_mapEdTip::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-5px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #2b2b2b}
+.SPR_mapEdTipName{display:flex;align-items:center;gap:6px;font-weight:600}
+.SPR_mapEdTipKey{padding:0 4px;border-radius:3px;background:#4a4a4a;font-size:10px;font-weight:400;color:#e8d7bb}
+.SPR_mapEdTipDesc{margin-top:2px;color:#c9bda8}
 .SPR_mapEdLayerHalf{flex:1;width:100%;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;color:#4a3416;background:transparent;border:none;border-radius:3px}
 .SPR_mapEdLayerHalf:hover:not(:disabled){background:rgba(255,255,255,.28)}
 .SPR_mapEdLayerHalf:disabled{opacity:.3;cursor:default}
@@ -6060,6 +6073,67 @@
         wheelOff.current = () => node.removeEventListener("wheel", handler);
       }, []);
       const stageRef = React.useRef(null);
+      /**
+       * 工具格上方那张小标签（名称 + 介绍 + 快捷键）。
+       *
+       * ⚠️ 位置用 `position:fixed` 而不是 `absolute`：工具栏的祖先里有 `overflow` 容器，
+       * `absolute` 会让「按钮正上方」那一段被裁掉——和侧栏菜单踩的是同一个坑。
+       * 坐标在 hover 时用 `getBoundingClientRect()` 现算，并夹在视口内（第一列的按钮
+       * 居中后左半边会出界）。
+       */
+      const [toolTip, setToolTip] = React.useState(null);
+      /** 当前悬浮的那个按钮（滚动 / 改窗口大小时靠它把标签重新锚回去）。 */
+      const toolTipAnchor = React.useRef(null);
+      /** 横向夹在视口内：半宽上限 = CSS max-width 236 + 内边距，防止第一列按钮的标签出界。 */
+      const toolTipX = (rect) => {
+        const half = 124;
+        const viewWidth = typeof window === "undefined" ? 0 : window.innerWidth || 0;
+        const center = rect.left + rect.width / 2;
+        return Math.round(viewWidth > 0 ? Math.max(half, Math.min(center, viewWidth - half)) : center);
+      };
+      const showToolTip = (name, desc, shortcut) => (event) => {
+        const node = event === undefined ? null : event.currentTarget;
+        if (node === null || node === undefined || typeof node.getBoundingClientRect !== "function") return;
+        toolTipAnchor.current = node;
+        const rect = node.getBoundingClientRect();
+        setToolTip({
+          name,
+          desc,
+          shortcut: shortcut === undefined ? null : shortcut,
+          x: toolTipX(rect),
+          y: Math.round(rect.top - 8)
+        });
+      };
+      const hideToolTip = () => {
+        toolTipAnchor.current = null;
+        setToolTip((current) => (current === null ? current : null));
+      };
+      /**
+       * 滚动 / 改窗口大小时**把标签重新锚回按钮**，而不是直接收起来。
+       *
+       * 收起看着更省事，但真机上很难受：面板一滚（或窗口一缩）标签就没了，而鼠标还停在
+       * 按钮上、`mouseenter` 不会再触发，用户得先把鼠标移开再挪回来才重新看到说明。
+       * 依赖只取「有没有标签」这个布尔量：依赖 `toolTip` 本身的话，每次重新定位都会
+       * 重新挂监听。
+       */
+      React.useEffect(() => {
+        if (toolTip === null || typeof window === "undefined" || typeof window.addEventListener !== "function") return undefined;
+        const reanchor = () => {
+          const node = toolTipAnchor.current;
+          if (node === null || node === undefined || typeof node.getBoundingClientRect !== "function" || node.isConnected === false) {
+            hideToolTip();
+            return;
+          }
+          const rect = node.getBoundingClientRect();
+          setToolTip((current) => (current === null ? current : { ...current, x: toolTipX(rect), y: Math.round(rect.top - 8) }));
+        };
+        window.addEventListener("scroll", reanchor, true);
+        window.addEventListener("resize", reanchor);
+        return () => {
+          window.removeEventListener("scroll", reanchor, true);
+          window.removeEventListener("resize", reanchor);
+        };
+      }, [toolTip === null]);
       const fileRef = React.useRef(null);
       const pointersRef = React.useRef(new Map());
       const strokeRef = React.useRef(null);
@@ -7197,19 +7271,34 @@
           : h("div", { className: "SPR_mapEdPaletteGrid" }, brushes.map(paletteTile))
       );
 
-      const toolButton = (key, label, hint, config) => {
+      /**
+       * 一个工具格。
+       *
+       * ⚠️ **不要用 `title` 做说明**：原生 tooltip 要等一秒、样式不受控，还和我们自己那张
+       * 小标签**同时出现**（两个框叠在一起）。所以这里 `aria-label` 承担无障碍名字，
+       * 视觉说明交给 `SPR_mapEdTip` —— 鼠标悬浮 / 键盘聚焦时显示在按钮**正上方**。
+       */
+      const toolButton = (key, name, desc, config) => {
         const options = config === undefined ? {} : config;
+        const shortcut = options.shortcut === undefined ? null : options.shortcut;
         return h(
           "button",
           {
             key,
             type: "button",
             className: "SPR_mapEdTool",
-            title: hint,
-            "aria-label": label,
+            "aria-label":
+              shortcut === null
+                ? T("{n0}：{n1}", { n0: name, n1: desc })
+                : T("{n0}：{n1}（{n2}）", { n0: name, n1: desc, n2: shortcut }),
             "data-tool": key,
             "data-on": options.on === true ? "true" : undefined,
             disabled: options.disabled === true,
+            onMouseEnter: showToolTip(name, desc, shortcut),
+            onFocus: showToolTip(name, desc, shortcut),
+            onMouseLeave: hideToolTip,
+            onBlur: hideToolTip,
+            onPointerDown: hideToolTip,
             onClick: options.onClick
           },
           options.icon === undefined ? null : h(MapToolIcon, { name: options.icon })
@@ -7219,17 +7308,22 @@
       const tools = h(
         "div",
         { className: "SPR_mapEdTools" },
-        toolButton("undo", T("撤销"), T("撤销（⌘Z）"), { icon: "undo", onClick: () => void doUndo(), disabled: view.canUndo !== true }),
-        toolButton("redo", T("重做"), T("重做（⇧⌘Z）"), { icon: "redo", onClick: () => void doRedo(), disabled: view.canRedo !== true }),
-        toolButton("pen", T("画笔"), T("画笔：按住左键涂抹（B）"), { icon: "pen", on: tool === "pen", onClick: () => setTool("pen") }),
-        toolButton("eraser", T("橡皮"), T("橡皮：擦成空（E）；右键随时是橡皮"), { icon: "eraser", on: tool === "eraser", onClick: () => setTool("eraser") }),
-        toolButton("bucket", T("油漆桶"), T("油漆桶：同色连通区一次填满（G）"), { icon: "bucket", on: tool === "bucket", onClick: () => setTool("bucket") }),
-        toolButton("pipette", T("吸管"), T("吸管：吸取这一格用的图块（I）"), { icon: "pipette", on: tool === "pipette", onClick: () => setTool("pipette") }),
-        toolButton("hand", T("抓手"), T("抓手：左键拖动平移（H）；也支持空格拖或中键拖"), { icon: "hand", on: tool === "hand", onClick: () => setTool("hand") }),
-        toolButton("single", T("单层预览"), T("只显示当前这一层，底铺绿色（V）"), { icon: "single", on: single === true, onClick: () => setSingle(single !== true) }),
+        toolButton("undo", T("撤销"), T("撤回上一步"), { icon: "undo", shortcut: "⌘Z", onClick: () => void doUndo(), disabled: view.canUndo !== true }),
+        toolButton("redo", T("重做"), T("把刚撤回的一步再做回来"), { icon: "redo", shortcut: "⇧⌘Z", onClick: () => void doRedo(), disabled: view.canRedo !== true }),
+        toolButton("pen", T("画笔"), T("按住左键涂抹，铺当前选中的那块图"), { icon: "pen", shortcut: "B", on: tool === "pen", onClick: () => setTool("pen") }),
+        toolButton("eraser", T("橡皮"), T("把这格擦成空；右键随时是橡皮"), { icon: "eraser", shortcut: "E", on: tool === "eraser", onClick: () => setTool("eraser") }),
+        toolButton("bucket", T("油漆桶"), T("同色的连通区一次填满"), { icon: "bucket", shortcut: "G", on: tool === "bucket", onClick: () => setTool("bucket") }),
+        toolButton("pipette", T("吸管"), T("吸取这一格用的图块，变成当前笔刷"), { icon: "pipette", shortcut: "I", on: tool === "pipette", onClick: () => setTool("pipette") }),
+        toolButton("hand", T("抓手"), T("拖动平移画布；空格拖或中键拖也行"), { icon: "hand", shortcut: "H", on: tool === "hand", onClick: () => setTool("hand") }),
+        toolButton("single", T("单层预览"), T("只显示当前这一层，底铺绿色"), { icon: "single", shortcut: "V", on: single === true, onClick: () => setSingle(single !== true) }),
         h(
           "div",
-          { key: "layer", className: "SPR_mapEdTool SPR_mapEdLayerBtn", title: T("上一层 / 下一层；中间的数字是当前层号") },
+          {
+            key: "layer",
+            className: "SPR_mapEdTool SPR_mapEdLayerBtn",
+            onMouseEnter: showToolTip(T("图层"), T("上半换上一层、下半换下一层；中间的数字是当前层号"), null),
+            onMouseLeave: hideToolTip
+          },
           h(
             "button",
             {
@@ -7256,9 +7350,9 @@
             h(MapToolIcon, { name: "down" })
           )
         ),
-        toolButton("grid", T("网格线"), T("显示 / 隐藏网格线"), { icon: "grid", on: showGrid === true, onClick: () => setShowGrid(showGrid !== true) }),
-        toolButton("gen", T("一键生成"), T("一键生成：随机铺满 / 迷宫 / 大陆"), { icon: "magic", on: openCard === "gen", onClick: () => setOpenCard(openCard === "gen" ? null : "gen") }),
-        toolButton("settings", T("设置"), T("设置：地图大小、图层、帮助"), { icon: "settings", on: openCard === "settings", onClick: () => setOpenCard(openCard === "settings" ? null : "settings") })
+        toolButton("grid", T("网格线"), T("显示或隐藏格线，方便数格子"), { icon: "grid", on: showGrid === true, onClick: () => setShowGrid(showGrid !== true) }),
+        toolButton("gen", T("一键生成"), T("随机铺满 / 迷宫 / 大陆：用选中的图块一键铺满整层"), { icon: "magic", on: openCard === "gen", onClick: () => setOpenCard(openCard === "gen" ? null : "gen") }),
+        toolButton("settings", T("设置"), T("地图大小、图层、帮助"), { icon: "settings", on: openCard === "settings", onClick: () => setOpenCard(openCard === "settings" ? null : "settings") })
       );
 
       const side = h(
@@ -7574,6 +7668,27 @@
         onContextMenu: (event) => event.preventDefault()
       });
 
+      // 工具小标签：挂在面板根节点下、`position:fixed`，所以不会被任何祖先的 overflow 裁掉。
+      const toolTipNode =
+        toolTip === null
+          ? null
+          : h(
+              "div",
+              {
+                className: "SPR_mapEdTip",
+                role: "tooltip",
+                "data-tip": toolTip.name,
+                style: { left: `${toolTip.x}px`, top: `${toolTip.y}px` }
+              },
+              h(
+                "div",
+                { className: "SPR_mapEdTipName" },
+                toolTip.name,
+                toolTip.shortcut === null ? null : h("span", { className: "SPR_mapEdTipKey" }, toolTip.shortcut)
+              ),
+              h("div", { className: "SPR_mapEdTipDesc" }, toolTip.desc)
+            );
+
       return shell(
         h(
           "div",
@@ -7595,8 +7710,7 @@
           h(
             "div",
             { className: "SPR_mapEdFoot" },
-            notice === null ? null : h("div", { className: `SPR_notice SPR_notice-${notice.kind}` }, notice.text),
-            planWarnings.length === 0
+            notice === null ? null : h("div", { className: `SPR_notice SPR_notice-${notice.kind}` }, notice.text),            planWarnings.length === 0
               ? null
               : h(
                   "ul",
@@ -7631,7 +7745,8 @@
                 }
               })
             )
-          )
+          ),
+          toolTipNode
         )
       );
     }
