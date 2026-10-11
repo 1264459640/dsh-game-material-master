@@ -627,6 +627,19 @@ try {
     deleteMapBtn !== undefined && deleteMapBtn.props?.disabled === true,
     deleteMapBtn === undefined ? "没找到按钮" : `disabled=${String(deleteMapBtn.props?.disabled)}`
   );
+  // 宿主侧早就支持、界面以前没入口的三件套：改地图名 / 改地图尺寸 / 改图层名与基础族
+  const chipText = byClass(tree, "SPR_meMapChip").map((node) => textOf(node)).join(" ");
+  check("地图卡片带「空 / 已画 N 格」摘要", /已画 \d+ 格|空/.test(chipText), chipText.slice(0, 60));
+  check("有「重命名地图」入口", collect(tree, (node) => textOf(node).trim() === "重命名地图").length === 1);
+  const paintButtonTexts = collect(tree, (node) => node.type === "button").map((node) => textOf(node).trim());
+  check("有「应用尺寸」入口（宿主支持 cols/rows，界面以前没入口）", paintButtonTexts.includes("应用尺寸"), paintButtonTexts.slice(-8).join(" / "));
+  const numLabels = collect(tree, (node) => node.type?.name === "NumField").map((node) => String(node.props?.label ?? ""));
+  check(
+    "尺寸输入框按当前文档预填（宽/高）",
+    numLabels.includes("宽（格）") && numLabels.includes("高（格）"),
+    numLabels.join(" / ")
+  );
+  check("图层行有改名按钮（✎）", paintButtonTexts.includes("✎"));
   check("图层行拆成两行（名字与按钮在上、数值在下）", byClass(tree, "SPR_meLayerFields").length >= 1);
   check("画布下面有操作说明（拖动 / 平移 / 缩放）", byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("平移画布")));
   check("画布下面有快捷键说明", byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("快捷键")));
@@ -637,6 +650,10 @@ try {
   );
   // 悬停解释：这些控件的含义不看文字猜不出来（「锁定」锁的是什么？）
   const titled = new Set(collect(tree, (node) => typeof node.props?.title === "string").map((node) => node.props.title));
+  check(
+    "图层行能设「空单元格算哪个族」（baseFamilyId）",
+    [...titled].some((text) => text.includes("空格子按哪个族算邻居"))
+  );
   for (const [label, key] of [
     ["加装饰层", "小物件"],
     ["新建地图", "32×32"],

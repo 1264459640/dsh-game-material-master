@@ -1372,6 +1372,31 @@
       "确定移除图集「{n0}」？它的图块会一起删掉，无法撤销。":
         "Remove the tileset \"{n0}\"? Its tiles are deleted with it, and this cannot be undone.",
       "已移除图集": "Tileset removed"
+,
+      // ── 地图编辑器：地图改名 / 改尺寸 / 图层改名 / 基础族 / 地图卡片摘要 ────
+      "新的地图名": "New map name",
+      "新的图层名": "New layer name",
+      "已重命名地图": "Map renamed",
+      "已改地图尺寸": "Map resized",
+      "缩小地图会丢掉超出范围的已画格子（可以撤销）。确定继续？":
+        "Shrinking the map discards cells outside the new bounds (this can be undone). Continue?",
+      "点一下切到这张地图": "Click to switch to this map",
+      "空": "Empty",
+      "已画 {n0} 格": "{n0} cells painted",
+      "给当前这张地图改个名字": "Rename the current map",
+      "重命名地图": "Rename map",
+      "宽（格）": "Width (cells)",
+      "高（格）": "Height (cells)",
+      "应用尺寸": "Apply size",
+      "按上面的宽高重开画布：放大只是多出空白，缩小时超出的格子会被丢掉（可以撤销）":
+        "Re-lay the canvas at the size above: enlarging just adds empty space, shrinking discards cells outside the bounds (undoable)",
+      "地图尺寸随时能改：放大只是多出空白；缩小时超出范围的格子会被丢掉（宿主会告诉你丢了多少，而且可以撤销）。":
+        "The map size can be changed at any time: enlarging only adds empty space, while shrinking discards the cells outside the new bounds (the host tells you how many, and it is undoable).",
+      "给这一层改个名字": "Rename this layer",
+      "空单元格算哪个族": "Empty cells count as",
+      "不设（就是空地）": "Not set (plain empty)",
+      "这一层的空格子按哪个族算邻居：整层是水时把空处也算成水，接壤的地面才会长出过渡边":
+        "Which family this layer's empty cells count as when neighbours are computed: if the whole layer is water, counting the empty parts as water is what makes the neighbouring ground grow transition edges"
     };
 /* i18n-ignore-end */
 
@@ -6117,6 +6142,8 @@
       const [exportScale, setExportScale] = React.useState(1);
       const [exportFormats, setExportFormats] = React.useState({ pngMerged: true, pngLayers: true, json: true, tiled: true });
       const [newMapName, setNewMapName] = React.useState("");
+      /** 地图尺寸草稿（点「应用尺寸」才提交，避免每敲一个数字就 resize 一次）。 */
+      const [mapSizeDraft, setMapSizeDraft] = React.useState({ cols: 32, rows: 32 });
       const imageRefs = React.useRef({});
       const canvasRef = React.useRef(null);
       const wrapRef = React.useRef(null);
@@ -6159,6 +6186,14 @@
       const activeLayer = activeLayerId !== null && layerOf(activeLayerId) !== undefined ? layerOf(activeLayerId) : doc === null ? undefined : (doc.layers || [])[0];
       const legend = React.useMemo(() => (project === null ? new Map() : MAP_legendMap(project)), [project]);
       const assetBase = project === null ? "" : project.assetBase;
+
+      /** 切项目 / 切地图后把尺寸草稿对齐到当前文档（否则输入框还停在上一张地图的尺寸）。 */
+      const docSizeKey = doc === null || doc === undefined ? null : `${doc.id}:${doc.cols}x${doc.rows}`;
+      React.useEffect(() => {
+        if (doc === null || doc === undefined) return;
+        setMapSizeDraft({ cols: doc.cols, rows: doc.rows });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [docSizeKey]);
 
       const withApi = React.useCallback(
         async (fn, options) => {
@@ -6686,14 +6721,50 @@
        * 宿主侧写死了「至少要留一张地图」（`deleteMapDocFor`），所以只剩一张时按钮直接禁用，
        * 而不是点下去弹一句错误 —— 用户看不出「禁用」和「点了没反应」的区别（真机踩过）。
        */
-      const deleteMap = async () => {
-        if (project === null || doc === null || doc === undefined || mapId === null) return;
+      const deleteMap = async () => {        if (project === null || doc === null || doc === undefined || mapId === null) return;
         if ((project.maps || []).length <= 1) return;
         // eslint-disable-next-line no-alert
         if (typeof window !== "undefined" && !window.confirm(T("确定删除地图「{n0}」？上面的内容会一起删掉，无法撤销。", { n0: doc.name }))) return;
         const result = await withApi(() => api.deleteMapDoc({ projectId, mapId }), { notice: T("已删除地图") });
         if (result === undefined) return;
         await loadProject(projectId);
+      };
+
+      /** 改地图名（宿主 `saveMapDoc({ name })` 一直支持，界面此前没入口）。 */
+      const renameMap = async () => {
+        if (doc === null || doc === undefined || mapId === null) return;
+        // eslint-disable-next-line no-alert
+        const next = typeof window === "undefined" ? null : window.prompt(T("新的地图名"), doc.name);
+        if (next === null || next.trim() === "") return;
+        const result = await withApi(() => api.saveMapDoc({ projectId, mapId, name: next.trim() }), { notice: T("已重命名地图") });
+        if (result === undefined) return;
+        await loadProject(projectId, mapId);
+      };
+
+      /**
+       * 改地图尺寸。
+       *
+       * 缩小时宿主会把超出范围的格子丢掉（并回一条 warning），所以先 confirm 一次；
+       * 放大只是加空白，不动已有内容。宿主侧上限是 512 格一边。
+       */
+      const applyMapSize = async () => {
+        if (doc === null || doc === undefined || mapId === null) return;
+        if (mapSizeDraft.cols === doc.cols && mapSizeDraft.rows === doc.rows) return;
+        const shrink = mapSizeDraft.cols < doc.cols || mapSizeDraft.rows < doc.rows;
+        // eslint-disable-next-line no-alert
+        if (shrink && typeof window !== "undefined" && !window.confirm(T("缩小地图会丢掉超出范围的已画格子（可以撤销）。确定继续？"))) return;
+        const result = await withApi(() => api.saveMapDoc({ projectId, mapId, cols: mapSizeDraft.cols, rows: mapSizeDraft.rows }), { notice: T("已改地图尺寸") });
+        if (result === undefined) return;
+        if (result.warnings !== undefined && result.warnings.length > 0) setNotice({ kind: "info", text: result.warnings.join("；") });
+        await loadProject(projectId, mapId);
+      };
+
+      /** 改图层名（同样宿主支持、界面没入口）。 */
+      const renameLayer = async (layer) => {
+        // eslint-disable-next-line no-alert
+        const next = typeof window === "undefined" ? null : window.prompt(T("新的图层名"), layer.name);
+        if (next === null || next.trim() === "") return;
+        await saveDocStructure({ layers: [{ id: layer.id, name: next.trim() }] });
       };
 
       const importFiles = async (files) => {
@@ -7097,9 +7168,10 @@
               ),
               h(Btn, { onClick: () => void saveDocStructure({ moveLayer: { id: layer.id, toIndex: index - 1 } }), disabled: index === 0, title: T("上移一层（越靠上越晚画，也就盖住下面的）") }, "↑"),
               h(Btn, { onClick: () => void saveDocStructure({ moveLayer: { id: layer.id, toIndex: index + 1 } }), disabled: index === doc.layers.length - 1, title: T("下移一层") }, "↓"),
+              h(Btn, { title: T("给这一层改个名字"), onClick: () => void renameLayer(layer) }, "✎"),
               h(Btn, { danger: true, title: T("删掉这一层与它上面的内容"), onClick: () => void saveDocStructure({ removeLayerId: layer.id }) }, T("删除"))
             ),
-            // 下行：两个数值字段单独一行，窄面板里不会和上面的按钮互相挤
+            // 下行：数值字段单独一行，窄面板里不会和上面的按钮互相挤
             h(
               "div",
               { className: "SPR_meLayerFields" },
@@ -7115,7 +7187,25 @@
                 min: 0,
                 max: 100,
                 onChange: (value) => void saveDocStructure({ layers: [{ id: layer.id, opacity: value / 100 }] })
-              })
+              }),
+              h(
+                "label",
+                {
+                  className: "SPR_field",
+                  title: T("这一层的空格子按哪个族算邻居：整层是水时把空处也算成水，接壤的地面才会长出过渡边")
+                },
+                h("span", { className: "SPR_fieldLabel" }, T("空单元格算哪个族")),
+                h(
+                  "select",
+                  {
+                    className: "SPR_input",
+                    value: layer.baseFamilyId === undefined ? "" : layer.baseFamilyId,
+                    onChange: (event) => void saveDocStructure({ layers: [{ id: layer.id, baseFamilyId: event.target.value }] })
+                  },
+                  h("option", { value: "" }, T("不设（就是空地）")),
+                  families.map((family) => h("option", { key: family.id, value: family.id }, family.name))
+                )
+              )
             )
           )
         ),
@@ -7144,9 +7234,11 @@
               type: "button",
               className: "SPR_meMapChip",
               "data-active": mapId === entry.id ? "true" : undefined,
+              title: T("点一下切到这张地图"),
               onClick: () => void switchMap(entry.id)
             },
-            `${entry.name} · ${entry.cols}×${entry.rows}`
+            // 带「空 / 已画 N 格」：多张地图时一眼能看出哪张是画过的（宿主给的 filled）
+            `${entry.name} · ${entry.cols}×${entry.rows} · ${entry.filled === 0 ? T("空") : T("已画 {n0} 格", { n0: String(entry.filled) })}`
           )
         ),
         h("input", {
@@ -7169,6 +7261,7 @@
           },
           T("新建地图")
         ),
+        h(Btn, { title: T("给当前这张地图改个名字"), onClick: () => void renameMap() }, T("重命名地图")),
         h(Btn, { title: T("把当前这张地图连内容一起复制一份新的"), onClick: () => void withApi(async () => { await api.duplicateMapDoc({ projectId, mapId }); await loadProject(projectId); }) }, T("复制当前地图")),
         h(
           Btn,
@@ -7180,6 +7273,29 @@
             onClick: () => void deleteMap()
           },
           T("删除当前地图")
+        )
+      );
+
+      /**
+       * 地图尺寸。
+       *
+       * 宿主侧 `saveMapDoc` 一直支持 `cols` / `rows`（缩小时把超出的格子丢掉并回 warning），
+       * 界面却没有任何入口 —— 建完就只能 32×32 用到死（真机反馈「地图多大没处改」）。
+       */
+      const mapSizeRow = h(
+        "div",
+        { className: "SPR_meSliceRow" },
+        h(NumField, { label: T("宽（格）"), value: mapSizeDraft.cols, min: 1, max: 512, onChange: (value) => setMapSizeDraft((prev) => ({ ...prev, cols: value })) }),
+        h(NumField, { label: T("高（格）"), value: mapSizeDraft.rows, min: 1, max: 512, onChange: (value) => setMapSizeDraft((prev) => ({ ...prev, rows: value })) }),
+        h(
+          Btn,
+          {
+            primary: true,
+            disabled: doc === null || doc === undefined || (mapSizeDraft.cols === doc.cols && mapSizeDraft.rows === doc.rows),
+            title: T("按上面的宽高重开画布：放大只是多出空白，缩小时超出的格子会被丢掉（可以撤销）"),
+            onClick: () => void applyMapSize()
+          },
+          T("应用尺寸")
         )
       );
 
@@ -7426,6 +7542,8 @@
           h("h4", null, T("地图与图层")),
           h("p", { className: "SPR_meCardNote" }, T("上面一行是这张项目里的地图（点名字切换）；下面每一块是一个图层，画笔只会画在当时高亮的那一层上。「高度偏移」让整层上下挪几像素，「锁定」防止误涂。")),
           mapList,
+          h("p", { className: "SPR_meCardNote" }, T("地图尺寸随时能改：放大只是多出空白；缩小时超出范围的格子会被丢掉（宿主会告诉你丢了多少，而且可以撤销）。")),
+          mapSizeRow,
           layerList
         ),
         h(
