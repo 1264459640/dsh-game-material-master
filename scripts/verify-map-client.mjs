@@ -390,6 +390,11 @@ try {
      * 这条桩就是用来钉住「不许再依赖原生 prompt」的 —— 返回 null 会让旧写法什么都不建。
      */
     __promptCalls: [],
+    __confirmCalls: [],
+    confirm(message) {
+      windowStub.__confirmCalls.push(message);
+      return true;
+    },
     prompt(message, defaultValue) {
       windowStub.__promptCalls.push({ message, defaultValue });
       return null;
@@ -786,6 +791,21 @@ try {
   }
   const byClass = (tree, className) => collect(tree, (node) => typeof node.props?.className === "string" && node.props.className.split(" ").includes(className));
   const byTool = (tree, key) => collect(tree, (node) => node.props?.["data-tool"] === key);
+  /**
+   * 地图格 → 客户端坐标。
+   *
+   * ⚠️ 不要写死 `clientX: 40` 这类数字：相机被夹在地图里之后，硬编码的坐标很容易落到
+   * 地图外（按新约定不算命中 → 不画也不悬停），断言就会莫名其妙地失败。
+   * 相机口径取客户端最近一次计划查询的 `view`（= `{x: pan.x, y: pan.y, width: w/zoom}`）；
+   * 画布桩的 `getBoundingClientRect()` 是 900×520、left/top = 0。
+   */
+  const clientOf = (r, c, step = 32) => {
+    // 相机用面板自己暴露的那一份（`__mapDebug` 打开时随每次绘制刷新）——
+    // 拿「最近一次计划查询的 view」推会读到过期相机（切项目 / 自适应缩放之后）。
+    const cam = windowStub.__mapCamera;
+    if (cam === undefined) throw new Error("拿不到 __mapCamera：面板还没画过？");
+    return { x: ((c + 0.5) * step - cam.pan.x) * cam.zoom, y: ((r + 0.5) * step - cam.pan.y) * cam.zoom };
+  };
   const textOf = (node) => {
     if (node === null || node === undefined) return "";
     if (typeof node === "string" || typeof node === "number") return String(node);
@@ -1191,16 +1211,62 @@ try {
     liveCanvas.props.onPointerUp({ pointerId: 1 });
     tree = await renderTree(() => MapModule({ api }));
     const draggedQueries = apiLog.plans.slice(queriesBeforeDrag);
+    /**
+     * ⚠️ 相机现在**被夹在地图里**（见 clampPan）：往右下角拖到头时视口原点正好是
+     * 「地图宽 - 视口宽」，再拖也不动 —— 真机上这就是「地图不再乱跑、左上角能对齐」。
+     */
+    const clampedQuery = draggedQueries[draggedQueries.length - 1];
+    // 这个夹具里自适应缩放会让整张地图正好铺进视口（视口 ≥ 地图）→ 相机应当钉在 0：
+    // 「地图左上角 = 画布左上角」。地图比视口大的分支（能滚、滚到边界停）用捏合放大后再测。
     check(
-      "拖动确实把视口挪走了（拖动后有一次查询的视口原点跑到很远）",
-      draggedQueries.some((query) => query.view.x < -1000 && query.view.y < -1000),
-      draggedQueries.map((query) => `${query.view.x},${query.view.y}`).join(" | ")
+      "地图不比视口大时相机钉在 0（左上角对齐，不会拖进空白）",
+      clampedQuery !== undefined && clampedQuery.view.x === 0 && clampedQuery.view.y === 0,
+      `x=${clampedQuery?.view.x} y=${clampedQuery?.view.y} 视口宽=${clampedQuery?.view.width}`
     );
+    // 地图比视口大时另一支：捏合放大（双指针）让地图超出视口，再拖 → 能滚，且滚到边界就停
+    {
+      const pinchCanvas = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
+      pinchCanvas.props.onPointerDown({ clientX: 300, clientY: 260, button: 0, pointerId: 71 });
+      pinchCanvas.props.onPointerDown({ clientX: 420, clientY: 260, button: 0, pointerId: 72 });
+      pinchCanvas.props.onPointerMove({ clientX: 300, clientY: 260, pointerId: 71 });
+      pinchCanvas.props.onPointerMove({ clientX: 560, clientY: 260, pointerId: 72 });
+      pinchCanvas.props.onPointerUp({ pointerId: 71 });
+      pinchCanvas.props.onPointerUp({ pointerId: 72 });
+      tree = await renderTree(() => MapModule({ api }));
+      tree = await forceFullPlanReload(tree);
+      const zoomed = apiLog.plans[apiLog.plans.length - 1].view;
+      const dragStart = apiLog.plans.length;
+      byTool(tree, "hand")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      const drag2 = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
+      // 把地图往左上拖（pointer 往左上 → pan 变大）→ 一路滚到右下边界就停
+      drag2.props.onPointerDown({ clientX: 300, clientY: 260, button: 0, pointerId: 73 });
+      drag2.props.onPointerMove({ clientX: -3000, clientY: -3000, pointerId: 73 });
+      drag2.props.onPointerUp({ pointerId: 73 });
+      tree = await renderTree(() => MapModule({ api }));
+      tree = await forceFullPlanReload(tree);
+      const afterDrag = apiLog.plans.slice(dragStart).map((entry) => entry.view);
+      const last = afterDrag[afterDrag.length - 1];
+      const mapSide = 32 * 32;
+      const maxAllowed = Math.max(0, mapSide - last.width);
+      check(
+        "放大到地图超出视口后可以滚，且滚到边界就停（pan 落在 0..地图-视口）",
+        last !== undefined && zoomed.width < mapSide && last.x >= -0.5 && last.x <= maxAllowed + 0.5,
+        `放大后视口宽=${Math.round(zoomed.width)}，滚到底 x=${Math.round(last?.x)}（上界 ${Math.round(maxAllowed)}）`
+      );
+      check("滚到右下边界时正好停在「地图右下角贴住画布右下角」", Math.abs(last.x - maxAllowed) < 0.5 && Math.abs(last.y - Math.max(0, mapSide - last.height)) < 0.5, `x=${Math.round(last?.x)}/${Math.round(maxAllowed)} y=${Math.round(last?.y)}`);
+    }
     tree = await forceFullPlanReload(tree);
     const seamQuery = apiLog.plans[apiLog.plans.length - 1];
     const seamPlan = await G.mapPlan(projectId, { view: seamQuery.view, have: [] });
+    /**
+     * ⚠️ 契约变了：相机被夹在地图内（`clampPan`）之后，客户端**再也不会请求越界的视口** ——
+     * 所以「环绕出来的负数 key」在界面上不会出现，环绕只剩**数据层**语义（自动连接看邻居、
+     * 导出铺一次）。这里改成钉住新不变量：所有请求出去的视口原点都不越界。
+     * （负数 key 本身仍由宿主支持，`verify-map` / `-pipeline` 里有断言。）
+     */
     const negativeKeys = seamPlan.visibleKeys.filter((key) => key.includes("-"));
-    check("跨边界处宿主给出的 visibleKeys 里有负数 chunk key", negativeKeys.length > 0, seamPlan.visibleKeys.join(" "));
+    check("相机被夹住后不再请求越界视口（界面上不会出现环绕出来的副本）", negativeKeys.length === 0 && apiLog.plans.every((entry) => entry.view.x >= 0 && entry.view.y >= 0), `最后一次 visibleKeys=${seamPlan.visibleKeys.join(" ")}`);
     const seamFrame = frameOf();
     check("负数 chunk 的计划里真的有内容（不是空块）", seamPlan.chunks.every((chunk) => chunk.ops.length > 0), seamPlan.chunks.map((chunk) => `${chunk.key}:${chunk.ops.length}`).join(" "));
     check("画布对负数 chunk 照画不误（条数 > 0，且 chunk 列表与宿主一致）", seamFrame.length > 0 && JSON.stringify(windowStub.__mapDrawStats?.keys) === JSON.stringify(seamPlan.visibleKeys), `${seamFrame.length} 条 / ${JSON.stringify(windowStub.__mapDrawStats?.keys)}`);
@@ -1248,15 +1314,30 @@ try {
     const appearsBefore = apiLog.applies.length;
     const framesBefore = drawFrames.length;
     const liveCanvas = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
-    liveCanvas.props.onPointerDown({ clientX: 40, clientY: 40, button: 0, pointerId: 1 });
+    // 换一块笔刷再画：保证「这一笔真的改到了数据」（同格同图 = 宿主认为没变，计划自然不变）
+    byClass(tree, "SPR_mapEdTile")[4].props.onClick({ shiftKey: false });
+    byTool(tree, "pen")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    /**
+     * ⚠️ 必须画**当前视口里**的格子。相机现在会被夹在地图内（可能停在边界上），
+     * 视口外的格子画了也不会改变「这一份视口的计划」，断言会误报「没改到地图」。
+     * 用 __mapCamera 反推视口中心在哪个格，再从那附近拖两格。
+     */
+    const camNow = windowStub.__mapCamera;
+    const viewMidR = Math.floor((camNow.pan.y + 520 / camNow.zoom / 2) / 32);
+    const viewMidC = Math.floor((camNow.pan.x + 900 / camNow.zoom / 2) / 32);
+    const from11 = clientOf(viewMidR, viewMidC);
+    const to33 = clientOf(viewMidR + 1, viewMidC + 1);
+    liveCanvas.props.onPointerDown({ clientX: from11.x, clientY: from11.y, button: 0, pointerId: 1 });
     await tickTimers(); // 真机上一笔拖拽中间会过好几个 40ms 防抖窗口：这里显式放行一次
-    liveCanvas.props.onPointerMove({ clientX: 120, clientY: 96, pointerId: 1 });
+    liveCanvas.props.onPointerMove({ clientX: to33.x, clientY: to33.y, pointerId: 1 });
     await tickTimers();
     liveCanvas.props.onPointerUp({ pointerId: 1 });
     tree = await renderTree(() => MapModule({ api }));
     const planAfter = await G.mapPlan(projectId, { view: beforeView, have: [] });
     const depthAfter = G.historyState(projectId).depth;
     const submits = apiLog.applies.slice(appearsBefore);
+    note(`调试：提交的格 ${submits.flatMap((b) => (b.ops ?? []).flatMap((op) => (op.cells ?? []).map((c) => `${c.r},${c.c},t${c.tile}`))).join(" ")}`);
 
     check("在画布上按下 → 拖动 → 抬起真的改了地图（宿主计划变了）", JSON.stringify(planAfter.chunks) !== JSON.stringify(planBefore.chunks), `${planBefore.chunks.flatMap((c) => c.ops).length} → ${planAfter.chunks.flatMap((c) => c.ops).length} 条 op`);
     check("改了之后画布重画了", drawFrames.length > framesBefore, `${framesBefore} → ${drawFrames.length} 帧`);
@@ -1360,7 +1441,8 @@ try {
     let erased = await renderTree(() => MapModule({ api }));
     const before = apiLog.applies.length;
     const liveCanvas = collect(erased, (node) => node.props?.["data-testid"] === "map-canvas")[0];
-    liveCanvas.props.onPointerDown({ clientX: 40, clientY: 40, button: 0, pointerId: 1 });
+    const eraseAt = clientOf(1, 1);
+    liveCanvas.props.onPointerDown({ clientX: eraseAt.x, clientY: eraseAt.y, button: 0, pointerId: 1 });
     await tickTimers();
     liveCanvas.props.onPointerUp({ pointerId: 1 });
     erased = await renderTree(() => MapModule({ api }));
@@ -1373,7 +1455,8 @@ try {
     erased = await renderTree(() => MapModule({ api }));
     const beforePen = apiLog.applies.length;
     const penCanvas = collect(erased, (node) => node.props?.["data-testid"] === "map-canvas")[0];
-    penCanvas.props.onPointerDown({ clientX: 300, clientY: 300, button: 0, pointerId: 1 });
+    const seamAt = clientOf(4, 4);
+    penCanvas.props.onPointerDown({ clientX: seamAt.x, clientY: seamAt.y, button: 0, pointerId: 1 });
     penCanvas.props.onPointerUp({ pointerId: 1 });
     erased = await renderTree(() => MapModule({ api }));
     check("反向验证：笔刷下用画笔点一下不会提交 op，并给出提示", apiLog.applies.length === beforePen && textOf(erased).includes("先在左边点一块图当笔刷"), textOf(erased).slice(-60));
@@ -1641,122 +1724,213 @@ try {
     tree = await renderTree(() => MapModule({ api }));
   }
   {
-    // ── 悬停红框必须跟着指针（环绕时同一格在屏幕上有多份）──────────────────
-    // 真机坏过：地图比画布小的时候（新建 32×32 缩到一屏），同一格会在屏幕上出现好几份。
-    // 红框当时按**取模后**的 r/c 画，于是鼠标在左边、红框跑到一整张地图之外（实测差 353.6px）。
-    byTool(tree, "hand")[0].props.onClick();
-    tree = await renderTree(() => MapModule({ api }));
-    const dragCanvas = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
-    dragCanvas.props.onPointerDown({ clientX: 100, clientY: 100, button: 0, pointerId: 1 });
-    dragCanvas.props.onPointerMove({ clientX: -2500, clientY: -2500, pointerId: 1 });
-    dragCanvas.props.onPointerUp({ pointerId: 1 });
-    tree = await renderTree(() => MapModule({ api }));
-    tree = await forceFullPlanReload(tree);
-    const plan = apiLog.plans[apiLog.plans.length - 1];
-    // 客户端发的计划里就写着相机口径：view = {x: pan.x, y: pan.y, width: w/zoom, ...}
-    const rectWidth = 900; // 画布桩的 getBoundingClientRect() = 900×520
-    const zoom = rectWidth / plan.view.width;
-    const mapX = 700 / zoom + plan.view.x;
-    const mapY = 300 / zoom + plan.view.y;
-    const hoverCanvas = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
-    const before = fillRects.length;
-    hoverCanvas.props.onPointerMove({ clientX: 700, clientY: 300, pointerId: 1 });
-    tree = await renderTree(() => MapModule({ api }));
-    const frame = fillRects.slice(before).filter((item) => item.fillStyle === "#e23b2b");
-    check("悬停画出了红框（四条细矩形）", frame.length === 4, `${frame.length} 条`);
-    const left = Math.min(...frame.map((item) => item.x));
-    const right = Math.max(...frame.map((item) => item.x + item.w));
-    const top = Math.min(...frame.map((item) => item.y));
-    const bottom = Math.max(...frame.map((item) => item.y + item.h));
-    check("指针所在的地图坐标落在红框里（横向）", frame.length === 4 && left <= mapX && mapX <= right, `mapX=${mapX.toFixed(1)} 红框=[${left.toFixed(1)}, ${right.toFixed(1)}]`);
-    check("指针所在的地图坐标落在红框里（纵向）", frame.length === 4 && top <= mapY && mapY <= bottom, `mapY=${mapY.toFixed(1)} 红框=[${top.toFixed(1)}, ${bottom.toFixed(1)}]`);
-    // 反向验证：这一格「地图内的那一份」在别处 —— 说明上面两条有区分力（取模写法会画到那里）。
-    // ⚠️ `apiLog.plans` 存的是**请求**（view/have），地图尺寸要问宿主那一份计划。
-    const hostPlan = await G.mapPlan(projectId, { view: plan.view, have: [] });
-    const canonicalC = ((Math.floor(mapX / 32) % hostPlan.cols) + hostPlan.cols) % hostPlan.cols;
-    check(
-      "反向验证：地图内那一份离指针很远（所以「跳到取模位置」一定会被这条抓到）",
-      Math.abs(canonicalC * 32 - mapX) > 200,
-      `取模位置 x=${canonicalC * 32}，指针 mapX=${mapX.toFixed(1)}`
-    );
+    // ── 悬停红框跟着指针，且**地图外不悬停**─────────────────────────────────
+    // 老 bug：红框按取模后的格号画，指针落在地图外那一份时红框会跳一整张地图。
+    // 现在的契约更简单：只认地图自己那一份 —— 图内红框跟着指针，图外干脆不画。
+    {
+      /** ⚠️ `fillRects` 是累积的（每次重画只是往里继续 push），所以必须按「这次之前」切片。 */
+      const redFrameSince = (from) => {
+        const rects = fillRects.slice(from).filter((item) => item.fillStyle === "#e23b2b").slice(-4);
+        if (rects.length < 4) return null;
+        return {
+          left: Math.min(...rects.map((item) => item.x)),
+          right: Math.max(...rects.map((item) => item.x + item.w)),
+          top: Math.min(...rects.map((item) => item.y)),
+          bottom: Math.max(...rects.map((item) => item.y + item.h))
+        };
+      };
+      const hitCanvas = () => collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
+      const inside = [];
+      for (const [r, c] of [[2, 3], [7, 9], [12, 5], [15, 14]]) {
+        const before = fillRects.length;
+        const at = clientOf(r, c);
+        hitCanvas().props.onPointerMove({ clientX: at.x, clientY: at.y, pointerId: 41 });
+        tree = await renderTree(() => MapModule({ api }));
+        // 红框的 fillRect 参数是**地图坐标**（画布带变换），所以拿格的中心去比，不用管屏幕像素
+        const frame = redFrameSince(before);
+        const cx = (c + 0.5) * 32, cy = (r + 0.5) * 32;
+        inside.push(frame !== null && frame.left - 0.6 <= cx && cx <= frame.right + 0.6 && frame.top - 0.6 <= cy && cy <= frame.bottom + 0.6);
+      }
+      check("图内悬停：红框落在这几格上（4 个位置全中）", inside.every(Boolean), inside.map((ok) => (ok ? "✓" : "✗")).join(""));
+      // 地图外（右下角那片空白）：不该有红框 —— 用户就是在这里发现「画到图外会点亮相反的边」
+      const beforeOutside = fillRects.length;
+      const outside = clientOf(40, 40);
+      hitCanvas().props.onPointerMove({ clientX: outside.x, clientY: outside.y, pointerId: 42 });
+      tree = await renderTree(() => MapModule({ api }));
+      check("地图外悬停不画红框（图外那片空白不该有落笔提示）", redFrameSince(beforeOutside) === null, JSON.stringify(redFrameSince(beforeOutside)));
+    }
   }
 
-  // ══ 17) 跨接缝拖拽：只补相邻格，不许把整行填满 ═══════════════════════════
-  // 真机反馈：「按住画圈时有时会莫名其妙画上整行」。原因是补间用了**取模后**的格号：
-  // 指针跨过地图接缝（右边界那一份的 c=31 → 下一份的 c=0，屏幕上只差十几像素）会被算成
-  // 「从第 31 列走到第 0 列」，一笔填满整行。修法是按未取模格号补间（宿主写入时自己取模）。
-  section("17) 跨接缝拖拽只补间相邻格（按取模格号补间会填满整行）");
+  // ══ 17) 地图外不落笔；图内快速拖动仍要补满 ═══════════════════════════════
+  // 真机反馈：「画超过右边缘时左边缘被着色、超过下边缘时上边缘被着色」——
+  // 环绕地图上 `pointToCell` 会把图外折回图内。现在只认地图自己那一份。
+  section("17) 地图外不落笔（不折回另一边）+ 图内快速拖动补满");
   {
+    // 夹具准备：上一段建过自己的项目（没有素材），这里重挂并切回主夹具，选一支笔
     tree = await renderTree(() => MapModule({ api }), { fresh: true });
-    // 上一段建过自己的项目（没有素材），这里切回主夹具项目（有素材、32×32、环绕）
-    const mainName = (await G.readMapProject(projectId)).name;
-    const ensureMenu = async () => {
-      if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
-        byClass(tree, "SPR_mapEdProj")[0].props.onClick();
-        tree = await renderTree(() => MapModule({ api }));
-      }
-      return byClass(tree, "SPR_mapEdMenuItem");
-    };
-    const mainItem = (await ensureMenu()).find((node) => textOf(node) === mainName);
-    check("能切回主夹具项目（后面要在有素材的图上测）", mainItem !== undefined, mainName);
-    mainItem.props.onClick();
+    const mainName17 = (await G.readMapProject(projectId)).name;
+    if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
+      byClass(tree, "SPR_mapEdProj")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    byClass(tree, "SPR_mapEdMenuItem").find((node) => textOf(node) === mainName17).props.onClick();
     tree = await renderTree(() => MapModule({ api }));
-    check("切回去之后调色板有素材", byClass(tree, "SPR_mapEdTile").length > 0, `${byClass(tree, "SPR_mapEdTile").length} 块`);
     byClass(tree, "SPR_mapEdTile")[0].props.onClick({ shiftKey: false });
     tree = await renderTree(() => MapModule({ api }));
     byTool(tree, "pen")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
-    // 顺带钉住上一轮的性能修复：**同一格内**移动不该产生新的绘制帧
-    // （红框按格对齐，格号没变画面就没变；靠 `setHover(prev => prev)` 让 React 跳过渲染）。
+    const grid = (await G.readMapProject(projectId)).grid;
+    const probeView = { x: 0, y: 0, width: grid.tileWidth, height: grid.tileHeight };
+    const cols = (await G.mapPlan(projectId, { view: probeView, have: [] })).cols;
+    const rows = (await G.mapPlan(projectId, { view: probeView, have: [] })).rows;
+    const canvasNode = () => collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
+    const dragCells = async (from, to) => {
+      const before = apiLog.applies.length;
+      const a = clientOf(from[0], from[1], grid.tileWidth);
+      const b = clientOf(to[0], to[1], grid.tileWidth);
+      canvasNode().props.onPointerDown({ clientX: a.x, clientY: a.y, button: 0, pointerId: 51 });
+      canvasNode().props.onPointerMove({ clientX: b.x, clientY: b.y, pointerId: 51 });
+      canvasNode().props.onPointerUp({ pointerId: 51 });
+      tree = await renderTree(() => MapModule({ api }));
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      const painted = new Set();
+      for (const batch of apiLog.applies.slice(before)) {
+        for (const op of batch.ops ?? []) {
+          for (const cell of op.cells ?? []) painted.add(`${((cell.r % rows) + rows) % rows},${((cell.c % cols) + cols) % cols}`);
+        }
+      }
+      return painted;
+    };
+    // ① 往右拖出地图：不能折回左边
+    const right = await dragCells([5, cols - 1], [5, cols + 2]);
+    check(
+      "画超过右边缘不会点亮左边缘（图外那两格不落笔）",
+      right.size > 0 && ![...right].some((key) => key.split(",")[1] === "0"),
+      `落笔：${[...right].join(" ")}`
+    );
+    // ② 往下拖出地图：不能折回上边
+    const down = await dragCells([rows - 1, 6], [rows + 2, 6]);
+    check(
+      "画超过下边缘不会点亮上边缘（图外那两格不落笔）",
+      down.size > 0 && ![...down].some((key) => key.split(",")[0] === "0"),
+      `落笔：${[...down].join(" ")}`
+    );
+    // ③ 同一格内挪 12 次不该重画；跨格挪 4 次必须重画（两边一起才有区分力）
     {
-      const near = apiLog.plans[apiLog.plans.length - 1];
-      const zoomNear = 900 / near.view.width;
-      const cellX = (20 * 32 + 16 - near.view.x) * zoomNear;
-      const cellY = (7 * 32 + 16 - near.view.y) * zoomNear;
-      const node = collect(tree, (item) => item.props?.["data-testid"] === "map-canvas")[0];
-      node.props.onPointerMove({ clientX: cellX, clientY: cellY, pointerId: 31 });
+      const canvas = canvasNode();
+      const at = clientOf(7, 7, grid.tileWidth);
+      canvas.props.onPointerMove({ clientX: at.x, clientY: at.y, pointerId: 61 });
       tree = await renderTree(() => MapModule({ api }));
-      const framesBefore = drawFrames.length;
-      for (let i = 1; i <= 12; i++) node.props.onPointerMove({ clientX: cellX + i * 0.4, clientY: cellY + i * 0.3, pointerId: 31 });
+      const intraBefore = drawFrames.length;
+      for (let i = 1; i <= 12; i++) canvas.props.onPointerMove({ clientX: at.x + i * 0.3, clientY: at.y + i * 0.2, pointerId: 61 });
       tree = await renderTree(() => MapModule({ api }));
+      const intraFrames = drawFrames.length - intraBefore;
+      const crossBefore = drawFrames.length;
+      for (let i = 1; i <= 4; i++) {
+        const step = clientOf(7, 7 + i * 2, grid.tileWidth);
+        canvas.props.onPointerMove({ clientX: step.x, clientY: step.y, pointerId: 61 });
+        tree = await renderTree(() => MapModule({ api }));
+      }
+      const crossFrames = drawFrames.length - crossBefore;
       check(
-        "同一格内挪 12 次不产生新的绘制帧（省掉整幅重画）",
-        drawFrames.length === framesBefore,
-        `帧数 ${framesBefore} → ${drawFrames.length}`
+        "同一格内挪 12 次几乎不重画，跨格 4 次必须重画（悬停去重还在）",
+        intraFrames <= 1 && crossFrames >= 3,
+        `同格 ${intraFrames} 帧 / 跨格 ${crossFrames} 帧`
       );
     }
-    const query = apiLog.plans[apiLog.plans.length - 1];
-    const zoomOf = 900 / query.view.width; // 画布桩：getBoundingClientRect() = 900×520
-    const toClientX = (mapX) => (mapX - query.view.x) * zoomOf;
-    const toClientY = (mapY) => (mapY - query.view.y) * zoomOf;
-    const grid = (await G.readMapProject(projectId)).grid;
-    const cols = (await G.mapPlan(projectId, { view: { x: 0, y: 0, width: grid.tileWidth, height: grid.tileHeight }, have: [] })).cols;
-    const row = 5;
-    const lastCol = cols - 1;
-    const clientY = toClientY(row * grid.tileHeight + grid.tileHeight / 2);
-    const startX = toClientX(lastCol * grid.tileWidth + grid.tileWidth / 2); // 接缝左侧：最后一列
-    const endX = toClientX(cols * grid.tileWidth + grid.tileWidth / 2); // 接缝右侧：下一份的第一列
-    const appliesBefore = apiLog.applies.length;
-    const canvasNode = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
-    canvasNode.props.onPointerDown({ clientX: startX, clientY, button: 0, pointerId: 21 });
-    canvasNode.props.onPointerMove({ clientX: endX, clientY, pointerId: 21 });
-    canvasNode.props.onPointerUp({ pointerId: 21 });
-    tree = await renderTree(() => MapModule({ api }));
-    await tickTimers();
-    tree = await renderTree(() => MapModule({ api }));
-    const painted = new Set();
-    for (const batch of apiLog.applies.slice(appliesBefore)) {
-      for (const op of batch.ops ?? []) for (const cell of op.cells ?? []) painted.add(`${cell.r},${cell.c}`);
-    }
-    check("跨接缝一笔只提交相邻两格（不是整行）", painted.size > 0 && painted.size <= 3, `提交 ${painted.size} 格：${[...painted].join(" ")}`);
-    const wrapped = new Set([...painted].map((key) => { const [r, c] = key.split(",").map(Number); return `${r},${((c % cols) + cols) % cols}`; }));
-    check("落到的正是接缝两侧那两格", wrapped.has(`${row},${lastCol}`) && wrapped.has(`${row},0`) && wrapped.size <= 3, `规范后：${[...wrapped].join(" ")}`);
+    // ④ 图内一笔从 (2,2) 快速拖到 (2,9)：中间不能漏格（补间还得管用）
+    const fast = await dragCells([2, 2], [2, 9]);
+    const wantCols = [2, 3, 4, 5, 6, 7, 8, 9];
     check(
-      "反向验证：按取模格号补间会得到整行 —— 说明上面两条真的在测东西",
-      MAP_lineCells(row, lastCol, row, 0).length === cols,
-      `取模补间 ${MAP_lineCells(row, lastCol, row, 0).length} 格 / 共 ${cols} 列`
+      "图内一笔快速拖动补满中间格（不漏格）",
+      wantCols.every((c) => fast.has(`2,${c}`)) && fast.size <= wantCols.length + 1,
+      `落笔：${[...fast].join(" ")}`
     );
   }
+  // ══ 18) 自由尺寸 / 用法说明 / 通过按钮文案 ═══════════════════════════════
+  section("18) 地图尺寸与素材格子都可自由填；用法四项悬停有解释；通过按钮叫「确定」");
+  {
+    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    // 上一段建过自己的项目（没有素材），切回主夹具再测尺寸与素材设置
+    const mainName18 = (await G.readMapProject(projectId)).name;
+    if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
+      byClass(tree, "SPR_mapEdProj")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    byClass(tree, "SPR_mapEdMenuItem").find((node) => textOf(node) === mainName18).props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    /**
+     * ⚠️ `NumField` 自带 hook，harness 的 `collect` **不能**展开它（会多吃 hook 槽位），
+     * 所以这里按它的 props 找那个元素，直接调它的 `onChange`（= 失焦提交后的回调）。
+     */
+    const numFieldIn = (card, label) =>
+      collect(card, (node) => node.props !== undefined && typeof node.props.onChange === "function" && node.props.label === label)[0];
+    const capCard = (index) => byClass(tree, "SPR_mapEdCard")[index];
+
+    // ── 地图大小：宽 / 高 各填各的（不再是固定正方形）
+    byTool(tree, "settings")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const settingsCard = capCard(byClass(tree, "SPR_mapEdCard").length - 1);
+    const mapWidth = numFieldIn(settingsCard, "宽");
+    const mapHeight = numFieldIn(settingsCard, "高");
+    check(
+      "设置卡里「地图大小」是两个数字框（宽 / 高 各填各的）",
+      mapWidth !== undefined && mapHeight !== undefined && byClass(settingsCard, "SPR_mapEdSelect").length === 0,
+      JSON.stringify(collect(settingsCard, (node) => typeof node.props?.label === "string").map((node) => node.props.label))
+    );
+    windowStub.__confirmCalls.length = 0;
+    mapWidth.props.onChange(48);
+    tree = await renderTree(() => MapModule({ api }));
+    numFieldIn(capCard(byClass(tree, "SPR_mapEdCard").length - 1), "高").props.onChange(20);
+    tree = await renderTree(() => MapModule({ api }));
+    const doc = await G.readTheDoc(projectId);
+    check("改成 48×20 真的生效（宽高各自独立）", doc.cols === 48 && doc.rows === 20, `${doc.cols}×${doc.rows}`);
+    check("改小会先问一句（确认后照做）", windowStub.__confirmCalls.length > 0, windowStub.__confirmCalls.join(" / "));
+
+    // ── 素材：格子宽高可自由填，并算出「几列几行几块」
+    byTool(tree, "settings")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    byClass(tree, "SPR_mapEdTopBtn")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const assets = byClass(tree, "SPR_mapEdCard")[0];
+    const cellWidth = numFieldIn(assets, "宽");
+    const cellHeight = numFieldIn(assets, "高");
+    check("素材卡里格子大小也是两个数字框（宽 / 高，像素）", cellWidth !== undefined && cellHeight !== undefined);
+    check(
+      "素材卡会算出「几列 × 几行 = 几块」",
+      /列 ×/.test(textOf(assets)) && /行 =/.test(textOf(assets)) && /块/.test(textOf(assets)),
+      textOf(assets).match(/\d+ 列 × \d+ 行 = \d+ 块[^）]*）?/)?.[0] ?? textOf(assets).slice(0, 80)
+    );
+
+    // ── 用法四项：悬停给解释（原生 <option> 挂不了 tooltip，所以是按钮）
+    const shapeButtons = collect(tree, (node) => typeof node.props?.["data-shape"] === "string");
+    check("用法是四个按钮", shapeButtons.length === 4, shapeButtons.map((node) => textOf(node)).join(" / "));
+    shapeButtons.find((node) => node.props["data-shape"] === "corner16").props.onMouseEnter({
+      currentTarget: { getBoundingClientRect: () => ({ left: 100, top: 300, width: 40, height: 24 }) }
+    });
+    tree = await renderTree(() => MapModule({ api }));
+    const tipText = textOf(byClass(tree, "SPR_mapEdTip")[0] ?? null);
+    check("鼠标移到「整格」上会解释它是什么", tipText.includes("整格自动连接") && tipText.includes("拐角"), tipText);
+    collect(tree, (node) => typeof node.props?.["data-shape"] === "string")
+      .find((node) => node.props["data-shape"] === "corner16")
+      .props.onMouseLeave();
+    tree = await renderTree(() => MapModule({ api }));
+    check("移开鼠标说明就收起", byClass(tree, "SPR_mapEdTip").length === 0);
+    collect(tree, (node) => typeof node.props?.["data-shape"] === "string").find((node) => node.props["data-shape"] === "plain").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const savedShape = (await G.readMapProject(projectId)).tilesets[0].shape;
+    check("点「普通」真的把用法存进宿主", savedShape === "plain", String(savedShape));
+
+    // ── 通过按钮：文案是「确定」
+    const approveBtn = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "确定")[0];
+    check("素材卡的通过按钮叫「确定」（不再是「这步看过了」）", approveBtn !== undefined, collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button").map((node) => textOf(node)).join(" / "));
+    approveBtn.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const stages = (await G.readMapProject(projectId)).stages;
+    check("点「确定」标记素材阶段已通过", stages?.assets?.status === "done", JSON.stringify(stages));
+  }
+
 } finally {
   if (projectId !== "") await G.deleteMapProject(projectId).catch(() => undefined);
   await rm(HOME, { recursive: true, force: true }).catch(() => undefined);

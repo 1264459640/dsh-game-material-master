@@ -1133,6 +1133,30 @@
         "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
       "选一张素材图开始":
         "Choose a tile image to start",
+      "地图大小要是 1 以上的整数。":
+        "The map size must be a whole number of 1 or more.",
+      "地图最大 512×512 格。":
+        "A map can be at most 512×512 cells.",
+      "单位是格。改大只是多出空地；改小会丢掉范围外的格子（可撤销）":
+        "Units are cells. Making it bigger just adds empty space; making it smaller drops the cells outside the new bounds (undoable).",
+      "{n0} 列 × {n1} 行 = {n2} 块":
+        "{n0} columns × {n1} rows = {n2} tiles",
+      "右边余 {n0}px、下边余 {n1}px 用不上":
+        "{n0}px left on the right and {n1}px on the bottom cannot be used",
+      "按图片尺寸自己认格子与用法。想重新认一次，就再上传一遍这张图。":
+        "Works out the cell size and usage from the image dimensions. To detect it again, just upload the image once more.",
+      "一格贴一块图，不做任何拼接。":
+        "One tile per cell, with no stitching.",
+      "按上下左右有没有同样的格子，自动从 16 块里挑一块：边缘、拐角会自己接上。":
+        "Picks one of 16 tiles from the cells above, below, left and right, so edges and corners join up on their own.",
+      "一小格再拆成 2×2 小块，按邻居自动拼成一片。草地、水面这类连着画的地面用它。":
+        "Splits each cell into 2×2 sub-tiles that stitch together with their neighbours. Use it for ground you paint in large areas, such as grass or water.",
+      "普通":
+        "Plain",
+      "整格":
+        "Auto 16",
+      "拼块":
+        "Auto 2×2",
       "重命名项目":
         "Rename project",
       "确定":
@@ -1233,8 +1257,6 @@
         "Animation speed",
       "删除素材":
         "Delete image",
-      "这步看过了":
-        "Seen this step",
       "导出图片 PNG":
         "Export image PNG",
       "导出存档 JSON":
@@ -1247,8 +1269,6 @@
         "Open the export folder",
       "地图大小":
         "Map size",
-      "改大只是多出空地；改小会丢掉范围外的格子":
-        "Growing only adds empty ground; shrinking discards the cells outside",
       "图层 {n0}":
         "Layer {n0}",
       "已加一层":
@@ -1271,8 +1291,8 @@
         "Left-drag paints with the current tool; space-drag or middle-drag pans; the wheel zooms; the right button erases.",
       "调色板里点一下选一块图当笔刷，按住 Shift 或 Ctrl 可以多选，「一键生成」会用这些图块。":
         "Click a tile in the palette to use it as the brush; hold Shift or Ctrl to select several, and \"Generate\" uses exactly those.",
-      "地图是环绕的：出了右边会从左边的对应位置接上，不用管边界。":
-        "The map wraps around: leaving the right edge continues at the matching spot on the left, so you never run into a border.",
+      "地图四周是接上的：自动连接会把上下、左右两边接起来。画布拖不出地图 —— 拖到边就停，地图左上角对齐后不会再乱动；图外那片空白画不上。":
+        "The map wraps all the way round: auto-tiling joins the top/bottom and left/right edges. The canvas cannot be dragged off the map -- it stops at the edge, and once the map's top-left lines up with the canvas it stays there. The blank area outside the map cannot be painted.",
       "整个模块看过了":
         "Seen the whole module",
       "随机铺满":
@@ -2177,6 +2197,12 @@
 .SPR_mapEdRow{display:flex;flex-direction:column;gap:3px}
 .SPR_mapEdLabel{font-size:11px;color:#bfb8ae}
 .SPR_mapEdRowHint{font-size:11px;line-height:1.6;color:#9d968c}
+.SPR_mapEdPair{display:flex;align-items:center;gap:6px}
+.SPR_mapEdTimes{color:#9a9a9a;font-size:12px}
+.SPR_mapEdSeg{display:flex;gap:4px;flex-wrap:wrap}
+.SPR_mapEdSegBtn{font:inherit;font-size:12px;padding:4px 10px;border:1px solid #565656;border-radius:6px;background:#242424;color:#f2efe9;cursor:pointer}
+.SPR_mapEdSegBtn:hover{border-color:#d9a95f}
+.SPR_mapEdSegBtn[data-on="true"]{border-color:#d9a95f;background:#3a2f1d;color:#ffd79a;font-weight:600}
 .SPR_mapEdSelect{font:inherit;font-size:12px;color:#f2efe9;background:#242424;border:1px solid #565656;border-radius:6px;padding:4px 8px;max-width:100%}
 .SPR_mapEdChips{display:flex;gap:6px;flex-wrap:wrap}
 .SPR_mapEdChip{font:inherit;font-size:11px;cursor:pointer;color:#ded8cf;background:#3b3b3b;border:1px solid #565656;border-radius:999px;padding:3px 10px}
@@ -6445,7 +6471,8 @@
         const scale = Math.min(1, viewport.w / Math.max(1, layout.width), viewport.h / Math.max(1, layout.height));
         const next = Math.min(8, Math.max(0.25, Number.isFinite(scale) && scale > 0 ? scale : 1));
         setZoom(next);
-        setPan({ x: (layout.width - viewport.w / next) / 2, y: (layout.height - viewport.h / next) / 2 });
+        // 摆回视野：地图比视口小的方向会被夹到 0（左上角对齐），大的方向居中
+        setPan(clampPan({ x: (layout.width - viewport.w / next) / 2, y: (layout.height - viewport.h / next) / 2 }));
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [viewId, layout === null ? "" : `${layout.cols}x${layout.rows}x${layout.stepX}`, viewport.w, viewport.h]);
 
@@ -6553,6 +6580,14 @@
         if (stats !== null && typeof window !== "undefined") {
           stats.frame = frame;
           (window as any).__mapDrawStats = stats;
+          /**
+           * 顺手把**当前相机**暴露出来（同样只在 `__mapDebug` 打开时）。
+           *
+           * 自检里要按格坐标去点画布，而「格 → 客户端像素」必须用**此刻**的 pan/zoom；
+           * 靠「最近一次计划查询的 view」推会读到过期的相机（切项目 / 自适应缩放之后），
+           * 于是点到了地图外、断言莫名其妙地失败。就摆在绘制里，永远不会过期。
+           */
+          (window as any).__mapCamera = { pan: { x: pan.x, y: pan.y }, zoom, viewport: { w: viewport.w, h: viewport.h } };
         }
       }, [layout, viewport, zoom, pan, planOps, legend, legendMap, single, showGrid, hover, frame]);
 
@@ -6627,6 +6662,38 @@
       }, [api, viewId, applyResult]);
 
       /**
+       * 把相机**夹在地图里**：地图比视口大的方向可以滚（`视口-地图 .. 0`），
+       * 比视口小的方向钉在 0 —— 也就是「地图左上角贴着画布左上角」。
+       *
+       * ⚠️ 真机反馈两条都出在这里：拖到右下角时地图会「复位」、而且复位后左上角对不齐，
+       * 于是「靠拖动很难把地图拖到左上角」。环绕地图上相机本来可以无限拖，视口越过
+       * 地图边界后宿主只能回**折回来的那一份**，画面在「一份地图」的边界上整体跳一格，
+       * 看起来就是复位；而 0 这个位置既没有参照物、又不在吸附点上，自然对不齐、也难拖到。
+       * 夹住之后 `pan = 0` 就是「地图左上角 = 画布左上角」，拖到头就停，不再有跳变。
+       */
+      const clampPan = React.useCallback(
+        (next) => {
+          if (layout === null) return next;
+          const viewW = viewportRef.current.w / Math.max(0.01, zoomRef.current);
+          const viewH = viewportRef.current.h / Math.max(0.01, zoomRef.current);
+          /**
+           * `pan` 的定义是「画布左上角落在地图的哪个像素」——所以取值范围是
+           * `0 .. max(0, 地图 - 视口)`：
+           * · `pan = 0`：地图左上角贴着画布左上角（用户要的「对齐」就是这里）；
+           * · `pan = 地图 - 视口`：滚到地图的右下角（地图比视口大时才滚得动）；
+           * · 地图比视口小 → 上界为 0 → 钉死在左上角，不会拖出空白。
+           *
+           * ⚠️ 别把符号想反（我第一版就写成了负区间）：那样小图能拖进空白、大图反而一步不动，
+           * 真机上「拖了地图纹丝不动 / 复位后又对不齐」就是这么来的。
+           */
+          const maxX = Math.max(0, layout.width - viewW);
+          const maxY = Math.max(0, layout.height - viewH);
+          return { x: Math.min(maxX, Math.max(0, next.x)), y: Math.min(maxY, Math.max(0, next.y)) };
+        },
+        [layout]
+      );
+
+      /**
        * 入队一批 op。
        *
        * 一次按下 → 抬起算**一笔**：拖动期间每 40ms 提交一次，但都带同一个 `stroke`，
@@ -6685,6 +6752,16 @@
           const hit = MAP_pointToCell(layout, x, y);
           if (hit.inMap !== true) return null;
           /**
+           * ⚠️ 只认**地图自己那一份**（未取模坐标落在 0..cols/rows 之内）。
+           *
+           * 环绕地图上，`pointToCell` 会把边界外的位置折回图内，于是「画超过右边缘」会点亮相
+           * 反的左边缘、「超过下边缘」会点亮上边缘 —— 用户报的就是这个。画布上超出地图的那片
+           * 区域本来就是空白，不该有落笔、也不该有红框。
+           */
+          const rawR = Math.floor(y / layout.stepY);
+          const rawC = Math.floor(x / layout.stepX);
+          if (rawR < 0 || rawC < 0 || rawR >= layout.rows || rawC >= layout.cols) return null;
+          /**
            * ⚠️ 把**未取模**的地图坐标一起带出去，两个地方都要用：
            *
            * 1. 红框：环绕模式下同一格会在屏幕上出现好几次（地图比画布小的时候最常见）。
@@ -6695,7 +6772,7 @@
            *    「从第 31 列走到第 0 列」→ **整行被填满**。真机复现：清空图层后横扫一笔，
            *    整行 32 格全亮。
            */
-          return { r: hit.r, c: hit.c, x, y, rawR: Math.floor(y / layout.stepY), rawC: Math.floor(x / layout.stepX) };
+          return { r: hit.r, c: hit.c, x, y, rawR, rawC };
         },
         [layout, zoom, pan]
       );
@@ -6762,7 +6839,7 @@
         const mapX = (clientX - rect.left) / prev + panRef.current.x;
         const mapY = (clientY - rect.top) / prev + panRef.current.y;
         setZoom(next);
-        setPan({ x: mapX - (clientX - rect.left) / next, y: mapY - (clientY - rect.top) / next });
+        setPan((prev) => clampPan({ x: mapX - (clientX - rect.left) / next, y: mapY - (clientY - rect.top) / next }));
       };
       // 原生滚轮监听要在事件到来时拿到**最新**的 zoomAt（它闭包了 zoom/pan），
       // 所以用 ref 转发，而不是把 zoomAt 塞进 effect 依赖（那会每帧重新挂监听）。
@@ -6829,10 +6906,12 @@
         }
         const stroke = strokeRef.current;
         if (stroke !== null && stroke !== undefined && stroke.mode === "pan") {
-          setPan({
-            x: stroke.pan.x - (event.clientX - stroke.clientX) / zoom,
-            y: stroke.pan.y - (event.clientY - stroke.clientY) / zoom
-          });
+          setPan(
+            clampPan({
+              x: stroke.pan.x - (event.clientX - stroke.clientX) / zoom,
+              y: stroke.pan.y - (event.clientY - stroke.clientY) / zoom
+            })
+          );
           return;
         }
         const hit = cellFromEvent(event);
@@ -7111,13 +7190,28 @@
         return result;
       };
 
-      const applyMapSize = async (size) => {
+      /**
+       * 改地图尺寸：**宽高各自独立**（不再只给正方形）。
+       *
+       * 上限 512 与宿主 `MAX_MAP_DIM` 一致：超了宿主会拒绝并给出原因，这里先挡一道。
+       */
+      const applyMapSize = async (cols, rows) => {
         if (view === null) return;
-        if (view.cols === size && view.rows === size) return;
-        const shrinking = size < view.cols || size < view.rows;
+        const nextCols = Math.round(Number(cols));
+        const nextRows = Math.round(Number(rows));
+        if (!Number.isFinite(nextCols) || !Number.isFinite(nextRows) || nextCols < 1 || nextRows < 1) {
+          setNotice({ kind: "error", text: T("地图大小要是 1 以上的整数。") });
+          return;
+        }
+        if (nextCols > 512 || nextRows > 512) {
+          setNotice({ kind: "error", text: T("地图最大 512×512 格。") });
+          return;
+        }
+        if (nextCols === view.cols && nextRows === view.rows) return;
+        const shrinking = nextCols < view.cols || nextRows < view.rows;
         // eslint-disable-next-line no-alert
         if (shrinking === true && typeof window !== "undefined" && !window.confirm(T("改小地图会丢掉范围外的格子（可以撤销）。继续？"))) return;
-        await saveDoc({ cols: size, rows: size }, T("已改地图尺寸"));
+        await saveDoc({ cols: nextCols, rows: nextRows }, T("已改地图尺寸"));
       };
 
       const clearLayer = async () => {
@@ -7526,13 +7620,53 @@
       const approvedMark = (stage) =>
         approvedOf(stage) === true ? h("span", { className: "SPR_mapEdMark" }, "✓") : null;
 
+      /**
+       * 「这块素材怎么用」的四个选项：`[值, 按钮短标签, 悬停小标签标题, 解释]`。
+       *
+       * ⚠️ 原来是个 `<select>`，而原生 `<option>` **挂不了 tooltip** —— 可「自动 / 普通图块 /
+       * 整格自动连接 / 拼块自动连接」这四个词对非专业用户等于没说（用户原话：意义不明）。
+       * 换成四个按钮 + 悬停小标签：鼠标移上去就把这一项讲清楚（和工具格同一套标签）。
+       */
       const shapeOptions = [
-        ["auto", T("自动")],
-        ["plain", T("普通图块")],
-        ["corner16", T("整格自动连接")],
-        ["a2quad", T("拼块自动连接")]
+        ["auto", T("自动"), T("自动"), T("按图片尺寸自己认格子与用法。想重新认一次，就再上传一遍这张图。")],
+        ["plain", T("普通"), T("普通图块"), T("一格贴一块图，不做任何拼接。")],
+        ["corner16", T("整格"), T("整格自动连接"), T("按上下左右有没有同样的格子，自动从 16 块里挑一块：边缘、拐角会自己接上。")],
+        ["a2quad", T("拼块"), T("拼块自动连接"), T("一小格再拆成 2×2 小块，按邻居自动拼成一片。草地、水面这类连着画的地面用它。")]
       ];
+      /** 选中一项用法。「自动」不改任何东西，只把识别说明摆出来（想重认就重新上传这张图）。 */
+      const onPickShape = (value) => {
+        if (value === "auto") {
+          setNotice({
+            kind: "info",
+            text:
+              tilesetReason === ""
+                ? T("这张素材的用法是自动认出来的；想重新认一次，就再上传一遍这张图。")
+                : T("这张素材的用法是自动认出来的：{n0}", { n0: tilesetReason })
+          });
+          return;
+        }
+        void saveTileset({ shape: value });
+      };
       const shapeValue = tileset === null ? "auto" : tileset.shape === "corner16" ? "corner16" : tileset.shape === "a2quad" ? "a2quad" : "plain";
+      /**
+       * 「这个格子大小会切成几列几行几块」—— 用户要的是「格子数能自由设置」，而格子数
+       * 就是「图有多大 ÷ 一格多大」，所以这里把结果直接算给他看；除不尽也说出来，
+       * 免得他以为设了 20 就该正好切满。
+       */
+      const cellGridHint =
+        tileset === null
+          ? ""
+          : (() => {
+              const cw = Math.max(1, tileset.cell.width);
+              const ch = Math.max(1, tileset.cell.height);
+              const cols = Math.floor(tileset.imageWidth / cw);
+              const rows = Math.floor(tileset.imageHeight / ch);
+              const restW = tileset.imageWidth % cw;
+              const restH = tileset.imageHeight % ch;
+              const base = T("{n0} 列 × {n1} 行 = {n2} 块", { n0: String(cols), n1: String(rows), n2: String(cols * rows) });
+              if (restW === 0 && restH === 0) return base;
+              return `${base}（${T("右边余 {n0}px、下边余 {n1}px 用不上", { n0: String(restW), n1: String(restH) })}）`;
+            })();
       const speedOptions = [
         ["0.5", T("慢")],
         ["1", T("中")],
@@ -7577,48 +7711,50 @@
               row(
                 T("格子大小"),
                 h(
-                  "select",
-                  {
-                    className: "SPR_mapEdSelect",
-                    value: String(tileset.cell.width),
-                    onChange: (event) => {
-                      const size = Number(event.target.value);
-                      void saveTileset({ cell: { width: size, height: size } });
-                    }
-                  },
-                  [8, 16, 24, 32, 48, 64].map((size) => h("option", { key: size, value: String(size) }, `${size}×${size}`))
-                )
+                  "div",
+                  { className: "SPR_mapEdPair", "data-testid": "map-cell-pair" },
+                  h(NumField, {
+                    label: T("宽"),
+                    value: tileset.cell.width,
+                    min: 1,
+                    max: 1024,
+                    onChange: (value) => void saveTileset({ cell: { width: value, height: tileset.cell.height } })
+                  }),
+                  h("span", { className: "SPR_mapEdTimes" }, "×"),
+                  h(NumField, {
+                    label: T("高"),
+                    value: tileset.cell.height,
+                    min: 1,
+                    max: 1024,
+                    onChange: (value) => void saveTileset({ cell: { width: tileset.cell.width, height: value } })
+                  })
+                ),
+                h("span", { className: "SPR_mapEdHint" }, cellGridHint)
               ),
               row(
                 T("这块素材怎么用"),
                 h(
-                  "select",
-                  {
-                    className: "SPR_mapEdSelect",
-                    value: shapeValue,
-                    onChange: (event) => {
-                      const value = event.target.value;
-                      /**
-                       * 「自动」＝沿用宿主导入时识别出来的形态。
-                       *
-                       * 宿主侧没有「重新识别」这个动作（`saveMapTileset` 不带 `shape`
-                       * 就等于沿用当前值），所以这里只把识别说明摆出来，不改任何东西；
-                       * 想真的重认，重新上传一次这张图即可。
-                       */
-                      if (value === "auto") {
-                        setNotice({
-                          kind: "info",
-                          text:
-                            tilesetReason === ""
-                              ? T("这张素材的用法是自动认出来的；想重新认一次，就再上传一遍这张图。")
-                              : T("这张素材的用法是自动认出来的：{n0}", { n0: tilesetReason })
-                        });
-                        return;
-                      }
-                      void saveTileset({ shape: value });
-                    }
-                  },
-                  shapeOptions.map(([value, label]) => h("option", { key: value, value }, label))
+                  "div",
+                  { className: "SPR_mapEdSeg", "data-testid": "map-shape-seg" },
+                  shapeOptions.map(([value, short, title, desc]) =>
+                    h(
+                      "button",
+                      {
+                        key: value,
+                        type: "button",
+                        className: "SPR_mapEdSegBtn",
+                        "data-shape": value,
+                        "data-on": shapeValue === value ? "true" : undefined,
+                        "aria-label": `${title}：${desc}`,
+                        onMouseEnter: showToolTip(title, desc, null),
+                        onFocus: showToolTip(title, desc, null),
+                        onMouseLeave: hideToolTip,
+                        onBlur: hideToolTip,
+                        onClick: () => onPickShape(value)
+                      },
+                      short
+                    )
+                  )
                 ),
                 tilesetReason
               ),
@@ -7638,7 +7774,7 @@
                 "div",
                 { className: "SPR_mapEdCardRow" },
                 h(Btn, { danger: true, onClick: () => void removeTileset() }, T("删除素材")),
-                h(Btn, { on: approvedOf("assets") === true, onClick: () => void toggleApproved("assets") }, T("这步看过了"), approvedMark("assets"))
+                h(Btn, { on: approvedOf("assets") === true, onClick: () => void toggleApproved("assets") }, T("确定"), approvedMark("assets"))
               )
             )
       );
@@ -7670,7 +7806,7 @@
           "div",
           { className: "SPR_mapEdCardRow" },
           h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("打开导出目录")),
-          h(Btn, { on: approvedOf("export") === true, onClick: () => void toggleApproved("export") }, T("这步看过了"), approvedMark("export"))
+          h(Btn, { on: approvedOf("export") === true, onClick: () => void toggleApproved("export") }, T("确定"), approvedMark("export"))
         ),
         exportFiles.length === 0
           ? h("p", { className: "SPR_mapEdHint" }, T("还没有导出过。"))
@@ -7688,15 +7824,13 @@
         row(
           T("地图大小"),
           h(
-            "select",
-            {
-              className: "SPR_mapEdSelect",
-              value: String(Math.max(view.cols, view.rows)),
-              onChange: (event) => void applyMapSize(Number(event.target.value))
-            },
-            [32, 64, 128].map((size) => h("option", { key: size, value: String(size) }, `${size}×${size}`))
+            "div",
+            { className: "SPR_mapEdPair" },
+            h(NumField, { label: T("宽"), value: view.cols, min: 1, max: 512, onChange: (value) => void applyMapSize(value, view.rows) }),
+            h("span", { className: "SPR_mapEdTimes" }, "×"),
+            h(NumField, { label: T("高"), value: view.rows, min: 1, max: 512, onChange: (value) => void applyMapSize(view.cols, value) })
           ),
-          T("改大只是多出空地；改小会丢掉范围外的格子")
+          T("单位是格。改大只是多出空地；改小会丢掉范围外的格子（可撤销）")
         ),
         h(
           "div",
@@ -7725,7 +7859,7 @@
           h("h5", null, T("帮助")),
           h("p", null, T("左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝橡皮。")),
           h("p", null, T("调色板里点一下选一块图当笔刷，按住 Shift 或 Ctrl 可以多选，「一键生成」会用这些图块。")),
-          h("p", null, T("地图是环绕的：出了右边会从左边的对应位置接上，不用管边界。"))
+          h("p", null, T("地图四周是接上的：自动连接会把上下、左右两边接起来。画布拖不出地图 —— 拖到边就停，地图左上角对齐后不会再乱动；图外那片空白画不上。"))
         ),
         h(
           "div",

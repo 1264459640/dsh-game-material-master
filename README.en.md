@@ -46,8 +46,11 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 > 💡 **Module ⑥ "Map editor" is modelled after the RPG Map Maker in [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) and rebuilt as one screen, icon-only, with no jargon.**
 > The asset palette and twelve icon buttons sit on the left, the canvas on the right. **Pick one tileset image and start
 > painting** — its shape (RPG Maker A2 autotile block / a 16-tile whole-cell autotile set / a plain grid) is detected
-> from the image dimensions, and a single dropdown in "Assets" fixes it if the guess is wrong; the map **wraps around
-> on all four sides**, so painting past the right edge continues at the left; a built-in tileset is one click away
+> from the image dimensions, and the four labeled buttons in "Assets" fix it (hover any of them for an
+> explanation); map size and tile cell size are both free-form; the map **wraps around on all four sides** at the
+> data level (auto-tiling joins the top/bottom and left/right edges). The canvas cannot be dragged off the map —
+> it stops at the edge and the map's top-left lines up with the canvas — and the blank area outside cannot be
+> painted; a built-in tileset is one click away
 > ("try the built-in tileset"), and you can generate random terrain, a maze or a continent in one go.
 > **Not a single model call is made — so nothing is billed.**
 
@@ -396,8 +399,9 @@ The screenshots in this document were taken by Playwright against the real UI; t
   bucket / pipette / hand tools together with single-layer preview, layer up-down and undo-redo; click a
   palette tile to pick a brush, a red frame marking the current one, wheel to zoom, drag to pan) and two
   **geometry conventions**:
-  1. **The map wraps around** — camera and hit-testing both work modulo the map size, so painting past the
-     right edge continues from the left;
+  1. **The map wraps around** — auto-tiling works modulo the map size, so the top/bottom and left/right
+     edges join up (a data-level property); the camera is clamped inside the map (dragging stops at the
+     edge, with the map's top-left aligned to the canvas) and nothing can be painted outside it;
   2. **A2 auto-tiling** — a 64×160 sheet is 2 variants × 5 shapes; each cell is drawn as four 16px quadrants,
      and each quadrant is picked from one 5-state table over left / up / up-left. Both the small-cell index
      formula and the fact that "1-based index − 1 == AsLib's chip index" come from its `AsMap.hpp`.

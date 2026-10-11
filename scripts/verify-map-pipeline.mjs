@@ -570,6 +570,31 @@ try {
   check("反向验证：关掉环绕后接缝处退化成半格 / 孤岛形状（t 不再是 33/34/37/38）", flatTilesA2.some((t) => ![33, 34, 37, 38].includes(t)), flatTilesA2.join(","));
   await G.saveMapDocStructure(pSeam.id, { wrap: true });
 
+  // ★ 自由尺寸：地图宽高可以不相同；素材格子宽高也可以不相同（用户要「格子数能自由设置」）
+  {
+    const pRect = await newProject("自由宽高", { cols: 32, rows: 32 });
+    const rectSave = await G.saveMapDocStructure(pRect.id, { cols: 48, rows: 20 });
+    check("地图宽高可以不相同（48×20）", rectSave.doc.cols === 48 && rectSave.doc.rows === 20, `${rectSave.doc.cols}×${rectSave.doc.rows}`);
+    const rectView = await G.mapView(await G.readMapProject(pRect.id));
+    check("视图把非正方形的尺寸原样报出来", rectView.cols === 48 && rectView.rows === 20);
+    await G.importMapTileset(pRect.id, "棋盘", sheetPng(64, 64, 32).toString("base64"));
+    const rectTiles = (await G.mapView(await G.readMapProject(pRect.id))).tilesets[0];
+    // 画最右下角那一格：正方形夹具永远碰不到这条边
+    const cornerPaint = await G.applyMapOps(pRect.id, [{ kind: "paint", layerId: "l0", cells: [{ r: 19, c: 47, tile: rectTiles.palette[0].index }] }], { have: [] });
+    check("画右下角 (19,47) 不越界", cornerPaint.changed === 1 && cornerPaint.skipped.length === 0, JSON.stringify(cornerPaint.skipped));
+    const rectPlan = await G.mapPlan(pRect.id, { view: { x: 0, y: 0, width: 48 * 32, height: 20 * 32 }, have: [] });
+    const rectOps = rectPlan.chunks.flatMap((chunk) => chunk.ops);
+    check("计划按 48×20 铺满（最后一行一列也有内容）", rectOps.some((op) => op.r === 19 && op.c === 47), `${rectOps.length} 条`);
+    // 素材格子宽高不相同：96×64 的图按 24×16 切 → 4 列 × 4 行 = 16 块
+    const pCell = await newProject("自由格子", { cols: 16, rows: 16 });
+    const impCell = await G.importMapTileset(pCell.id, "96×64", sheetPng(96, 64, 32).toString("base64"));
+    const cellSave = await G.saveMapTileset(pCell.id, impCell.tilesets[0].id, { cell: { width: 24, height: 16 } });
+    const cellTs = cellSave.tileset;
+    check("素材格子可以不是正方形（24×16）", cellTs.cell.width === 24 && cellTs.cell.height === 16, `${cellTs.cell.width}×${cellTs.cell.height}`);
+    check("切出来的块数跟着格子大小走（4 列 × 4 行 = 16 块）", cellTs.tiles.length === 16, `${cellTs.tiles.length} 块`);
+    check("每块尺寸等于格子尺寸", cellTs.tiles.every((tile) => tile.rect.width === 24 && tile.rect.height === 16), JSON.stringify(cellTs.tiles[0]?.rect));
+  }
+
   // ★ dropKeys 也要 wrap 感知：画 (0,0) 一格，它的上 / 左邻格是最后一行 / 最后一列，
   //   折回后落在**四个角**的块里 → 四个角的 key 全部失效。键按几何推（块边长是性能旋钮）。
   const pChunk = await newProject("跨块脏标记", { cols: 64, rows: 64 });
