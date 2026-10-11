@@ -1274,8 +1274,8 @@
       "已删除地图": "Map deleted",
       "确定删除地图「{n0}」？上面的内容会一起删掉，无法撤销。":
         "Delete the map \"{n0}\"? Everything painted on it is removed too, and this cannot be undone.",
-      "格宽 / 格高 = 每块贴图的像素大小；图集四周或块之间有空隙时，把空隙填进边距 / 间距。下面那张网格就是切完的效果，点格子可以多选后归入地形族。":
-        "Cell width / height is the pixel size of one tile; if the atlas has padding around it or gaps between tiles, put those into the margins / spacing. The grid below is the result of the current slice — click tiles to multi-select them and assign a family.",
+      "格宽 / 格高 = 每块贴图的像素大小；图集四周或块之间有空隙时，把空隙填进边距 / 间距。下面那张网格就是切完的效果，点格子可以多选后归入「地形族」（一类地貌：草地 / 土路 / 水…，到②规则里再配它的过渡方案）。":
+        "Cell width / height is the pixel size of one tile; if the atlas has padding around it or gaps between tiles, put those into the margins / spacing. The grid below is the result of the current slice — click tiles to multi-select them and assign them to a \"terrain family\" (a kind of terrain: grass / dirt road / water…; its tiling scheme is set up in step ②).",
       "过渡方案怎么选：边界横平竖直的（墙、路）用「四邻域 16 掩码」；要 45° 斜角与内角就选「八邻域 47 掩码」；完全不想要过渡边缘就选「单块」。优先级管「谁朝谁长边」——数字大的族会朝数字小的邻居长过渡块（草地 < 土路 < 水）；缺掩码的地方会回退成最接近的一块，并在下面标出来。":
         "Which scheme to pick: use \"16-mask (4-neighbour)\" for straight edges (walls, roads); pick \"47-mask (8-neighbour)\" when you want 45° corners and inner corners; choose \"single tile\" if you want no transition edges at all. Priority decides who grows an edge into whom: a bigger number grows its transition into smaller-numbered neighbours (grass < dirt road < water). Missing masks fall back to the closest one and are listed below.",
       "数字越大越「强势」：它会朝数字小的邻居长过渡块":
@@ -1306,8 +1306,8 @@
       "① 新建项目，给它起个名字": "1. Create a project and give it a name",
       "② 图集：上传你自己的 tileset 图，填格子尺寸后点「应用切分」":
         "2. Tileset: upload your own tileset image, fill in the cell size and click \"Apply slice\"",
-      "③ 规则：加一个地形族，把图块按顺序归进去（自动过渡靠它挑边缘块）":
-        "3. Rules: add a terrain family and assign tiles to it in order (auto-tiling uses it to pick edge tiles)",
+      "③ 规则：加一个「地形族」（一类地貌：草地 / 土路 / 水…），把图块按顺序归进去——自动过渡靠它挑边缘块":
+        "3. Rules: add a \"terrain family\" (a kind of terrain: grass / dirt road / water…) and assign tiles to it in order — auto-tiling uses it to pick edge tiles",
       "④ 地图：选一块图当笔刷开始画，满意了到「导出」出 PNG / JSON / Tiled":
         "4. Map: pick a tile as the brush and start painting; when it looks right, export PNG / JSON / Tiled",
       "快捷键：B 画笔 / E 橡皮 / G 填充 / R 矩形 / I 吸管，⌘Z（Ctrl+Z）撤销、⇧⌘Z 重做。光标停在输入框里时快捷键不生效。":
@@ -6964,7 +6964,7 @@
             [
               T("① 新建项目，给它起个名字"),
               T("② 图集：上传你自己的 tileset 图，填格子尺寸后点「应用切分」"),
-              T("③ 规则：加一个地形族，把图块按顺序归进去（自动过渡靠它挑边缘块）"),
+              T("③ 规则：加一个「地形族」（一类地貌：草地 / 土路 / 水…），把图块按顺序归进去——自动过渡靠它挑边缘块"),
               T("④ 地图：选一块图当笔刷开始画，满意了到「导出」出 PNG / JSON / Tiled")
             ].map((text) => h("li", { key: text }, text))
           ),
@@ -7478,7 +7478,7 @@
               h(Btn, { on: selectedTilesetId === tileset.id, title: T("绘图时用这张图集当调色板（有多张图集时只有一张在生效）"), onClick: () => setSelectedTilesetId(tileset.id) }, T("选为调色板")),
               h(Btn, { danger: true, title: T("把这张图集与它的全部图块删掉；还有地图在用它时会拒绝删除"), onClick: () => void removeTileset(tileset) }, T("移除图集"))
             ),
-            h("p", { className: "SPR_meCardNote" }, T("格宽 / 格高 = 每块贴图的像素大小；图集四周或块之间有空隙时，把空隙填进边距 / 间距。下面那张网格就是切完的效果，点格子可以多选后归入地形族。")),
+            h("p", { className: "SPR_meCardNote" }, T("格宽 / 格高 = 每块贴图的像素大小；图集四周或块之间有空隙时，把空隙填进边距 / 间距。下面那张网格就是切完的效果，点格子可以多选后归入「地形族」（一类地貌：草地 / 土路 / 水…，到②规则里再配它的过渡方案）。")),
             h(
               "div",
               { className: "SPR_meSliceRow" },

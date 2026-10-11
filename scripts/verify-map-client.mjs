@@ -621,6 +621,10 @@ try {
    */
   check("模块六文案里不出现 markdown 星号（界面不渲染 markdown）", !textOf(tree).includes("**"));
   check("图集卡片有切分小字说明", byClass(tree, "SPR_meCardNote").length >= 1);
+  check(
+    "① 图集卡片提到「族」时也给了定义（一类地貌）——它比②规则更早出现",
+    byClass(tree, "SPR_meCardNote").some((node) => textOf(node).includes("地形族") && textOf(node).includes("一类地貌"))
+  );
   const headerButtons = collect(tree, (node) => node.type === "button" || node.type?.name === "Btn").map((node) => textOf(node).trim());
   check("顶部有「删除项目」（此前只有对话工具能删）", headerButtons.includes("删除项目"), headerButtons.slice(0, 12).join(" / "));
   const assetsTitles = new Set(collect(tree, (node) => typeof node.props?.title === "string").map((node) => node.props.title));
@@ -819,6 +823,10 @@ try {
     collect(emptyTree, (node) => typeof node.type === "function" && node.type.name === "MapExperimentalDialog").length === 1
   );
   check("空态里有新建入口", byClass(emptyTree, "SPR_btn").some((node) => textOf(node).includes("新建地图项目")));
+  check(
+    "空态第③步也解释了「地形族」（那是用户看到这个词的第一屏）",
+    textOf(emptyTree).includes("地形族") && textOf(emptyTree).includes("一类地貌")
+  );
   check(
     "空态写了四步引导（第一次进来不知道先干什么）",
     byClass(emptyTree, "SPR_meSteps").length === 1 && collect(emptyTree, (node) => node.type === "li").length === 4,
