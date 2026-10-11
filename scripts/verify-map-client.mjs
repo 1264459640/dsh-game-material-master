@@ -828,6 +828,16 @@ try {
   check("导出列表带逐文件说明（exportFileHint）", mapSource.includes("exportFileHint"));
 
   /**
+   * 窄面板（~500px）× 四个阶段的实测扫描（真机 Playwright）：
+   *   panel 1200/900/560 → 每个阶段 overflowX 都是 0，调色板恒为 420×420，
+   *   画布宽度跟着面板走（915 / 839 / 499）。
+   * 这两条是那次扫描里**实际修掉**的东西，留住免得改回去：
+   */
+  check("族编辑行是网格（flex 时窄面板会拆成 4 行、控件参差）", clientSource.includes(".SPR_meFamilyEditRow{display:grid"));
+  check("族编辑行有窄面板回退（≤640px 两列）", /@media \(max-width: 640px\)\{\.SPR_meFamilyEditRow/.test(clientSource));
+  check("画布 / 调色板用 border-box（100% + border 会顶出 2px 横向滚动）", clientSource.includes(".SPR_meCanvas{width:100%;height:420px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3);cursor:crosshair;touch-action:none;box-sizing:border-box}") && clientSource.includes(".SPR_mePalette{position:relative;align-self:flex-start;box-sizing:border-box;"));
+
+  /**
    * ⚠️ 用到的每个 `SPR_` 类都必须真的有 CSS 规则，或者本来就是个纯文本容器。
    *
    * 这条是**真机打脸**换来的：模块六一度用了自造的 `SPR_stages` / `SPR_stageTab` /
