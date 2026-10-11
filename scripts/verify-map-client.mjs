@@ -212,6 +212,8 @@ try {
   let lastFillStyle = "";
   /** 动画帧号：面板用 rAF + Date.now 推时钟，这里把 rAF 排队、由测试推进。 */
   const rafQueue = new Map();
+  /** 「等待稳定超时」的记号每次 renderTree 最多说一次（它每轮都会触发，不然刷屏）。 */
+  let settleNotes = 0;
   let rafSeq = 0;
 
   const sameDeps = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, index) => value === b[index]);
@@ -316,7 +318,19 @@ try {
       return [
         store[index],
         (next) => {
-          store[index] = typeof next === "function" ? next(store[index]) : next;
+          const value = typeof next === "function" ? next(store[index]) : next;
+          /**
+           * ⚠️ 必须和 React 一样**值没变就跳过重渲染**（`Object.is`）。
+           *
+           * 无脑 `pendingRender = true` 的后果有两个：
+           * ① 每个 effect 里那句「设置成同一个值」（`setMeasured(true)` 之类）都会让
+           *    「等界面稳定」的循环永远静不下来，每轮白跑 220 个 tick 才被硬截断 ——
+           *    自检里满屏 `⚠️ 等待稳定超时`，而且是**半渲染**的树，偶发误报就来自这里；
+           * ② 组件里为了省一次重画而故意返回同一个对象（`setHover(prev => …)`）在自检里
+           *    完全体现不出来，跟真机不一致。
+           */
+          if (Object.is(value, store[index])) return;
+          store[index] = value;
           pendingRender = true;
         }
       ];
@@ -796,6 +810,7 @@ try {
    */
   async function renderTree(element, options = {}) {
     if (options.fresh === true) resetHooks();
+    settleNotes = 0;
     let tree = null;
     for (let pass = 0; pass < 40; pass++) {
       cursor = 0;
@@ -826,9 +841,14 @@ try {
         if (pendingRender || inFlight > 0) {
           quiet = 0;
           if (tick > 220) {
-            // 这里**不该**发生：说明连续 220 个事件循环轮次还没静下来（机器被压满时可能）。
-            // 一旦发生，后面很容易读到「半渲染」的树并报一堆莫名其妙的失败 —— 所以留个明确记号。
-            note(`⚠️ 第 ${pass + 1} 轮渲染：等待稳定超时（tick=${tick}，inFlight=${inFlight}），后面可能会误报`);
+            /**
+             * 多数情况下这是**本 harness 的已知特性**，不是界面在死循环：
+             * 它每轮重跑**所有** effect（不认依赖数组），而面板里那句「按视口查绘制计划」
+             * 的 effect 每次都会真的发起一次宿主查询 → `inFlight` / `pendingRender` 永远不为 0。
+             * （真机上不会：React 只在依赖变化时重跑。实测界面空闲 3 秒重画 0 次。）
+             * 留一条记号是为了万一真的读到半渲染的树、断言开始莫名其妙地报错时有个抓手。
+             */
+            if (settleNotes++ === 0) note(`⚠️ 等待稳定超时（本 harness 每轮重跑所有 effect，属已知特性；tick=${tick}，inFlight=${inFlight}）`);
             break;
           }
         } else if (++quiet >= 3) {
@@ -845,7 +865,7 @@ try {
         if (pendingRender || inFlight > 0) {
           quietAfter = 0;
           if (tick > 220) {
-            note(`⚠️ 第 ${pass + 1} 轮渲染（定时器后）：等待稳定超时（tick=${tick}，inFlight=${inFlight}）`);
+            if (settleNotes++ === 0) note(`⚠️ 等待稳定超时（定时器后；同上，属已知特性；tick=${tick}，inFlight=${inFlight}）`);
             break;
           }
         } else if (++quietAfter >= 3) {
@@ -1658,6 +1678,83 @@ try {
       "反向验证：地图内那一份离指针很远（所以「跳到取模位置」一定会被这条抓到）",
       Math.abs(canonicalC * 32 - mapX) > 200,
       `取模位置 x=${canonicalC * 32}，指针 mapX=${mapX.toFixed(1)}`
+    );
+  }
+
+  // ══ 17) 跨接缝拖拽：只补相邻格，不许把整行填满 ═══════════════════════════
+  // 真机反馈：「按住画圈时有时会莫名其妙画上整行」。原因是补间用了**取模后**的格号：
+  // 指针跨过地图接缝（右边界那一份的 c=31 → 下一份的 c=0，屏幕上只差十几像素）会被算成
+  // 「从第 31 列走到第 0 列」，一笔填满整行。修法是按未取模格号补间（宿主写入时自己取模）。
+  section("17) 跨接缝拖拽只补间相邻格（按取模格号补间会填满整行）");
+  {
+    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    // 上一段建过自己的项目（没有素材），这里切回主夹具项目（有素材、32×32、环绕）
+    const mainName = (await G.readMapProject(projectId)).name;
+    const ensureMenu = async () => {
+      if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
+        byClass(tree, "SPR_mapEdProj")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+      }
+      return byClass(tree, "SPR_mapEdMenuItem");
+    };
+    const mainItem = (await ensureMenu()).find((node) => textOf(node) === mainName);
+    check("能切回主夹具项目（后面要在有素材的图上测）", mainItem !== undefined, mainName);
+    mainItem.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("切回去之后调色板有素材", byClass(tree, "SPR_mapEdTile").length > 0, `${byClass(tree, "SPR_mapEdTile").length} 块`);
+    byClass(tree, "SPR_mapEdTile")[0].props.onClick({ shiftKey: false });
+    tree = await renderTree(() => MapModule({ api }));
+    byTool(tree, "pen")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    // 顺带钉住上一轮的性能修复：**同一格内**移动不该产生新的绘制帧
+    // （红框按格对齐，格号没变画面就没变；靠 `setHover(prev => prev)` 让 React 跳过渲染）。
+    {
+      const near = apiLog.plans[apiLog.plans.length - 1];
+      const zoomNear = 900 / near.view.width;
+      const cellX = (20 * 32 + 16 - near.view.x) * zoomNear;
+      const cellY = (7 * 32 + 16 - near.view.y) * zoomNear;
+      const node = collect(tree, (item) => item.props?.["data-testid"] === "map-canvas")[0];
+      node.props.onPointerMove({ clientX: cellX, clientY: cellY, pointerId: 31 });
+      tree = await renderTree(() => MapModule({ api }));
+      const framesBefore = drawFrames.length;
+      for (let i = 1; i <= 12; i++) node.props.onPointerMove({ clientX: cellX + i * 0.4, clientY: cellY + i * 0.3, pointerId: 31 });
+      tree = await renderTree(() => MapModule({ api }));
+      check(
+        "同一格内挪 12 次不产生新的绘制帧（省掉整幅重画）",
+        drawFrames.length === framesBefore,
+        `帧数 ${framesBefore} → ${drawFrames.length}`
+      );
+    }
+    const query = apiLog.plans[apiLog.plans.length - 1];
+    const zoomOf = 900 / query.view.width; // 画布桩：getBoundingClientRect() = 900×520
+    const toClientX = (mapX) => (mapX - query.view.x) * zoomOf;
+    const toClientY = (mapY) => (mapY - query.view.y) * zoomOf;
+    const grid = (await G.readMapProject(projectId)).grid;
+    const cols = (await G.mapPlan(projectId, { view: { x: 0, y: 0, width: grid.tileWidth, height: grid.tileHeight }, have: [] })).cols;
+    const row = 5;
+    const lastCol = cols - 1;
+    const clientY = toClientY(row * grid.tileHeight + grid.tileHeight / 2);
+    const startX = toClientX(lastCol * grid.tileWidth + grid.tileWidth / 2); // 接缝左侧：最后一列
+    const endX = toClientX(cols * grid.tileWidth + grid.tileWidth / 2); // 接缝右侧：下一份的第一列
+    const appliesBefore = apiLog.applies.length;
+    const canvasNode = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
+    canvasNode.props.onPointerDown({ clientX: startX, clientY, button: 0, pointerId: 21 });
+    canvasNode.props.onPointerMove({ clientX: endX, clientY, pointerId: 21 });
+    canvasNode.props.onPointerUp({ pointerId: 21 });
+    tree = await renderTree(() => MapModule({ api }));
+    await tickTimers();
+    tree = await renderTree(() => MapModule({ api }));
+    const painted = new Set();
+    for (const batch of apiLog.applies.slice(appliesBefore)) {
+      for (const op of batch.ops ?? []) for (const cell of op.cells ?? []) painted.add(`${cell.r},${cell.c}`);
+    }
+    check("跨接缝一笔只提交相邻两格（不是整行）", painted.size > 0 && painted.size <= 3, `提交 ${painted.size} 格：${[...painted].join(" ")}`);
+    const wrapped = new Set([...painted].map((key) => { const [r, c] = key.split(",").map(Number); return `${r},${((c % cols) + cols) % cols}`; }));
+    check("落到的正是接缝两侧那两格", wrapped.has(`${row},${lastCol}`) && wrapped.has(`${row},0`) && wrapped.size <= 3, `规范后：${[...wrapped].join(" ")}`);
+    check(
+      "反向验证：按取模格号补间会得到整行 —— 说明上面两条真的在测东西",
+      MAP_lineCells(row, lastCol, row, 0).length === cols,
+      `取模补间 ${MAP_lineCells(row, lastCol, row, 0).length} 格 / 共 ${cols} 列`
     );
   }
 } finally {

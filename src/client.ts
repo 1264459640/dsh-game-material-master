@@ -6685,21 +6685,34 @@
           const hit = MAP_pointToCell(layout, x, y);
           if (hit.inMap !== true) return null;
           /**
-           * ⚠️ 把**未取模**的地图坐标一起带出去。
+           * ⚠️ 把**未取模**的地图坐标一起带出去，两个地方都要用：
            *
-           * 环绕模式下同一格会在屏幕上出现好几次（地图比画布小的时候最常见：新建的
-           * 32×32 地图铺满 1024px，缩小后一屏能看见一份半）。只留取模后的 `r/c` 的话，
-           * 红框会画在「地图内的那一份」上 —— 真机表现就是鼠标在左边、红框跑到右边
-           * 一整张地图之外（实测偏差 ≈ 353.6px = 一张地图宽）。
+           * 1. 红框：环绕模式下同一格会在屏幕上出现好几次（地图比画布小的时候最常见）。
+           *    只留取模后的 `r/c`，红框就画在「地图内的那一份」上 —— 真机表现是鼠标在左边、
+           *    红框跑到右边一整张地图之外（实测偏差 ≈ 353.6px = 一张地图宽）。
+           * 2. **补间**：`paintCells` 必须按未取模的格号插值。用取模后的格号时，指针跨过
+           *    接缝（右边界那一份的 c=31 → 下一份的 c=0，屏幕上只差十几像素）会被算成
+           *    「从第 31 列走到第 0 列」→ **整行被填满**。真机复现：清空图层后横扫一笔，
+           *    整行 32 格全亮。
            */
-          return { r: hit.r, c: hit.c, x, y };
+          return { r: hit.r, c: hit.c, x, y, rawR: Math.floor(y / layout.stepY), rawC: Math.floor(x / layout.stepX) };
         },
         [layout, zoom, pan]
       );
 
+      /**
+       * 画笔从一个格拖到另一个格：把中间漏掉的格补上。
+       *
+       * ⚠️ 补间用**未取模**的格号（`rawR` / `rawC`），发出去的也允许越界 —— 宿主
+       * `applyOps` 自己会取模。用取模后的格号补间的话，指针跨过地图接缝时会被算成
+       * 「从第 31 列走到第 0 列」，一笔就把整行填满（真机复现过；横向扫一笔 → 整行 32 格）。
+       * 没有 raw 的（理论上不会，防御式兜底）退回取模格号。
+       */
       const paintCells = (from, to, tile) => {
         if (activeLayer === null) return;
-        const cells = from === null ? [to] : MAP_lineCells(from.r, from.c, to.r, to.c);
+        const rawOf = (cell) => ({ r: cell.rawR === undefined ? cell.r : cell.rawR, c: cell.rawC === undefined ? cell.c : cell.rawC });
+        const end = rawOf(to);
+        const cells = from === null || from === undefined ? [end] : MAP_lineCells(rawOf(from).r, rawOf(from).c, end.r, end.c);
         queueOps([{ kind: "paint", layerId: activeLayer.id, cells: cells.map((cell) => ({ r: cell.r, c: cell.c, tile })) }]);
       };
 
