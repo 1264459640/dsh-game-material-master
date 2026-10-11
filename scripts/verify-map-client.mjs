@@ -596,17 +596,25 @@ try {
   check("看到地形族「草地」", textOf(tree).includes("草地"), textOf(tree).slice(0, 100));
   check("看到掩码覆盖率（47/47 完整）", textOf(tree).includes("47/47") || textOf(tree).includes("完整"), textOf(tree).slice(0, 200));
   check("规则阶段有过渡方案的小字说明", byClass(tree, "SPR_meCardNote").length >= 2, `${byClass(tree, "SPR_meCardNote").length} 条`);
+  check(
+    "地形族 / 掩码旁边就地有小字（不是集中折叠块）",
+    byClass(tree, "SPR_meCardNote").some((node) => textOf(node).includes("地形族") && textOf(node).includes("掩码"))
+  );
 
   // ── 名词速查与「删除入口」：这是真机反馈过「找不到 / 看不懂」的两块 ──────────
   await gotoStage("assets");
-  const glossary = byClass(tree, "SPR_meGlossary");
-  check("有「名词速查」折叠块", glossary.length === 1);
-  check(
-    "名词速查里至少 8 个词条（图集 / 切分 / 掩码 / 族 …）",
-    collect(tree, (node) => node.type === "dt").length >= 8,
-    `${collect(tree, (node) => node.type === "dt").length} 条`
-  );
-  check("折叠块默认是收起的（不占版面）", glossary[0]?.props?.open === undefined || glossary[0].props.open === false);
+  /**
+   * 解释**就地**写在名词旁边，不做「名词速查」那种集中折叠块。
+   *
+   * 折叠块版真机反馈是「太直接了/占版面」，用户的原话是「直接在有那些名词的地方下面加小字」。
+   * 所以这里盯的是：那一坨折叠块不许回来，且关键名词旁边确实有小字。
+   */
+  check("没有集中式「名词速查」折叠块", byClass(tree, "SPR_meGlossary").length === 0);
+  /**
+   * ⚠️ 界面**不渲染 markdown**：T() 文案里的 `**强调**` 会原样显示成星号（真机截图确认）。
+   * 模块六的文字一律用「」做强调，这条盯着别再把星号带回来。
+   */
+  check("模块六文案里不出现 markdown 星号（界面不渲染 markdown）", !textOf(tree).includes("**"));
   check("图集卡片有切分小字说明", byClass(tree, "SPR_meCardNote").length >= 1);
   const headerButtons = collect(tree, (node) => node.type === "button" || node.type?.name === "Btn").map((node) => textOf(node).trim());
   check("顶部有「删除项目」（此前只有对话工具能删）", headerButtons.includes("删除项目"), headerButtons.slice(0, 12).join(" / "));
@@ -643,6 +651,14 @@ try {
   check("图层行拆成两行（名字与按钮在上、数值在下）", byClass(tree, "SPR_meLayerFields").length >= 1);
   check("画布下面有操作说明（拖动 / 平移 / 缩放）", byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("平移画布")));
   check("画布下面有快捷键说明", byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("快捷键")));
+  check(
+    "图块序号旁边就地有小字（调色板提示里）",
+    byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("全项目统一的图块编号"))
+  );
+  check(
+    "「空单元格算哪个族」旁边就地有小字",
+    byClass(tree, "SPR_meCardNote").some((node) => textOf(node).includes("空单元格算哪个族"))
+  );
   check(
     "图层工具栏解释了「层类型只是分组」",
     byClass(tree, "SPR_meCardNote").some((node) => textOf(node).includes("层类型")),
@@ -826,6 +842,7 @@ try {
     check(`模块六的${name}用 DSH 变量（深色主题下不塌）`, clientSource.includes(needle), needle);
   }
   check("导出列表带逐文件说明（exportFileHint）", mapSource.includes("exportFileHint"));
+  check("面板正文有内边距（.SPR_moduleBody 以前一条 CSS 都没有，内容贴着左边缘）", clientSource.includes(".SPR_moduleBody{display:block;padding:16px 18px 40px}"));
 
   /**
    * 窄面板（~500px）× 四个阶段的实测扫描（真机 Playwright）：
