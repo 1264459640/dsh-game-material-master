@@ -12,6 +12,9 @@ yarn.lock
 # 本地自检产物（scripts/verify-*.mjs、e2e-*.mjs 的输出与截图）
 .verify/
 
+# Computer Use 的截图 / 观察产物（agent 真机验收时落在工作区里，不入库）
+.dsh-computer-use/
+
 # 调研任务的原始 AI 产物
 # research/<任务>/ 下每个调研任务自成一套：报告 + tools/（算法参考实现）+ out/（交付与验证图）
 # + probe/（原始 AI 生成图，可重新生成但**会真实计费**）。

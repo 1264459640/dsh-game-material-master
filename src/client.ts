@@ -1397,6 +1397,24 @@
       "不设（就是空地）": "Not set (plain empty)",
       "这一层的空格子按哪个族算邻居：整层是水时把空处也算成水，接壤的地面才会长出过渡边":
         "Which family this layer's empty cells count as when neighbours are computed: if the whole layer is water, counting the empty parts as water is what makes the neighbouring ground grow transition edges"
+,
+      // ── 地图编辑器：随机变体 / 变体种子 / 导出文件说明 ───────────────────
+      "随机变体": "Random variants",
+      "关掉它，同族同掩码就永远用第一块图；打开才有随机感":
+        "Turn it off and the same family + mask always uses the first tile; leave it on for variety",
+      "换个数＝换一套挑法；同一个种子出的图完全一样":
+        "A different number means a different set of picks; the same seed always produces the same map",
+      "随便换一个新种子，看看另一版铺法": "Roll a new seed to see another layout",
+      "换一组": "Roll again",
+      "随机变体：同一族、同一拼接形状（掩码）有几块候选图时，按种子随机挑一块来铺，整片地才不会一块块都一样。换种子＝换一版铺法，同一张图 + 同一种子每次结果完全一致。":
+        "Random variants: when a family has several candidate tiles for the same edge/corner shape (mask), one is picked by seed so a field does not look stamped. A new seed means another layout, and the same map + same seed always produce exactly the same result.",
+      "这次导出的清单：文件列表、警告与地图包围盒": "The manifest for this export: file list, warnings and the map's bounding box",
+      "自有 JSON：格子、图层、图例、族与掩码，给引擎读的完整数据":
+        "The plugin's own JSON: cells, layers, legend, families and masks — the complete data an engine reads",
+      "Tiled 地图文件，用 Tiled 直接打开": "Tiled map file, open it directly in Tiled",
+      "Tiled 图集定义，被 .tmj 引用（别单独挪走）": "Tiled tileset definition referenced by the .tmj (do not move it away on its own)",
+      "图片产物，点开看大图": "Image output, click to view it full size",
+      "导出产物": "Exported file"
     };
 /* i18n-ignore-end */
 
@@ -2281,13 +2299,13 @@
 .SPR_mePalette{position:relative;align-self:flex-start;line-height:0;overflow:hidden;background:repeating-conic-gradient(#0000 0% 25%,#00000010 0% 50%) 50%/12px 12px;border:1px solid var(--dsw-alias-border-l2)}
 .SPR_mePaletteImg{image-rendering:pixelated;width:100%;height:100%;display:block}
 .SPR_mePaletteCell{position:absolute;padding:0;margin:0;border:none;background:transparent;cursor:pointer}
-.SPR_mePaletteCell:hover{background:rgba(255,196,0,.35);outline:1px solid rgba(255,196,0,.9)}
-.SPR_mePaletteCell[data-selected="true"]{background:rgba(255,120,0,.45);outline:1px solid rgba(255,120,0,1)}
+.SPR_mePaletteCell:hover{background:color-mix(in srgb, var(--dsw-alias-state-warning-primary, #ffc400) 32%, transparent);outline:1px solid color-mix(in srgb, var(--dsw-alias-state-warning-primary, #ffc400) 85%, transparent)}
+.SPR_mePaletteCell[data-selected="true"]{background:color-mix(in srgb, var(--dsw-alias-state-warning-primary, #ff7800) 45%, transparent);outline:1px solid var(--dsw-alias-state-warning-primary, #ff7800)}
 .SPR_meGridV{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,0,255,.5);pointer-events:none}
 .SPR_meGridH{position:absolute;left:0;right:0;height:1px;background:rgba(255,0,255,.5);pointer-events:none}
 .SPR_meFamilyRow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .SPR_meFamilyChip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:4px 11px;font-size:12px;background:transparent;cursor:pointer}
-.SPR_meFamilyChip[data-ok="true"]{border-color:rgba(80,200,120,.8)}
+.SPR_meFamilyChip[data-ok="true"]{border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary, #50c878) 70%, transparent)}
 .SPR_meFamilyDot{width:9px;height:9px;border-radius:50%;display:inline-block}
 .SPR_meFamilyCount{font-size:10px;color:var(--dsw-alias-label-tertiary)}
 .SPR_meFamilyEdit{display:flex;flex-direction:column;gap:8px}
@@ -2295,9 +2313,9 @@
 .SPR_meName{min-width:110px}
 .SPR_meCoverage{display:flex;flex-direction:column;gap:6px;font-size:12px}
 .SPR_meCoverageRow{display:flex;gap:12px;align-items:center}
-.SPR_meCoverageRow[data-ok="true"] .SPR_meOk{color:#3fa85f}
-.SPR_meOk{color:#3fa85f}
-.SPR_meBad{color:#d24}
+.SPR_meCoverageRow[data-ok="true"] .SPR_meOk{color:var(--dsw-alias-state-success-primary, #3fa85f)}
+.SPR_meOk{color:var(--dsw-alias-state-success-primary, #3fa85f)}
+.SPR_meBad{color:var(--dsw-alias-state-error-primary, #d24)}
 .SPR_meShots{display:flex;gap:10px;flex-wrap:wrap}
 .SPR_meShot{max-width:220px;max-height:160px;image-rendering:pixelated;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}
 .SPR_meEditorWrap{display:flex;flex-direction:column;gap:10px}
@@ -2320,7 +2338,7 @@
 .SPR_meLayerPick[data-on="true"]::after{content:" ●";color:var(--dsw-alias-state-business-primary, #3b82f6);font-size:10px}
 .SPR_meMapList{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .SPR_meMapChip{border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:4px 12px;font-size:12px;background:transparent;cursor:pointer}
-.SPR_meMapChip[data-active="true"]{background:rgba(120,180,255,.22);border-color:rgba(120,180,255,.9)}
+.SPR_meMapChip[data-active="true"]{background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #78b4ff) 22%, transparent);border-color:color-mix(in srgb, var(--dsw-alias-state-business-primary, #78b4ff) 85%, transparent)}
 .SPR_meBusy{font-size:11px;color:var(--dsw-alias-label-warning, #c80)}
 .SPR_meFileList{margin:0;padding-left:18px;font-size:12px;line-height:1.9}
 
@@ -2676,6 +2694,21 @@
     /** 原图像素 → 盒子百分比：叠加层必须按百分比写，才会跟着被缩放的图片一起缩。 */
     function mapPct(value, total) {
       return total > 0 ? `${(value / total) * 100}%` : "0%";
+    }
+
+    /**
+     * 导出产物的一句话说明（按文件名/扩展名判断，纯文案）。
+     *
+     * 导出列表原本只有文件名：`map.json` / `map.tmj` / `xxx.tsj` 对不熟悉 Tiled 的人
+     * 完全看不出区别，更不知道该拿哪个去用。挂到 `title` 上，悬停即见。
+     */
+    function exportFileHint(file: string): string {
+      if (file === "manifest.json") return T("这次导出的清单：文件列表、警告与地图包围盒");
+      if (file === "map.json") return T("自有 JSON：格子、图层、图例、族与掩码，给引擎读的完整数据");
+      if (file === "map.tmj") return T("Tiled 地图文件，用 Tiled 直接打开");
+      if (file.endsWith(".tsj")) return T("Tiled 图集定义，被 .tmj 引用（别单独挪走）");
+      if (file.endsWith(".png")) return T("图片产物，点开看大图");
+      return T("导出产物");
     }
 
     function statusKind(node) {
@@ -7299,6 +7332,45 @@
         )
       );
 
+      /**
+       * 随机变体与变体种子。
+       *
+       * `maprender` 在「同一族、同一掩码有多块候选」时按 `doc.variantSeed` + 格子坐标
+       * 挑一块；关掉 `randomVariants` 就永远用第一块。这两个字段宿主一直支持、也写进了
+       * Tiled 图集属性（`dshVariantSeed`），界面却没有任何入口 —— 名词速查里讲了「变体种子」，
+       * 用户却找不到地方改它。
+       */
+      const variantRow =
+        doc === null || doc === undefined
+          ? null
+          : h(
+              "div",
+              { className: "SPR_meToolbar" },
+              h(
+                "label",
+                { className: "SPR_meCheck", title: T("关掉它，同族同掩码就永远用第一块图；打开才有随机感") },
+                h("input", {
+                  type: "checkbox",
+                  checked: doc.randomVariants !== false,
+                  onChange: (event) => void saveDocStructure({ randomVariants: event.target.checked })
+                }),
+                T("随机变体")
+              ),
+              h(NumField, {
+                label: T("变体种子"),
+                hint: T("换个数＝换一套挑法；同一个种子出的图完全一样"),
+                value: doc.variantSeed,
+                min: 0,
+                max: 999999999,
+                onChange: (value) => void saveDocStructure({ variantSeed: value })
+              }),
+              h(
+                Btn,
+                { title: T("随便换一个新种子，看看另一版铺法"), onClick: () => void saveDocStructure({ variantSeed: Math.floor(Math.random() * 1000000000) }) },
+                T("换一组")
+              )
+            );
+
       const stageAssets = h(
         "div",
         { className: "SPR_meStage" },
@@ -7544,6 +7616,8 @@
           mapList,
           h("p", { className: "SPR_meCardNote" }, T("地图尺寸随时能改：放大只是多出空白；缩小时超出范围的格子会被丢掉（宿主会告诉你丢了多少，而且可以撤销）。")),
           mapSizeRow,
+          h("p", { className: "SPR_meCardNote" }, T("随机变体：同一族、同一拼接形状（掩码）有几块候选图时，按种子随机挑一块来铺，整片地才不会一块块都一样。换种子＝换一版铺法，同一张图 + 同一种子每次结果完全一致。")),
+          variantRow,
           layerList
         ),
         h(
@@ -7648,7 +7722,17 @@
                   h(
                     "li",
                     { key: file },
-                    h("a", { href: `${assetBase}${project.exportBase}${file}`, target: "_blank", rel: "noreferrer" }, file)
+                    h(
+                      "a",
+                      {
+                        href: `${assetBase}${project.exportBase}${file}`,
+                        target: "_blank",
+                        rel: "noreferrer",
+                        // 一个文件名说明不了「拿去干什么」，逐个补一句（点开仍是查看/下载）
+                        title: exportFileHint(file)
+                      },
+                      file
+                    )
                   )
                 )
               )

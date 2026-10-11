@@ -903,7 +903,7 @@ export async function removeMapTileset(projectId: string, tilesetId: string): Pr
     if (used.length > 0) users.push(`${doc.name}（${used.length} 个格子）`);
   }
   if (users.length > 0) {
-    throw new Error(`图集「${tileset.name}」还有地图在用：${users.join("、")}。请先用「替换」把它换成别的图块，或删掉那几张地图。`);
+    throw new Error(`图集「${tileset.name}」还有地图在用：${users.join("、")}。请先把这些地图上用到它的格子擦掉、或用别的图块盖掉，再回来删这张图集。`);
   }
   await patchMapProject(projectId, (fresh) => {
     fresh.tilesets = fresh.tilesets.filter((item) => item.id !== tilesetId);

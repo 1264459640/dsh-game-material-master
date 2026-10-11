@@ -654,6 +654,14 @@ try {
     "图层行能设「空单元格算哪个族」（baseFamilyId）",
     [...titled].some((text) => text.includes("空格子按哪个族算邻居"))
   );
+  // 随机变体 / 变体种子：宿主 `maprender` 按 `doc.variantSeed` 在「同族同掩码」的候选块里挑一块。
+  // 这两个字段以前在界面上完全没有入口（名词速查里却讲了「变体种子」）。
+  check(
+    "有「随机变体」开关",
+    collect(tree, (node) => node.type === "label" && textOf(node).includes("随机变体")).length >= 1
+  );
+  check("有「变体种子」输入框", numLabels.includes("变体种子"), numLabels.join(" / "));
+  check("有「换一组」按钮（换种子）", paintButtonTexts.includes("换一组"));
   for (const [label, key] of [
     ["加装饰层", "小物件"],
     ["新建地图", "32×32"],
@@ -802,6 +810,22 @@ try {
   check("模块六里没有自动过渡的归约逻辑", !/canonicalBlobMask|BLOB47_MASKS\s*=/.test(mapSource));
   check("模块六里没有自己算裁剪包围盒", !/measureAssemblyBounds|trimTransparent/.test(mapSource));
   check("模块六里没有自造坐标变换（只允许那四个 MAP_ 函数）", !/layoutOf|tileOriginAt\(/.test(mapSource));
+
+  /**
+   * 主题一致性：模块六的状态色必须走 DSH 变量。
+   *
+   * 硬编码的绿 / 红 / 蓝在深色主题下会顶不住（对比度掉、看着像坏了），
+   * 所以这些色一律用 `var(--dsw-alias-state-*, 兜底值)` 或 color-mix 包一层。
+   */
+  for (const [name, needle] of [
+    ["成功色", ".SPR_meOk{color:var(--dsw-alias-state-success-primary"],
+    ["错误色", ".SPR_meBad{color:var(--dsw-alias-state-error-primary"],
+    ["选中地图", '.SPR_meMapChip[data-active="true"]{background:color-mix(in srgb, var(--dsw-alias-state-business-primary'],
+    ["族已配齐", '.SPR_meFamilyChip[data-ok="true"]{border-color:color-mix(in srgb, var(--dsw-alias-state-success-primary']
+  ]) {
+    check(`模块六的${name}用 DSH 变量（深色主题下不塌）`, clientSource.includes(needle), needle);
+  }
+  check("导出列表带逐文件说明（exportFileHint）", mapSource.includes("exportFileHint"));
 
   /**
    * ⚠️ 用到的每个 `SPR_` 类都必须真的有 CSS 规则，或者本来就是个纯文本容器。
