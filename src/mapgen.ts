@@ -279,6 +279,7 @@ function normalizeTileset(raw: unknown): MapTileset {
     shape,
     animRows,
     variants: variantsOf(shape, cell, imageWidth, imageHeight, animRows),
+    builtin: source.builtin === true ? true : undefined,
     tiles
   };
   // 老数据里「整格自动连接」没配过掩码（旧版本压根没这条路径）——读一次就补齐，
@@ -772,10 +773,26 @@ interface RegisterInput {
   name: string;
   bytes: Buffer;
   /** 内置素材那条路：形态与格子是**生成时就知道的**，不走自动识别。 */
-  known?: { shape: TilesetShape; cell: { width: number; height: number }; animRows: boolean };
+  known?: { shape: TilesetShape; cell: { width: number; height: number }; animRows: boolean; builtin?: boolean };
+  /**
+   * 新增素材时用户手填的属性（都是可选的，留空 = 走自动识别）。
+   * 在**量到真实尺寸之后**才套上去 —— 校验用同一套 `normalizeCell` / `parseTilesetShape`，
+   * 填了不合法的就退回识别结果，不静默改成别的值。
+   */
+  overrides?: { cell?: Record<string, unknown>; shape?: unknown; animRows?: unknown };
 }
 
-export async function importMapTileset(projectId: string, name: string, base64: string): Promise<ImportTilesetResult> {
+/**
+ * 导入一张素材图。**属性在这一刻定下来，之后只能删掉重来**（界面上不再提供修改入口）。
+ *
+ * `opts` 里留空的项走自动识别；给了就用用户的（值不合法就退回识别，不静默改）。
+ */
+export async function importMapTileset(
+  projectId: string,
+  name: string,
+  base64: string,
+  opts: { cell?: { width?: unknown; height?: unknown }; shape?: unknown; animRows?: unknown } = {}
+): Promise<ImportTilesetResult> {
   const project = await readProjectOrThrow(projectId);
   if (base64.trim() === "") throw new Error("图片内容为空。");
   const bytes = Buffer.from(base64, "base64");
@@ -784,7 +801,8 @@ export async function importMapTileset(projectId: string, name: string, base64: 
   const tileset = await registerTileset(projectId, {
     id: newTilesetId(),
     name: name.trim() === "" ? `素材 ${project.tilesets.length + 1}` : name.trim(),
-    bytes
+    bytes,
+    overrides: { cell: opts.cell, shape: opts.shape, animRows: opts.animRows }
   }, warnings);
   await patchMapProject(projectId, (fresh) => {
     fresh.tilesets.push(tileset);
@@ -819,7 +837,7 @@ export async function importSampleTileset(projectId: string): Promise<ImportTile
       id: newTilesetId(),
       name: sample.name,
       bytes: sample.bytes,
-      known: { shape: sample.shape, cell: sample.cell, animRows: sample.animRows }
+      known: { shape: sample.shape, cell: sample.cell, animRows: sample.animRows, builtin: true }
     }, warnings);
     await patchMapProject(projectId, (fresh) => {
       fresh.tilesets.push(tileset);
@@ -845,6 +863,11 @@ function newTilesetId(): string {
  * `known` 是内置素材那条路：它的形态与格子是**生成时就知道的**（不用再猜）。
  */
 async function registerTileset(projectId: string, input: RegisterInput, warnings: string[]): Promise<MapTileset> {
+  /**
+   * ⚠️ 用户填的属性**先校验**，再写文件：`normalizeCell` 对不合法的尺寸是**抛错**的
+   * （明确拒绝，不静默改成别的值），而原图是在这个函数里写盘的 —— 先写后抛会留下孤儿图。
+   */
+  const overrideCell = input.overrides?.cell === undefined ? undefined : normalizeCell(input.overrides.cell);
   const ext = sniffImageExt(input.bytes);
   const relative = `tilesets/${input.id}.${ext}`;
   await mkdir(join(mapProjectDir(projectId), "tilesets"), { recursive: true });
@@ -852,11 +875,13 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
   await writeFile(mapAssetPath(projectId, relative), input.bytes);
   const size = await probeSize(mapAssetPath(projectId, relative), input.bytes);
   const guess = input.known ?? detectLayout(size.width, size.height);
-  const shape = guess.shape;
-  const cell = guess.cell;
-  const animRows = input.known?.animRows ?? false;
+  const shape = parseTilesetShape(input.overrides?.shape) ?? guess.shape;
+  const cell = overrideCell ?? guess.cell;
+  const animRows = input.known?.animRows ?? (input.overrides?.animRows === true);
   if (!commonSizeFits(size.width, size.height)) {
-    warnings.push(`这张图（${size.width}×${size.height}）不是常见瓦片尺寸的整数倍，已按 ${cell.width}×${cell.height} 试切；不对的话用 saveMapTileset 改格子尺寸或形态。`);
+    // ⚠️ 文案要跟着产品规则走：属性在新增时定死、界面不再提供修改入口 ——
+    // 所以这里告诉用户「删掉重新新增」，而不是让他去找一个界面上没有的入口。
+    warnings.push(`这张图（${size.width}×${size.height}）不是常见瓦片尺寸的整数倍，已按 ${cell.width}×${cell.height} 试切；不对的话删掉它、按你想要的格子大小重新新增一张。`);
   }
   const tiles = buildTiles({ shape, cell, imageWidth: size.width, imageHeight: size.height, animRows });
   const tileset: MapTileset = {
@@ -869,6 +894,8 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
     shape,
     animRows,
     variants: variantsOf(shape, cell, size.width, size.height, animRows),
+    // 内置素材：属性**不允许修改**（见 saveMapTileset），可以整张删掉，也能一键恢复
+    builtin: input.known?.builtin === true ? true : undefined,
     tiles
   };
   assignCorner16Masks(tileset, warnings);
@@ -935,6 +962,11 @@ export async function saveMapTileset(
   await patchMapProject(projectId, (fresh) => {
     const tileset = fresh.tilesets.find((item) => item.id === tilesetId);
     if (tileset === undefined) throw new Error(`素材不存在：${tilesetId}`);
+    /**
+     * 内置素材的属性**不允许修改**（这是产品约定：属性在新增那一刻定下来）。
+     * 想换形态 / 格子就自己新增一张；内置的可以整张删掉，再用「恢复默认素材」拿回来。
+     */
+    if (tileset.builtin === true) throw new Error(`「${tileset.name}」是内置素材，属性不能改 —— 可以删掉它，或者自己新增一张素材。`);
     if (typeof patch.name === "string" && patch.name.trim() !== "") tileset.name = patch.name.trim();
     const shape = patch.shape ?? tileset.shape;
     const cell = nextCell ?? tileset.cell;
@@ -1388,6 +1420,8 @@ export interface MapViewTileset {
    * （含小格），调色板必须读这里。
    */
   palette: Array<{ index: number; rect: MapRect }>;
+  /** 内置素材（`importSampleTileset` 装的那几张）：界面标「自带」用。 */
+  builtin?: boolean;
 }
 
 export interface MapProjectView {
@@ -1448,6 +1482,7 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
       animRows: tileset.animRows,
       variants: tileset.variants,
       tileCount: tileset.tiles.length,
+      builtin: tileset.builtin === true ? true : undefined,
       reason: layoutFor(tileset.shape, tileset.cell, tileset.imageWidth, tileset.imageHeight).reason,
       palette: paletteFor(tileset, flat)
     })),

@@ -678,7 +678,7 @@ const CALL_DESCRIPTION = [
   "  ★ 几何交给代码、内容交给 AI：参考图由本机渲染，AI 只填菱形内部；生成后本地量一次、仿射对齐回标准菱形。",
   "地图编辑器（模块六，**全本地、零计费**；导入自己的素材图，四步：素材图 → 自动连接 → 环绕画布 → 导出 PNG/存档）：",
   "  listMapProjects() / createMapProject({name,grid?,cols?,rows?}) / getMapProject({projectId,lang?}) / saveMapProject({projectId,name}) / deleteMapProject({projectId}) /",
-  "  importMapTileset({projectId,name,data:素材图base64}) / importSampleTileset({projectId})【内置素材：本机现算、零成本，4 张自动连接图 + 1 张道具图】/",
+  "  importMapTileset({projectId,name,data:素材图base64,cell?,shape?,animRows?})【新增素材：属性这一下就定死，之后只能删掉重来；cell/shape/animRows 留空 = 自动识别】/ importSampleTileset({projectId})【内置素材：本机现算、零成本，4 张自动连接图 + 1 张道具图；属性不可改、可删、可一键恢复】/",
   "  saveMapTileset({projectId,tilesetId,name?,cell?,shape?,animRows?})【形态由尺寸自动识别，改形态/删素材会让图块序号平移，宿主按「素材 id + 图块 id」自动重新映射每格】/ removeMapTileset({projectId,tilesetId}) /",
   "  saveMapDoc({projectId,name?,cols?,rows?,layers?,addLayer?,removeLayerId?,moveLayer?,clearLayerId?,wrap?})【地图只有一张：改尺寸/图层/环绕都走它】/",
   "  applyMapOps({projectId,ops,stroke?,have?})【★ agent 也能画：ops = [{kind:'paint',layerId,cells:[{r,c,tile}]}, {kind:'fill',layerId,r,c,tile}, {kind:'rect',layerId,r0,c0,r1,c1,tile,filled}, {kind:'replace',layerId,from,to}]；tile 取 getMapProject 的 view.tilesets[].palette[].index（1 起，0 = 空）。have = 界面已有的 chunk key，宿主只回真正失效的 dropKeys】/",

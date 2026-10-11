@@ -987,7 +987,11 @@ export class GameStudioGateway extends TypertRemoteService {
   }
   async importMapTileset(payload: any) {
     const input = asRecord(payload);
-    const result = await mapgen.importMapTileset(asString(input.projectId), asString(input.name), asString(input.data));
+    const result = await mapgen.importMapTileset(asString(input.projectId), asString(input.name), asString(input.data), {
+      cell: input.cell,
+      shape: input.shape,
+      animRows: input.animRows
+    });
     return { tilesets: result.tilesets.map(mapTilesetBrief), warnings: result.warnings };
   }
   /** 内置素材：本机现算，零成本（4 张自动连接图 + 1 张道具图）。 */
@@ -2112,6 +2116,8 @@ function mapTilesetBrief(tileset: {
   shape: string;
   animRows: boolean;
   variants: number;
+  /** 内置素材：界面上要标「自带」，也不允许改属性。 */
+  builtin?: boolean;
   tiles: readonly unknown[];
 }): Record<string, unknown> {
   return {
@@ -2124,6 +2130,7 @@ function mapTilesetBrief(tileset: {
     shape: tileset.shape,
     animRows: tileset.animRows,
     variants: tileset.variants,
+    builtin: tileset.builtin === true ? true : undefined,
     tileCount: tileset.tiles.length
   };
 }

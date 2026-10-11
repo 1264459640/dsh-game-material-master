@@ -609,7 +609,14 @@ const importMapTilesetSchema = z.object({
   projectId: z.string(),
   name: z.string().optional(),
   /** 原始文件字节的 base64（不带 data: 前缀）。 */
-  data: z.string()
+  data: z.string(),
+  /**
+   * 新增素材时可以**一次性**把属性定下来（留空 = 自动识别）。属性之后不能再改：
+   * 内置素材一律拒绝，自己新增的也只能删掉重来。
+   */
+  cell: z.record(z.string(), z.unknown()).optional(),
+  shape: z.string().optional(),
+  animRows: z.boolean().optional()
 });
 const saveMapTilesetSchema = z.object({
   projectId: z.string(),

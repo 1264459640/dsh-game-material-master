@@ -1115,8 +1115,6 @@
         "Pick a tile on the left first.",
       "图层 2":
         "Layer 2",
-      "已保存素材设置":
-        "Tile image settings saved",
       "确定删除素材「{n0}」？它切出来的块会一起删掉，无法撤销。":
         "Delete the tile image \"{n0}\"? The pieces cut from it are removed too, and this cannot be undone.",
       "已删除素材":
@@ -1133,38 +1131,58 @@
         "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
       "选一张素材图开始":
         "Choose a tile image to start",
+      "会动 {n0} 帧":
+        "Animates: {n0} frames",
+      "新增素材":
+        "Add image",
+      "恢复默认素材":
+        "Restore built-ins",
+      "还没有素材。点「新增素材」加一张自己的，或者点「恢复默认素材」拿到自带的那套。":
+        "No images yet. Click \"Add image\" to bring your own, or \"Restore built-ins\" to get the bundled set.",
+      "{n0}×{n1} · {n2} 块":
+        "{n0}×{n1} · {n2} tiles",
+      "自带":
+        "Built-in",
+      "素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。":
+        "An image's properties are fixed when you add it and cannot be changed afterwards -- delete it and add it again to use different settings.",
+      "素材图":
+        "Image file",
+      "选择图片":
+        "Choose file",
+      "还没选":
+        "Nothing chosen yet",
+      "叫什么":
+        "Name",
+      "留空就用文件名":
+        "Leave empty to use the file name",
+      "格子大小（留空就自动认）":
+        "Cell size (leave empty to detect)",
+      "只影响会动的素材（水、翻页图这类）":
+        "Only affects images that animate (water, flip-books and the like)",
+      "先选一张素材图。":
+        "Choose an image file first.",
+      "已新增素材 {n0}":
+        "Added image: {n0}",
+      "已恢复 {n0} 张默认素材":
+        "Restored {n0} built-in images",
+      "默认素材都在。":
+        "All built-in images are already here.",
       "会动吗":
         "Does it animate?",
       "不动":
         "No",
-      "不动：这张图当作一堆静止的图块。":
-        "No: treat this image as a set of still tiles.",
       "这张图当作一堆静止的图块。":
         "Treats this image as a set of still tiles.",
       "翻页图":
         "Flip-book",
-      "翻页图：像手翻书，每一行是一页，连着播就动起来了。":
-        "Flip-book: like a flip-book, one row per page; playing them in order makes it move.",
       "像手翻书：每一行是一页，连着播就动起来了。同一列的几行算同一块，画的时候点哪一行都行，整片会一起动。":
         "Like a flip-book: each row is one page, and playing them in order makes it move. Rows in the same column count as one tile, so it does not matter which row you click when painting -- the whole patch animates together.",
-      "会动：{n0} 行 = {n0} 帧":
-        "Animates: {n0} rows = {n0} frames",
-      "只有 1 行，动不起来（至少要 2 行）":
-        "Only 1 row, so it cannot animate (needs at least 2)",
-      "拼块自动连接本来就是会动的：{n0} 种变体轮流换":
-        "Autotile blocks animate on their own: {n0} variants take turns",
-      "只有 1 种变体，所以不会动 —— 横向多画一列变体就会动。":
-        "Only 1 variant, so nothing moves -- draw one more variant column and it will animate.",
       "地图大小要是 1 以上的整数。":
         "The map size must be a whole number of 1 or more.",
       "地图最大 512×512 格。":
         "A map can be at most 512×512 cells.",
       "单位是格。改大只是多出空地；改小会丢掉范围外的格子（可撤销）":
         "Units are cells. Making it bigger just adds empty space; making it smaller drops the cells outside the new bounds (undoable).",
-      "{n0} 列 × {n1} 行 = {n2} 块":
-        "{n0} columns × {n1} rows = {n2} tiles",
-      "右边余 {n0}px、下边余 {n1}px 用不上":
-        "{n0}px left on the right and {n1}px on the bottom cannot be used",
       "按图片尺寸自己认格子与用法。想重新认一次，就再上传一遍这张图。":
         "Works out the cell size and usage from the image dimensions. To detect it again, just upload the image once more.",
       "一格贴一块图，不做任何拼接。":
@@ -1217,12 +1235,6 @@
         "Could not load the tile image: {n0} (try uploading it again)",
       "用自带素材试试":
         "Try the built-in image",
-      "正在保存…":
-        "Saving…",
-      "还没有改动":
-        "No changes yet",
-      "已自动保存 {n0}":
-        "Autosaved at {n0}",
       "切换项目":
         "Switch project",
       "素材":
@@ -1263,22 +1275,10 @@
         "Medium",
       "快":
         "Fast",
-      "上传素材图":
-        "Upload a tile image",
-      "还没有素材。上传一张图，或者先用自带素材试试。":
-        "No tile image yet. Upload one, or try the built-in image first.",
-      "格子大小":
-        "Cell size",
       "这块素材怎么用":
         "How this image is used",
-      "这张素材的用法是自动认出来的；想重新认一次，就再上传一遍这张图。":
-        "This image's usage was detected automatically; upload the image again to detect it afresh.",
-      "这张素材的用法是自动认出来的：{n0}":
-        "This image's usage was detected automatically: {n0}",
       "动画速度":
         "Animation speed",
-      "删除素材":
-        "Delete image",
       "导出图片 PNG":
         "Export image PNG",
       "导出存档 JSON":
@@ -2219,6 +2219,15 @@
 .SPR_mapEdRow{display:flex;flex-direction:column;gap:3px}
 .SPR_mapEdLabel{font-size:11px;color:#bfb8ae}
 .SPR_mapEdRowHint{font-size:11px;line-height:1.6;color:#9d968c}
+.SPR_mapEdTsList{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto}
+.SPR_mapEdTsRow{display:flex;align-items:center;gap:6px;padding:3px 4px;border:1px solid transparent;border-radius:6px}
+.SPR_mapEdTsRow[data-on="true"]{border-color:#d9a95f;background:#3a2f1d}
+.SPR_mapEdTsPick{flex:1;display:flex;align-items:baseline;gap:8px;min-width:0;padding:2px 4px;font:inherit;font-size:12px;color:#f2efe9;text-align:left;background:none;border:0;cursor:pointer}
+.SPR_mapEdTsPick:hover{color:#ffd79a}
+.SPR_mapEdTsName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.SPR_mapEdTsMeta{flex:none;font-size:11px;color:#9a9a9a}
+.SPR_mapEdTsBadge{flex:none;padding:0 4px;border-radius:3px;background:#4a4a4a;font-size:10px;color:#e8d7bb}
+.SPR_mapEdTsBadge[data-anim="true"]{background:#2f4a2f;color:#bfe6bf}
 .SPR_mapEdPair{display:flex;align-items:center;gap:6px}
 .SPR_mapEdTimes{color:#9a9a9a;font-size:12px}
 .SPR_mapEdSeg{display:flex;gap:4px;flex-wrap:wrap}
@@ -5988,12 +5997,6 @@
       return out;
     }
 
-    /** `HH:MM`：顶栏「已自动保存」用。 */
-    function MAP_clock(stamp) {
-      const date = new Date(stamp);
-      const pad = (value) => String(value).padStart(2, "0");
-      return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-    }
 
     /**
      * 工具格的图标：内联 SVG 自绘（形状语义对齐 AsLib）。
@@ -6093,6 +6096,15 @@
       const [planEpoch, setPlanEpoch] = React.useState(0);
       const [planMeta, setPlanMeta] = React.useState({ fps: 1, frameCount: 1 });
       /** 动画速度：null = 跟宿主的 `fps` 走；选了慢 / 中 / 快就是用户指定。 */
+      /**
+       * 「新增素材」对话框的草稿。
+       *
+       * 产品约定：**素材属性在新增这一刻定下来，之后只能删掉重来** —— 所以形态、格子、
+       * 会动吗这些都放进这个对话框，一次定死；列表里不再提供任何修改入口（内置素材更是
+       * 连对话框都进不来）。
+       */
+      const [addDraft, setAddDraft] = React.useState(null);
+      const addFileRef = React.useRef(null);
       const [animFps, setAnimFps] = React.useState(null);
       const [frame, setFrame] = React.useState(0);
       const [truncated, setTruncated] = React.useState(false);
@@ -6111,8 +6123,6 @@
       const [hover, setHover] = React.useState(null);
 
       // ── 保存状态 / 生成草稿 / 导出 ────────────────────────────────────────
-      const [savedAt, setSavedAt] = React.useState(null);
-      const [saving, setSaving] = React.useState(false);
       const [genKind, setGenKind] = React.useState("random");
       const [genSeed, setGenSeed] = React.useState(20261005);
       const [exportScale, setExportScale] = React.useState(1);
@@ -6342,7 +6352,6 @@
               setAnimFps(null);
               setTruncated(false);
               setPlanWarnings([]);
-              setSavedAt(null);
             }
             setView(next);
           } catch (error) {
@@ -6652,7 +6661,6 @@
         if (Array.isArray(result.skipped) && result.skipped.length > 0) {
           setNotice({ kind: "error", text: result.skipped.slice(0, 2).join("；") });
         }
-        setSavedAt(Date.now());
         setPlanEpoch((value) => value + 1);
       }, []);
 
@@ -6672,14 +6680,12 @@
           return;
         }
         pendingOps.current = [];
-        setSaving(true);
         try {
           const result = await api.applyMapOps({ projectId: viewId, ops, stroke: ops[0]?.stroke, have: [...planRef.current.keys()] });
           applyResult(result);
         } catch (error) {
           setNotice({ kind: "error", text: msg(error) });
         } finally {
-          setSaving(false);
         }
       }, [api, viewId, applyResult]);
 
@@ -6726,40 +6732,34 @@
           const stroke = currentStroke.current === null ? `s${++strokeSeq.current}` : currentStroke.current;
           currentStroke.current = immediate === true ? null : stroke;
           pendingOps.current = pendingOps.current.concat(ops.map((op) => ({ ...op, stroke })));
-          if (immediate === true) {
-            void flushOps();
-            return;
-          }
-          if (flushTimer.current !== null) return;
-          flushTimer.current = setTimeout(() => {
-            flushTimer.current = null;
-            void flushOps();
-          }, 40);
+          /**
+           * ⚠️ 拖动期间**不再按 40ms 分批提交**，只攒着，等这一笔结束（pointerup /
+           * 指针离开 / 被系统取消）一次性提交。用户要求「一笔画完再自动保存，不要一边画
+           * 一边保存」—— 顺带也把拖动时的往返次数从每秒 25 次降到一笔一次。
+           * 一步完成的编辑（油漆桶 / 一键生成之类）走 `immediate`，立刻提交。
+           */
+          if (immediate === true) void flushOps();
         },
         [flushOps]
       );
 
       const doUndo = async () => {
         if (api === undefined || viewId === null) return;
-        setSaving(true);
         try {
           applyResult(await api.mapUndo({ projectId: viewId, have: [...planRef.current.keys()] }));
         } catch (error) {
           setNotice({ kind: "error", text: msg(error) });
         } finally {
-          setSaving(false);
         }
       };
 
       const doRedo = async () => {
         if (api === undefined || viewId === null) return;
-        setSaving(true);
         try {
           applyResult(await api.mapRedo({ projectId: viewId, have: [...planRef.current.keys()] }));
         } catch (error) {
           setNotice({ kind: "error", text: msg(error) });
         } finally {
-          setSaving(false);
         }
       };
 
@@ -7072,6 +7072,200 @@
         }
       };
 
+      /** 打开「新增素材」：草稿全空 = 一切都走自动识别。 */
+      const openAddTileset = () => setAddDraft({ file: null, name: "", cellW: "", cellH: "", shape: "auto", animRows: false });
+
+      /**
+       * 提交新增：把「图片 + 名字 + 属性」一次性交给宿主。
+       *
+       * 留空的项不发（宿主按自动识别处理）；只有用户真的填了才带上，避免用空值把识别结果顶掉。
+       */
+      const submitAddTileset = async () => {
+        const draft = addDraft;
+        if (draft === null || api === undefined) return;
+        if (draft.file === null) {
+          setNotice({ kind: "error", text: T("先选一张素材图。") });
+          return;
+        }
+        const projectId = await ensureProject();
+        if (projectId === null) return;
+        setBusyKey("upload");
+        try {
+          const base64 = await readBase64(draft.file);
+          const cell = draft.cellW !== "" && draft.cellH !== "" ? { width: Number(draft.cellW), height: Number(draft.cellH) } : undefined;
+          const imported = await api.importMapTileset({
+            projectId,
+            name: draft.name.trim() === "" ? draft.file.name : draft.name.trim(),
+            data: base64,
+            cell,
+            shape: draft.shape === "auto" ? undefined : draft.shape,
+            animRows: draft.animRows === true
+          });
+          setAddDraft(null);
+          setNotice({ kind: "info", text: T("已新增素材 {n0}", { n0: draft.name.trim() === "" ? draft.file.name : draft.name.trim() }) });
+          if (imported !== undefined && Array.isArray(imported.warnings) && imported.warnings.length > 0) {
+            setNotice({ kind: "info", text: imported.warnings.join("；") });
+          }
+          await loadProject(projectId);
+          const list = await api.listMapProjects();
+          setProjects(list.projects || []);
+          setOpenCard("assets");
+          // 新加的那张直接选上（列表最后一张）
+          const fresh = await api.listMapProjects();
+          void fresh;
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setBusyKey(null);
+        }
+      };
+
+      /** 删掉列表里的某一张（内置也能删）。 */
+      /**
+       * 「这块素材怎么用」的四个选项：`[值, 按钮短标签, 悬停小标签标题, 解释]`。
+       *
+       * ⚠️ 原来是个 `<select>`，而原生 `<option>` **挂不了 tooltip** —— 可「自动 / 普通图块 /
+       * 整格自动连接 / 拼块自动连接」这四个词对非专业用户等于没说（用户原话：意义不明）。
+       * 换成四个按钮 + 悬停小标签：鼠标移上去就把这一项讲清楚（和工具格同一套标签）。
+       */
+      const shapeOptions = [
+        ["auto", T("自动"), T("自动"), T("按图片尺寸自己认格子与用法。想重新认一次，就再上传一遍这张图。")],
+        ["plain", T("普通"), T("普通图块"), T("一格贴一块图，不做任何拼接。")],
+        ["corner16", T("整格"), T("整格自动连接"), T("按上下左右有没有同样的格子，自动从 16 块里挑一块：边缘、拐角会自己接上。")],
+        ["a2quad", T("拼块"), T("拼块自动连接"), T("一小格再拆成 2×2 小块，按邻居自动拼成一片。草地、水面这类连着画的地面用它。")]
+      ];
+      /**
+       * 一段「几个按钮里选一个」的控件（用法、会动吗都用它）。
+       *
+       * 对话框里的选择只改**草稿**，点「确定」才交给宿主 —— 属性一旦定下来就不能改了，
+       * 不该边点边写。
+       */
+      const segPicker = (attr, options, current, onPick) =>
+        h(
+          "div",
+          { className: "SPR_mapEdSeg" },
+          options.map(([value, short, title, desc]) =>
+            h(
+              "button",
+              {
+                key: value,
+                type: "button",
+                className: "SPR_mapEdSegBtn",
+                [attr]: value,
+                "data-on": current === value ? "true" : undefined,
+                "aria-label": `${title}：${desc}`,
+                onMouseEnter: showToolTip(title, desc, null),
+                onFocus: showToolTip(title, desc, null),
+                onMouseLeave: hideToolTip,
+                onBlur: hideToolTip,
+                onClick: () => onPick(value)
+              },
+              short
+            )
+          )
+        );
+
+      const animOptions = [
+        ["off", T("不动"), T("不动"), T("这张图当作一堆静止的图块。")],
+        ["rows", T("翻页图"), T("翻页图"), T("像手翻书：每一行是一页，连着播就动起来了。同一列的几行算同一块，画的时候点哪一行都行，整片会一起动。")]
+      ];
+
+      /** 「新增素材」对话框：图片 + 名字 + 属性一次填完，之后只能删。 */
+      const addDialog =
+        addDraft === null
+          ? null
+          : h(
+              "div",
+              { className: "SPR_mapEdDlgMask", "data-testid": "map-add-mask", onClick: () => setAddDraft(null) },
+              h(
+                "div",
+                {
+                  className: "SPR_mapEdDlg",
+                  role: "dialog",
+                  "aria-label": T("新增素材"),
+                  "data-testid": "map-add-dialog",
+                  onClick: (event) => {
+                    if (typeof event.stopPropagation === "function") event.stopPropagation();
+                  }
+                },
+                h("div", { className: "SPR_mapEdDlgTitle" }, T("新增素材")),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("素材图")),
+                h(
+                  "div",
+                  { className: "SPR_mapEdDlgRow" },
+                  h(Btn, { onClick: () => addFileRef.current?.click() }, T("选择图片")),
+                  h("span", { className: "SPR_mapEdHint" }, addDraft.file === null ? T("还没选") : addDraft.file.name)
+                ),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("叫什么")),
+                h("input", {
+                  className: "SPR_mapEdDlgInput",
+                  "data-testid": "map-add-name",
+                  value: addDraft.name,
+                  placeholder: T("留空就用文件名"),
+                  onChange: (event) => setAddDraft((current) => (current === null ? current : { ...current, name: event.target.value }))
+                }),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("格子大小（留空就自动认）")),
+                h(
+                  "div",
+                  { className: "SPR_mapEdPair" },
+                  h(NumField, {
+                    label: T("宽"),
+                    value: addDraft.cellW === "" ? "" : Number(addDraft.cellW),
+                    min: 1,
+                    max: 1024,
+                    onChange: (value) => setAddDraft((current) => (current === null ? current : { ...current, cellW: String(value) }))
+                  }),
+                  h("span", { className: "SPR_mapEdTimes" }, "×"),
+                  h(NumField, {
+                    label: T("高"),
+                    value: addDraft.cellH === "" ? "" : Number(addDraft.cellH),
+                    min: 1,
+                    max: 1024,
+                    onChange: (value) => setAddDraft((current) => (current === null ? current : { ...current, cellH: String(value) }))
+                  })
+                ),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("这块素材怎么用")),
+                segPicker("data-shape", shapeOptions, addDraft.shape, (value) => setAddDraft((current) => (current === null ? current : { ...current, shape: value }))),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("会动吗")),
+                segPicker("data-anim", animOptions, addDraft.animRows ? "rows" : "off", (value) => setAddDraft((current) => (current === null ? current : { ...current, animRows: value === "rows" }))),
+                h(
+                  "div",
+                  { className: "SPR_mapEdDlgRow" },
+                  h(Btn, { "data-testid": "map-add-cancel", onClick: () => setAddDraft(null) }, T("取消")),
+                  h(Btn, { "data-testid": "map-add-ok", primary: true, busy: busyKey === "upload", onClick: () => void submitAddTileset() }, T("确定"))
+                )
+              )
+            );
+
+      const removeTilesetById = async (tilesetId, tilesetName) => {
+        if (view === null || api === undefined) return;
+        // eslint-disable-next-line no-alert
+        if (typeof window !== "undefined" && !window.confirm(T("确定删除素材「{n0}」？它切出来的块会一起删掉，无法撤销。", { n0: tilesetName }))) return;
+        const result = await withApi(() => api.removeMapTileset({ projectId: view.id, tilesetId }), { notice: T("已删除素材") });
+        if (result === undefined) return;
+        await loadProject(view.id, true);
+      };
+
+      /** 一键恢复默认素材：把缺的内置素材补回来（已有的同名会跳过，不会变成两份）。 */
+      const restoreSamples = async () => {
+        if (api === undefined) return;
+        setBusyKey("sample");
+        try {
+          const projectId = await ensureProject();
+          if (projectId === null) return;
+          const restored = await api.importSampleTileset({ projectId });
+          const added = Array.isArray(restored?.tilesets) ? restored.tilesets.length : 0;
+          setNotice({ kind: "info", text: added > 0 ? T("已恢复 {n0} 张默认素材", { n0: String(added) }) : T("默认素材都在。") });
+          await loadProject(projectId, true);
+          const list = await api.listMapProjects();
+          setProjects(list.projects || []);
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setBusyKey(null);
+        }
+      };
+
       /**
        * 新建 / 重命名项目：**自己弹一个窗口**，不用 `window.prompt`。
        *
@@ -7148,6 +7342,19 @@
               )
             );
 
+      const removeTileset = async () => {
+        if (view === null || tileset === null || api === undefined) return;
+        // eslint-disable-next-line no-alert
+        if (typeof window !== "undefined" && !window.confirm(T("确定删除素材「{n0}」？它切出来的块会一起删掉，无法撤销。", { n0: tileset.name }))) return;
+        const result = await withApi(() => api.removeMapTileset({ projectId: view.id, tilesetId: tileset.id }), { notice: T("已删除素材") });
+        if (result === undefined) return;
+        await loadProject(view.id);
+      };
+
+      /**
+       * 新建项目。**建完就把内置素材装进列表**（用户要求：内置素材默认在素材列表里）——
+       * 装的是本机现算的那套，零成本；同名已存在会跳过。
+       */
       const createProject = async (name) => {
         if (api === undefined) return;
         const created = await withApi(() => api.createMapProject({ name, cols: 32, rows: 32 }));
@@ -7156,6 +7363,9 @@
         const result = await api.listMapProjects();
         setProjects(result.projects || []);
         await loadProject(created.id);
+        // 新项目默认就带上内置素材（同名会跳过），装完再刷一次列表
+        await api.importSampleTileset({ projectId: created.id }).catch(() => undefined);
+        await loadProject(created.id, true);
         setOpenCard("assets");
       };
 
@@ -7180,26 +7390,6 @@
           clearPlan();
           setView(null);
         }
-      };
-
-      const saveTileset = async (patch, note?: any) => {
-        if (view === null || tileset === null || api === undefined) return;
-        const result = await withApi(() => api.saveMapTileset({ projectId: view.id, tilesetId: tileset.id, ...patch }), {
-          notice: note === undefined ? T("已保存素材设置") : note
-        });
-        if (result === undefined) return;
-        const warnings = result.warnings;
-        if (Array.isArray(warnings) && warnings.length > 0) setNotice({ kind: "info", text: warnings.join("；") });
-        await loadProject(view.id, true);
-      };
-
-      const removeTileset = async () => {
-        if (view === null || tileset === null || api === undefined) return;
-        // eslint-disable-next-line no-alert
-        if (typeof window !== "undefined" && !window.confirm(T("确定删除素材「{n0}」？它切出来的块会一起删掉，无法撤销。", { n0: tileset.name }))) return;
-        const result = await withApi(() => api.removeMapTileset({ projectId: view.id, tilesetId: tileset.id }), { notice: T("已删除素材") });
-        if (result === undefined) return;
-        await loadProject(view.id);
       };
 
       const saveDoc = async (patch, note) => {
@@ -7268,8 +7458,7 @@
           // 一次生成可能动到整张图：计划整份作废，重新问宿主
           clearPlan();
           setPlanEpoch((value) => value + 1);
-          setSavedAt(Date.now());
-        } catch (error) {
+          } catch (error) {
           setNotice({ kind: "error", text: msg(error) });
         } finally {
           setBusyKey(null);
@@ -7335,8 +7524,29 @@
         }
       });
 
+      const addFileInput = h("input", {
+        ref: addFileRef,
+        type: "file",
+        accept: "image/*",
+        "data-testid": "map-add-input",
+        style: { display: "none" },
+        onChange: (event) => {
+          const file = event.target.files?.[0];
+          if (file !== undefined && file !== null) setAddDraft((current) => (current === null ? current : { ...current, file }));
+          event.target.value = "";
+        }
+      });
+
       const shell = (inner) =>
-        h("div", { className: "SPR_moduleBody", "data-module": "map" }, gateOpen ? h(MapExperimentalDialog, { onClose: closeGate }) : null, inner, fileInput);
+        h(
+          "div",
+          { className: "SPR_moduleBody", "data-module": "map" },
+          gateOpen ? h(MapExperimentalDialog, { onClose: closeGate }) : null,
+          inner,
+          fileInput,
+          addFileInput,
+          addDialog
+        );
 
       if (view === null || layout === null) {
         return shell(
@@ -7361,13 +7571,6 @@
           )
         );
       }
-
-      const saveText =
-        saving === true
-          ? T("正在保存…")
-          : savedAt === null
-            ? T("还没有改动")
-            : T("已自动保存 {n0}", { n0: MAP_clock(savedAt) });
 
       // ── 顶栏 ─────────────────────────────────────────────────────────────
       const menu = h(
@@ -7470,7 +7673,12 @@
           },
           T("导出")
         ),
-        h("span", { className: "SPR_mapEdSave", "data-busy": saving === true ? "true" : undefined }, saveText)
+        /**
+         * ⚠️ 这里原来有个「正在保存… / 已自动保存 HH:MM」的状态文字。
+         * 用户反馈：画的时候它一直闪，不需要 —— 而且保存现在改成**一笔结束才提交**
+         * （见 `queueOps`），本来也没什么可显示的。整块拿掉，连带 `savedAt` / `saving`。
+         */
+        null
       );
 
       // ── 左列：素材调色板 + 12 个工具格 ────────────────────────────────────
@@ -7642,75 +7850,6 @@
       const approvedMark = (stage) =>
         approvedOf(stage) === true ? h("span", { className: "SPR_mapEdMark" }, "✓") : null;
 
-      /**
-       * 「这块素材怎么用」的四个选项：`[值, 按钮短标签, 悬停小标签标题, 解释]`。
-       *
-       * ⚠️ 原来是个 `<select>`，而原生 `<option>` **挂不了 tooltip** —— 可「自动 / 普通图块 /
-       * 整格自动连接 / 拼块自动连接」这四个词对非专业用户等于没说（用户原话：意义不明）。
-       * 换成四个按钮 + 悬停小标签：鼠标移上去就把这一项讲清楚（和工具格同一套标签）。
-       */
-      const shapeOptions = [
-        ["auto", T("自动"), T("自动"), T("按图片尺寸自己认格子与用法。想重新认一次，就再上传一遍这张图。")],
-        ["plain", T("普通"), T("普通图块"), T("一格贴一块图，不做任何拼接。")],
-        ["corner16", T("整格"), T("整格自动连接"), T("按上下左右有没有同样的格子，自动从 16 块里挑一块：边缘、拐角会自己接上。")],
-        ["a2quad", T("拼块"), T("拼块自动连接"), T("一小格再拆成 2×2 小块，按邻居自动拼成一片。草地、水面这类连着画的地面用它。")]
-      ];
-      /** 选中一项用法。「自动」不改任何东西，只把识别说明摆出来（想重认就重新上传这张图）。 */
-      const onPickShape = (value) => {
-        if (value === "auto") {
-          setNotice({
-            kind: "info",
-            text:
-              tilesetReason === ""
-                ? T("这张素材的用法是自动认出来的；想重新认一次，就再上传一遍这张图。")
-                : T("这张素材的用法是自动认出来的：{n0}", { n0: tilesetReason })
-          });
-          return;
-        }
-        void saveTileset({ shape: value });
-      };
-      const shapeValue = tileset === null ? "auto" : tileset.shape === "corner16" ? "corner16" : tileset.shape === "a2quad" ? "a2quad" : "plain";
-      /**
-       * 「这个格子大小会切成几列几行几块」—— 用户要的是「格子数能自由设置」，而格子数
-       * 就是「图有多大 ÷ 一格多大」，所以这里把结果直接算给他看；除不尽也说出来，
-       * 免得他以为设了 20 就该正好切满。
-       */
-      /**
-       * 「会动吗」那一行：素材本身要不要逐行播动画。
-       *
-       * 术语上它叫「逐行动画」（`animRows`），但用户听不懂，所以界面上一律用
-       * **「翻页图」**这个比方：像手翻书，每一行是一页，连着播就动起来了。
-       * 拼块自动连接（A2）是另一套 —— 它的变体本来就是帧，不用选，直接说明就好。
-       */
-      const cellCols = tileset === null ? 1 : Math.max(1, Math.floor(tileset.imageWidth / Math.max(1, tileset.cell.width)));
-      const cellRows = tileset === null ? 1 : Math.max(1, Math.floor(tileset.imageHeight / Math.max(1, tileset.cell.height)));
-      const animHint =
-        tileset === null
-          ? ""
-          : tileset.shape === "a2quad"
-            ? tileset.variants > 1
-              ? T("拼块自动连接本来就是会动的：{n0} 种变体轮流换", { n0: String(tileset.variants) })
-              : T("只有 1 种变体，所以不会动 —— 横向多画一列变体就会动。")
-            : tileset.animRows === true
-              ? cellRows > 1
-                ? T("会动：{n0} 行 = {n0} 帧", { n0: String(cellRows) })
-                : T("只有 1 行，动不起来（至少要 2 行）")
-              : T("不动");
-
-      const cellGridHint =
-        tileset === null
-          ? ""
-          : (() => {
-              const cw = Math.max(1, tileset.cell.width);
-              const ch = Math.max(1, tileset.cell.height);
-              const cols = Math.floor(tileset.imageWidth / cw);
-              const rows = Math.floor(tileset.imageHeight / ch);
-              const restW = tileset.imageWidth % cw;
-              const restH = tileset.imageHeight % ch;
-              const base = T("{n0} 列 × {n1} 行 = {n2} 块", { n0: String(cols), n1: String(rows), n2: String(cols * rows) });
-              if (restW === 0 && restH === 0) return base;
-              return `${base}（${T("右边余 {n0}px、下边余 {n1}px 用不上", { n0: String(restW), n1: String(restH) })}）`;
-            })();
       const speedOptions = [
         ["0.5", T("慢")],
         ["1", T("中")],
@@ -7718,159 +7857,70 @@
       ];
       const speedValue = String(animFps === null ? planMeta.fps : animFps);
 
+      /**
+       * 素材卡片 = **列表 + 新增 + 恢复默认**。
+       *
+       * 产品约定（用户定的）：属性在「新增素材」那一刻填完就定死，之后**只能删掉重来** ——
+       * 所以这张卡里没有任何「改格子 / 改形态 / 改动不动」的入口；内置素材同样在列表里、
+       * 也能删，想拿回来点「恢复默认素材」（同名会跳过，不会变成两份）。
+       */
+      /**
+       * 这张素材有几帧（列表上的徽章用）。
+       *
+       * 两种会动的情形都算进来：`a2quad` 的**变体就是帧**，`animRows`（翻页图）的**行数就是帧**
+       * —— 宿主算好的 `variants` 在两种情形下都正好是帧数。
+       */
+      const frameCountOf = (entry) =>
+        entry.animRows === true ? entry.variants : entry.shape === "a2quad" && entry.variants > 1 ? entry.variants : 0;
+
       const assetsCard = h(
         "div",
-        { className: "SPR_mapEdCard" },
+        { className: "SPR_mapEdCard", "data-testid": "map-assets-card" },
         cardHead(T("素材")),
         h(
           "div",
           { className: "SPR_mapEdCardRow" },
-          h(Btn, { onClick: () => fileRef.current?.click(), busy: busyKey === "upload" }, T("上传素材图")),
-          h(Btn, { onClick: () => void startWithSample(), busy: busyKey === "sample" }, T("用自带素材试试"))
+          h(Btn, { primary: true, onClick: openAddTileset }, T("新增素材")),
+          h(Btn, { onClick: () => void restoreSamples(), busy: busyKey === "sample" }, T("恢复默认素材"))
         ),
-        tilesets.length > 1
-          ? h(
-              "div",
-              { className: "SPR_mapEdChips" },
+        tilesets.length === 0
+          ? h("p", { className: "SPR_mapEdHint" }, T("还没有素材。点「新增素材」加一张自己的，或者点「恢复默认素材」拿到自带的那套。"))
+          : h(
+              "ul",
+              { className: "SPR_mapEdTsList", "data-testid": "map-tileset-list" },
               tilesets.map((entry, index) =>
                 h(
-                  "button",
-                  {
-                    key: entry.id,
-                    type: "button",
-                    className: "SPR_mapEdChip",
-                    "data-on": index === safeTsIndex ? "true" : undefined,
-                    onClick: () => setTsIndex(index)
-                  },
-                  entry.name
-                )
-              )
-            )
-          : null,
-        tileset === null
-          ? h("p", { className: "SPR_mapEdHint" }, T("还没有素材。上传一张图，或者先用自带素材试试。"))
-          : h(
-              "div",
-              { className: "SPR_mapEdRows" },
-              row(
-                T("格子大小"),
-                h(
-                  "div",
-                  { className: "SPR_mapEdPair", "data-testid": "map-cell-pair" },
-                  h(NumField, {
-                    label: T("宽"),
-                    value: tileset.cell.width,
-                    min: 1,
-                    max: 1024,
-                    onChange: (value) => void saveTileset({ cell: { width: value, height: tileset.cell.height } })
-                  }),
-                  h("span", { className: "SPR_mapEdTimes" }, "×"),
-                  h(NumField, {
-                    label: T("高"),
-                    value: tileset.cell.height,
-                    min: 1,
-                    max: 1024,
-                    onChange: (value) => void saveTileset({ cell: { width: tileset.cell.width, height: value } })
-                  })
-                ),
-                h("span", { className: "SPR_mapEdHint" }, cellGridHint)
-              ),
-              row(
-                T("这块素材怎么用"),
-                h(
-                  "div",
-                  { className: "SPR_mapEdSeg", "data-testid": "map-shape-seg" },
-                  shapeOptions.map(([value, short, title, desc]) =>
+                  "li",
+                  { key: entry.id, className: "SPR_mapEdTsRow", "data-on": index === safeTsIndex ? "true" : undefined },
+                  h(
+                    "button",
+                    {
+                      type: "button",
+                      className: "SPR_mapEdTsPick",
+                      "data-tileset": entry.id,
+                      onClick: () => setTsIndex(index)
+                    },
+                    h("span", { className: "SPR_mapEdTsName" }, entry.name),
                     h(
-                      "button",
-                      {
-                        key: value,
-                        type: "button",
-                        className: "SPR_mapEdSegBtn",
-                        "data-shape": value,
-                        "data-on": shapeValue === value ? "true" : undefined,
-                        "aria-label": `${title}：${desc}`,
-                        onMouseEnter: showToolTip(title, desc, null),
-                        onFocus: showToolTip(title, desc, null),
-                        onMouseLeave: hideToolTip,
-                        onBlur: hideToolTip,
-                        onClick: () => onPickShape(value)
-                      },
-                      short
-                    )
-                  )
-                ),
-                tilesetReason
-              ),
-              row(
-                T("会动吗"),
-                tileset.shape === "a2quad"
-                  ? h("span", { className: "SPR_mapEdHint", "data-testid": "map-anim-note" }, animHint)
-                  : h(
-                      "div",
-                      { className: "SPR_mapEdSeg", "data-testid": "map-anim-seg" },
-                      h(
-                        "button",
-                        {
-                          type: "button",
-                          className: "SPR_mapEdSegBtn",
-                          "data-anim": "off",
-                          "data-on": tileset.animRows === true ? undefined : "true",
-                          "aria-label": T("不动：这张图当作一堆静止的图块。"),
-                          onMouseEnter: showToolTip(T("不动"), T("这张图当作一堆静止的图块。"), null),
-                          onFocus: showToolTip(T("不动"), T("这张图当作一堆静止的图块。"), null),
-                          onMouseLeave: hideToolTip,
-                          onBlur: hideToolTip,
-                          onClick: () => void saveTileset({ animRows: false })
-                        },
-                        T("不动")
-                      ),
-                      h(
-                        "button",
-                        {
-                          type: "button",
-                          className: "SPR_mapEdSegBtn",
-                          "data-anim": "rows",
-                          "data-on": tileset.animRows === true ? "true" : undefined,
-                          "aria-label": T("翻页图：像手翻书，每一行是一页，连着播就动起来了。"),
-                          onMouseEnter: showToolTip(
-                            T("翻页图"),
-                            T("像手翻书：每一行是一页，连着播就动起来了。同一列的几行算同一块，画的时候点哪一行都行，整片会一起动。"),
-                            null
-                          ),
-                          onFocus: showToolTip(
-                            T("翻页图"),
-                            T("像手翻书：每一行是一页，连着播就动起来了。同一列的几行算同一块，画的时候点哪一行都行，整片会一起动。"),
-                            null
-                          ),
-                          onMouseLeave: hideToolTip,
-                          onBlur: hideToolTip,
-                          onClick: () => void saveTileset({ animRows: true })
-                        },
-                        T("翻页图")
-                      )
+                      "span",
+                      { className: "SPR_mapEdTsMeta" },
+                      T("{n0}×{n1} · {n2} 块", { n0: String(entry.cell.width), n1: String(entry.cell.height), n2: String(entry.tileCount) })
                     ),
-                animHint
-              ),
-              row(
-                T("动画速度"),
-                h(
-                  "select",
-                  {
-                    className: "SPR_mapEdSelect",
-                    value: speedValue,
-                    onChange: (event) => setAnimFps(Number(event.target.value))
-                  },
-                  speedOptions.map(([value, label]) => h("option", { key: value, value }, `${label} · ${value} 帧/秒`))
+                    frameCountOf(entry) > 0
+                      ? h("span", { className: "SPR_mapEdTsBadge", "data-anim": "true" }, T("会动 {n0} 帧", { n0: String(frameCountOf(entry)) }))
+                      : null,
+                    entry.builtin === true ? h("span", { className: "SPR_mapEdTsBadge" }, T("自带")) : null
+                  ),
+                  h(Btn, { danger: true, onClick: () => void removeTilesetById(entry.id, entry.name) }, T("删除"))
                 )
-              ),
-              h(
-                "div",
-                { className: "SPR_mapEdCardRow" },
-                h(Btn, { danger: true, onClick: () => void removeTileset() }, T("删除素材")),
-                h(Btn, { on: approvedOf("assets") === true, onClick: () => void toggleApproved("assets") }, T("确定"), approvedMark("assets"))
               )
-            )
+            ),
+        h("p", { className: "SPR_mapEdHint" }, T("素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。")),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { on: approvedOf("assets") === true, onClick: () => void toggleApproved("assets") }, T("确定"), approvedMark("assets"))
+        )
       );
 
       const exportCard = h(
@@ -7925,6 +7975,20 @@
             h(NumField, { label: T("高"), value: view.rows, min: 1, max: 512, onChange: (value) => void applyMapSize(view.cols, value) })
           ),
           T("单位是格。改大只是多出空地；改小会丢掉范围外的格子（可撤销）")
+        ),
+        row(
+          T("动画速度"),
+          h(
+            "select",
+            {
+              className: "SPR_mapEdSelect",
+              "data-testid": "map-anim-speed",
+              value: speedValue,
+              onChange: (event) => setAnimFps(Number(event.target.value))
+            },
+            speedOptions.map(([value, label]) => h("option", { key: value, value }, `${label} · ${value} 帧/秒`))
+          ),
+          T("只影响会动的素材（水、翻页图这类）")
         ),
         h(
           "div",

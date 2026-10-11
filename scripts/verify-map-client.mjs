@@ -918,7 +918,8 @@ try {
   const topButtons = byClass(tree, "SPR_mapEdTopBtn").map((node) => textOf(node).trim());
   check("顶栏有「素材」与「导出」两个入口（没有阶段条）", topButtons.includes("素材") && topButtons.includes("导出"), topButtons.join(" / "));
   check("顶栏没有「已通过」这类阶段向导按钮", !topButtons.some((text) => /阶段|下一步|①②③④/.test(text)), topButtons.join(" / "));
-  check("顶栏有保存状态（还没有改动 / 已自动保存）", /还没有改动|已自动保存/.test(textOf(byClass(tree, "SPR_mapEdSave")[0] ?? null)), textOf(byClass(tree, "SPR_mapEdSave")[0] ?? null));
+  // 用户反馈：画的时候那个「已自动保存」一直闪，不需要 —— 整块拿掉了
+  check("顶栏不再显示保存状态（那颗会闪的字去掉了）", byClass(tree, "SPR_mapEdSave").length === 0 && !/已自动保存|还没有改动|正在保存/.test(textOf(tree)));
   check("**没有阶段条**：渲染结果里一个 .SPR_step 元素都没有", byClass(tree, "SPR_step").length === 0 && byClass(tree, "SPR_steps").length === 0, `${byClass(tree, "SPR_step").length}`);
   if (projButton !== undefined) {
     projButton.props.onClick();
@@ -1036,8 +1037,22 @@ try {
   byClass(tree, "SPR_mapEdTopBtn")[0].props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   const assetsCard = byClass(tree, "SPR_mapEdCard")[0];
-  check("点「素材」拉出素材卡片（上传素材图 / 用自带素材试试 / 格子大小 / 这块素材怎么用）", assetsCard !== undefined && /上传素材图/.test(textOf(assetsCard)) && /这块素材怎么用/.test(textOf(assetsCard)), textOf(assetsCard).slice(0, 80));
-  check("素材卡片带识别说明（宿主给的自动识别理由，不是客户端猜的）", textOf(assetsCard).includes(hostView.tilesets[0].reason) || textOf(assetsCard).includes("自动认出来"), textOf(assetsCard).slice(0, 120));
+  check(
+    "点「素材」先看到的是**素材列表**（加「新增素材 / 恢复默认素材」两个按钮）",
+    assetsCard !== undefined && /新增素材/.test(textOf(assetsCard)) && /恢复默认素材/.test(textOf(assetsCard)) && byClass(assetsCard, "SPR_mapEdTsRow").length > 0,
+    textOf(assetsCard).slice(0, 80)
+  );
+  check(
+    "列表里每张素材都写着尺寸与块数，内置的带「自带」徽章",
+    /\d+×\d+ · \d+ 块/.test(textOf(assetsCard)) && /自带/.test(textOf(assetsCard)),
+    textOf(assetsCard).slice(0, 120)
+  );
+  check(
+    "会动的素材在列表上直接标出帧数（变体=帧 / 翻页图的行=帧）",
+    /会动 \d+ 帧/.test(textOf(assetsCard)),
+    textOf(assetsCard).match(/会动 \d+ 帧/)?.[0] ?? ""
+  );
+  check("列表里没有「改格子 / 改形态」这类入口（属性只能在新增时定）", !/改格子|改形态|这块素材怎么用/.test(textOf(assetsCard)));
   byClass(tree, "SPR_mapEdTopBtn")[1].props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   const exportCard = byClass(tree, "SPR_mapEdCard")[0];
@@ -1341,10 +1356,10 @@ try {
 
     check("在画布上按下 → 拖动 → 抬起真的改了地图（宿主计划变了）", JSON.stringify(planAfter.chunks) !== JSON.stringify(planBefore.chunks), `${planBefore.chunks.flatMap((c) => c.ops).length} → ${planAfter.chunks.flatMap((c) => c.ops).length} 条 op`);
     check("改了之后画布重画了", drawFrames.length > framesBefore, `${framesBefore} → ${drawFrames.length} 帧`);
-    check("一次拖拽分多批提交（防抖），但宿主历史只 +1（一笔 = 一条撤销）", depthAfter === depthBefore + 1, `depth ${depthBefore} → ${depthAfter}，提交 ${submits.length} 批`);
+    check("一笔拖拽只提交**一次**（改完样式：不一边画一边存），宿主历史 +1", depthAfter === depthBefore + 1 && submits.length === 1, `depth ${depthBefore} → ${depthAfter}，提交 ${submits.length} 批`);
     check(
-      "每一批提交都带同一个非空 stroke（少了它一次拖拽会变成好几步撤销）",
-      submits.length >= 2 && submits.every((submit) => typeof submit.stroke === "string" && submit.stroke !== "" && submit.stroke === submits[0].stroke),
+      "这一次提交带非空 stroke（少了它一次拖拽会变成好几步撤销）",
+      submits.length === 1 && typeof submits[0].stroke === "string" && submits[0].stroke !== "",
       submits.map((submit) => String(submit.stroke)).join(",")
     );
     check("每一批提交都把本地缓存的 chunk key 报上去（have，宿主据此只回失效的块）", submits.every((submit) => Array.isArray(submit.have)) && submits.some((submit) => submit.have.length > 0), submits.map((submit) => submit.have.length).join(","));
@@ -1875,8 +1890,8 @@ try {
     const mapWidth = numFieldIn(settingsCard, "宽");
     const mapHeight = numFieldIn(settingsCard, "高");
     check(
-      "设置卡里「地图大小」是两个数字框（宽 / 高 各填各的）",
-      mapWidth !== undefined && mapHeight !== undefined && byClass(settingsCard, "SPR_mapEdSelect").length === 0,
+      "设置卡里「地图大小」是两个数字框（宽 / 高 各填各的，不再是正方形下拉）",
+      mapWidth !== undefined && mapHeight !== undefined,
       JSON.stringify(collect(settingsCard, (node) => typeof node.props?.label === "string").map((node) => node.props.label))
     );
     windowStub.__confirmCalls.length = 0;
@@ -1888,74 +1903,53 @@ try {
     check("改成 48×20 真的生效（宽高各自独立）", doc.cols === 48 && doc.rows === 20, `${doc.cols}×${doc.rows}`);
     check("改小会先问一句（确认后照做）", windowStub.__confirmCalls.length > 0, windowStub.__confirmCalls.join(" / "));
 
-    // ── 素材：格子宽高可自由填，并算出「几列几行几块」
+    // ── 素材：列表 + 新增（属性在对话框里一次定死）+ 删除 / 恢复默认
     byTool(tree, "settings")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
     byClass(tree, "SPR_mapEdTopBtn")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
     const assets = byClass(tree, "SPR_mapEdCard")[0];
-    const cellWidth = numFieldIn(assets, "宽");
-    const cellHeight = numFieldIn(assets, "高");
-    check("素材卡里格子大小也是两个数字框（宽 / 高，像素）", cellWidth !== undefined && cellHeight !== undefined);
+    const rowCount = () => byClass(byClass(tree, "SPR_mapEdCard")[0], "SPR_mapEdTsRow").length;
+    const beforeRows = rowCount();
+    check("素材列表列出了项目里的素材", beforeRows > 0, `${beforeRows} 张`);
+    // 新增素材：先弹对话框，里面才有「图片 / 名字 / 格子 / 用法 / 会动吗」
+    collect(assets, (node) => node.type === "button" && textOf(node) === "新增素材")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const addDlg = collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog")[0];
+    check("点「新增素材」弹出对话框", addDlg !== undefined, textOf(byClass(tree, "SPR_mapEdCard")[0]).slice(0, 40));
     check(
-      "素材卡会算出「几列 × 几行 = 几块」",
-      /列 ×/.test(textOf(assets)) && /行 =/.test(textOf(assets)) && /块/.test(textOf(assets)),
-      textOf(assets).match(/\d+ 列 × \d+ 行 = \d+ 块[^）]*）?/)?.[0] ?? textOf(assets).slice(0, 80)
+      "对话框里有：素材图 / 叫什么 / 格子大小 / 这块素材怎么用 / 会动吗",
+      ["素材图", "叫什么", "格子大小（留空就自动认）", "这块素材怎么用", "会动吗"].every((label) => textOf(addDlg).includes(label)),
+      textOf(addDlg).replace(/\s+/g, " ").slice(0, 120)
     );
-
-    // ── 用法四项：悬停给解释（原生 <option> 挂不了 tooltip，所以是按钮）
-    const shapeButtons = collect(tree, (node) => typeof node.props?.["data-shape"] === "string");
-    check("用法是四个按钮", shapeButtons.length === 4, shapeButtons.map((node) => textOf(node)).join(" / "));
-    shapeButtons.find((node) => node.props["data-shape"] === "corner16").props.onMouseEnter({
-      currentTarget: { getBoundingClientRect: () => ({ left: 100, top: 300, width: 40, height: 24 }) }
+    check("对话框里格子大小是两个数字框（宽 / 高，留空走自动识别）", numFieldIn(addDlg, "宽") !== undefined && numFieldIn(addDlg, "高") !== undefined);
+    check("对话框里「用法」是四个按钮、「会动吗」是两个按钮", collect(addDlg, (node) => typeof node.props?.["data-shape"] === "string").length === 4 && collect(addDlg, (node) => typeof node.props?.["data-anim"] === "string").length === 2);
+    // 悬停解释还在（和工具格同一套小标签）
+    collect(addDlg, (node) => node.props?.["data-shape"] === "corner16")[0].props.onMouseEnter({
+      currentTarget: { getBoundingClientRect: () => ({ left: 120, top: 320, width: 50, height: 24 }) }
     });
     tree = await renderTree(() => MapModule({ api }));
-    const tipText = textOf(byClass(tree, "SPR_mapEdTip")[0] ?? null);
-    check("鼠标移到「整格」上会解释它是什么", tipText.includes("整格自动连接") && tipText.includes("拐角"), tipText);
-    collect(tree, (node) => typeof node.props?.["data-shape"] === "string")
-      .find((node) => node.props["data-shape"] === "corner16")
-      .props.onMouseLeave();
+    check("悬停「整格」解释它是什么", textOf(byClass(tree, "SPR_mapEdTip")[0] ?? null).includes("拐角"), textOf(byClass(tree, "SPR_mapEdTip")[0] ?? null));
+    // 没选图就点确定：要说清楚，别静默
+    collect(tree, (node) => node.props?.["data-testid"] === "map-add-ok")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
-    check("移开鼠标说明就收起", byClass(tree, "SPR_mapEdTip").length === 0);
-    collect(tree, (node) => typeof node.props?.["data-shape"] === "string").find((node) => node.props["data-shape"] === "plain").props.onClick();
+    check("没选图片就点「确定」会明确提示（不是静默失败）", textOf(tree).includes("先选一张素材图"), textOf(tree).match(/先选一张素材图[^\s]*/)?.[0] ?? "");
+    // 草稿是可编辑的：点「翻页图」后按钮状态跟着变
+    collect(tree, (node) => node.props?.["data-anim"] === "rows")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
-    const savedShape = (await G.readMapProject(projectId)).tilesets[0].shape;
-    check("点「普通」真的把用法存进宿主", savedShape === "plain", String(savedShape));
-
-    // ── 「会动吗」：普通素材给「不动 / 翻页图」两个按钮（悬停有解释），A2 直接说明
-    {
-      const propsChip = byClass(assets, "SPR_mapEdChip").find((node) => textOf(node).includes("道具"));
-      propsChip.props.onClick();
-      tree = await renderTree(() => MapModule({ api }));
-      const card = byClass(tree, "SPR_mapEdCard")[0];
-      const animButtons = collect(card, (node) => typeof node.props?.["data-anim"] === "string");
-      check("普通素材有「不动 / 翻页图」两个按钮", animButtons.length === 2 && animButtons.some((node) => textOf(node) === "翻页图"), animButtons.map((node) => textOf(node)).join(" / "));
-      check("当前是「不动」（宿主 animRows 默认 false）", collect(card, (node) => node.props?.["data-anim"] === "off")[0].props["data-on"] === "true");
-      animButtons.find((node) => node.props["data-anim"] === "rows").props.onMouseEnter({
-        currentTarget: { getBoundingClientRect: () => ({ left: 120, top: 320, width: 60, height: 24 }) }
-      });
-      tree = await renderTree(() => MapModule({ api }));
-      const animTip = textOf(byClass(tree, "SPR_mapEdTip")[0] ?? null);
-      check("悬停「翻页图」用手翻书打比方讲清楚", animTip.includes("翻页图") && animTip.includes("手翻书"), animTip);
-      collect(tree, (node) => node.props?.["data-anim"] === "rows")[0].props.onMouseLeave();
-      tree = await renderTree(() => MapModule({ api }));
-      collect(tree, (node) => node.props?.["data-anim"] === "rows")[0].props.onClick();
-      tree = await renderTree(() => MapModule({ api }));
-      const afterOn = (await G.readMapProject(projectId)).tilesets.find((ts) => ts.name.includes("道具"));
-      check("点「翻页图」真的开起来了（宿主 animRows = true）", afterOn?.animRows === true, JSON.stringify({ animRows: afterOn?.animRows, variants: afterOn?.variants }));
-      const onCard = byClass(tree, "SPR_mapEdCard")[0];
-      check("开关打开后卡片上写明「会动：N 行 = N 帧」", /会动：\d+ 行 = \d+ 帧/.test(textOf(onCard)), textOf(onCard).match(/会动：[^\s]*/)?.[0] ?? "");
-      collect(onCard, (node) => node.props?.["data-anim"] === "off")[0].props.onClick();
-      tree = await renderTree(() => MapModule({ api }));
-      const afterOff = (await G.readMapProject(projectId)).tilesets.find((ts) => ts.name.includes("道具"));
-      check("点「不动」能关回去", afterOff?.animRows === false, String(afterOff?.animRows));
-      // 换回一块**仍是拼块**的素材（草地被上文改成「普通」了，所以用土路）：
-      // 拼块不给开关，而是直接说明「变体轮流换」
-      byClass(byClass(tree, "SPR_mapEdCard")[0], "SPR_mapEdChip")[1].props.onClick();
-      tree = await renderTree(() => MapModule({ api }));
-      const a2Card = byClass(tree, "SPR_mapEdCard")[0];
-      check("拼块素材不给开关，直接说明它会动", collect(a2Card, (node) => typeof node.props?.["data-anim"] === "string").length === 0 && /轮流换/.test(textOf(a2Card)), textOf(a2Card).match(/[^\s]*轮流换/)?.[0] ?? textOf(a2Card).slice(0, 60));
-    }
+    check("对话框里的选择只改草稿（「翻页图」被选中）", collect(tree, (node) => node.props?.["data-anim"] === "rows")[0].props["data-on"] === "true");
+    collect(tree, (node) => node.props?.["data-testid"] === "map-add-cancel")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("「取消」关掉对话框、什么都不改", collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog").length === 0 && rowCount() === beforeRows, `${rowCount()} 张`);
+    // 删除内置素材 → 列表少一张；恢复默认 → 回来了
+    const builtinRow = byClass(tree, "SPR_mapEdTsRow").find((node) => textOf(node).includes("自带"));
+    const builtinName = textOf(byClass(builtinRow, "SPR_mapEdTsName")[0]);
+    collect(builtinRow, (node) => node.type === "button" && textOf(node) === "删除")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check(`内置素材也能删（删掉了「${builtinName}」）`, rowCount() === beforeRows - 1 && !textOf(byClass(tree, "SPR_mapEdCard")[0]).includes(builtinName), `${beforeRows} → ${rowCount()}`);
+    collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "恢复默认素材")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("「恢复默认素材」把它拿回来（同名不会变成两份）", rowCount() === beforeRows && textOf(byClass(tree, "SPR_mapEdCard")[0]).includes(builtinName), `${rowCount()} 张`);
 
     // ── 通过按钮：文案是「确定」
     const approveBtn = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "确定")[0];

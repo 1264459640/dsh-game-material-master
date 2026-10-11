@@ -69,6 +69,11 @@ export interface MapTileset {
   shape: TilesetShape;
   /** 普通形态 + 逐行动画：每一行是一帧（同列同块）。 */
   animRows: boolean;
+  /**
+   * 内置素材（`importSampleTileset` 装的那几张）：属性**不允许修改**，但可以整张删掉，
+   * 再用「恢复默认素材」拿回来。
+   */
+  builtin?: boolean;
   /** a2quad：变体数；普通：动画帧数（`animRows` 时 = 行数），否则 1。 */
   variants: number;
   tiles: MapTile[];

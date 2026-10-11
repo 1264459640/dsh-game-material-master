@@ -45,12 +45,17 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 
 > 💡 **Module ⑥ "Map editor" is modelled after the RPG Map Maker in [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) and rebuilt as one screen, icon-only, with no jargon.**
 > The asset palette and twelve icon buttons sit on the left, the canvas on the right. **Pick one tileset image and start
-> painting** — its shape (RPG Maker A2 autotile block / a 16-tile whole-cell autotile set / a plain grid) is detected
-> from the image dimensions, and the four labeled buttons in "Assets" fix it (hover any of them for an
-> explanation); map size and tile cell size are both free-form; the map **wraps around on all four sides** at the
-> data level (auto-tiling joins the top/bottom and left/right edges). The canvas cannot be dragged off the map —
-> it stops at the edge and the map's top-left lines up with the canvas — and the blank area outside cannot be
-> painted; a built-in tileset is one click away
+> painting**. "Assets" opens a **list of images plus an "Add image" button**: the dialog asks for the
+> **image file / name / cell size / usage / animation** (hover any control for an explanation) and the properties
+> are then **fixed for good -- delete the image and add it again to change them**. Leave the cell size empty and
+> it is detected from the image. The built-in set (4 autotile sheets + 1 prop grid, the water animating on 2
+> frames) is in the list by default, can be deleted just like your own, and "Restore built-ins" brings it back;
+> its properties cannot be edited. To animate **your own plain sheets**, pick "**Flip-book**" when adding (one
+> row per page); autotile sheets need no setting -- their variants are the frames, and the list shows
+> "Animates: N frames". Map size and cell size are both free-form; the map **wraps around on all four sides** at
+> the data level (auto-tiling joins the top/bottom and left/right edges). The canvas cannot be dragged off the
+> map — it stops at the edge and the map's top-left lines up with the canvas — and the blank area outside cannot
+> be painted
 > ("try the built-in tileset" — its water already has a 2-frame animation). To animate **your own plain
 > sheets**, pick "**Flip-book**" under "Does it animate?" in the Assets card: like a flip-book, each row is one
 > page, and the card states the result ("Animates: N rows = N frames"). Autotile-block sheets need no setting —

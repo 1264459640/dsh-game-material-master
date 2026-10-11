@@ -570,6 +570,53 @@ try {
   check("反向验证：关掉环绕后接缝处退化成半格 / 孤岛形状（t 不再是 33/34/37/38）", flatTilesA2.some((t) => ![33, 34, 37, 38].includes(t)), flatTilesA2.join(","));
   await G.saveMapDocStructure(pSeam.id, { wrap: true });
 
+  // ★ 新增素材：属性在导入那一刻一次定下来；内置素材属性不可改、可删、可一键恢复
+  {
+    const pNew = await newProject("新增素材属性", { cols: 16, rows: 16 });
+    const made = await G.importMapTileset(pNew.id, "我的图", sheetPng(64, 64, 16).toString("base64"), {
+      cell: { width: 16, height: 16 },
+      shape: "plain",
+      animRows: true
+    });
+    const madeTs = made.tilesets[0];
+    check(
+      "新增素材时填的属性被采纳（格子 16×16 / 普通 / 翻页图）",
+      madeTs.cell.width === 16 && madeTs.cell.height === 16 && madeTs.shape === "plain" && madeTs.animRows === true,
+      JSON.stringify({ cell: madeTs.cell, shape: madeTs.shape, anim: madeTs.animRows })
+    );
+    check("翻页图：行数就是帧数（64×64 / 格 16 → 4 行 = 4 帧）", madeTs.variants === 4 && madeTs.tiles.length === 16, `variants=${madeTs.variants} tiles=${madeTs.tiles.length}`);
+    const auto = (await G.importMapTileset(pNew.id, "自动", sheetPng(64, 160, 16).toString("base64"), {})).tilesets[0];
+    check("属性留空 = 走自动识别（64×160 → 拼块自动连接 / 2 变体）", auto.shape === "a2quad" && auto.variants === 2, `${auto.shape} / ${auto.variants}`);
+    let badCellError = "";
+    const beforeBad = (await G.readMapProject(pNew.id)).tilesets.length;
+    try {
+      await G.importMapTileset(pNew.id, "乱填", sheetPng(64, 64, 16).toString("base64"), { cell: { width: -8, height: 0 } });
+    } catch (error) {
+      badCellError = String(error?.message ?? error);
+    }
+    check("乱填的格子尺寸**明确拒绝**（不静默改成别的值）", /格子尺寸不合法/.test(badCellError), badCellError);
+    check("被拒绝的导入不会留下半张素材（先校验再写文件）", (await G.readMapProject(pNew.id)).tilesets.length === beforeBad, `${beforeBad} → ${(await G.readMapProject(pNew.id)).tilesets.length}`);
+
+    const pBuiltin = await newProject("内置不可改", { cols: 16, rows: 16 });
+    const installed = await G.importSampleTileset(pBuiltin.id);
+    check("内置素材带 builtin 标记", installed.tilesets.length > 0 && installed.tilesets.every((t) => t.builtin === true), JSON.stringify(installed.tilesets.map((t) => [t.name, t.builtin])));
+    let rejected = "";
+    try {
+      await G.saveMapTileset(pBuiltin.id, installed.tilesets[0].id, { shape: "plain" });
+    } catch (error) {
+      rejected = String(error?.message ?? error);
+    }
+    check("内置素材的属性改不动（宿主直接拒绝并说明原因）", /内置素材/.test(rejected) && /不能改/.test(rejected), rejected);
+    await G.removeMapTileset(pBuiltin.id, installed.tilesets[0].id);
+    check("内置素材还能整张删掉", (await G.readMapProject(pBuiltin.id)).tilesets.length === installed.tilesets.length - 1);
+    const restored = await G.importSampleTileset(pBuiltin.id);
+    check(
+      "删掉的内置素材能一键恢复（其余同名跳过，不会变成两份）",
+      restored.tilesets.length === 1 && (await G.readMapProject(pBuiltin.id)).tilesets.length === installed.tilesets.length,
+      `补回 ${restored.tilesets.length} 张`
+    );
+  }
+
   // ★ 自由尺寸：地图宽高可以不相同；素材格子宽高也可以不相同（用户要「格子数能自由设置」）
   {
     const pRect = await newProject("自由宽高", { cols: 32, rows: 32 });
