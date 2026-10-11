@@ -1133,6 +1133,10 @@
         "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
       "选一张素材图开始":
         "Choose a tile image to start",
+      "重命名项目":
+        "Rename project",
+      "确定":
+        "OK",
       "{n0}：{n1}":
         "{n0}: {n1}",
       "{n0}：{n1}（{n2}）":
@@ -2143,6 +2147,15 @@
 .SPR_mapEdTipName{display:flex;align-items:center;gap:6px;font-weight:600}
 .SPR_mapEdTipKey{padding:0 4px;border-radius:3px;background:#4a4a4a;font-size:10px;font-weight:400;color:#e8d7bb}
 .SPR_mapEdTipDesc{margin-top:2px;color:#c9bda8}
+/* 新建 / 重命名项目的名字对话框。fixed 居中：祖先里有 overflow 容器，
+   absolute 会被裁掉（和工具小标签、侧栏菜单同一个坑）。 */
+.SPR_mapEdDlgMask{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42)}
+.SPR_mapEdDlg{width:300px;max-width:calc(100vw - 32px);padding:12px;border:1px solid #6b4a22;border-radius:8px;background:#2f2f2f;color:#f3e7d3;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.SPR_mapEdDlgTitle{font-size:13px;font-weight:600;margin-bottom:8px}
+.SPR_mapEdDlgLabel{display:block;font-size:11px;color:#c9bda8;margin-bottom:4px}
+.SPR_mapEdDlgInput{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #6b4a22;border-radius:4px;background:#1f1f1f;color:#f3e7d3;font-size:12px;outline:none}
+.SPR_mapEdDlgInput:focus{border-color:#d9a95f}
+.SPR_mapEdDlgRow{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 .SPR_mapEdLayerHalf{flex:1;width:100%;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;color:#4a3416;background:transparent;border:none;border-radius:3px}
 .SPR_mapEdLayerHalf:hover:not(:disabled){background:rgba(255,255,255,.28)}
 .SPR_mapEdLayerHalf:disabled{opacity:.3;cursor:default}
@@ -2511,7 +2524,19 @@
      */
     function askNewName(title, fallback) {
       if (typeof window === "undefined" || typeof window.prompt !== "function") return fallback;
-      const value = window.prompt(title, fallback);
+      /**
+       * ⚠️ `typeof window.prompt === "function"` **不足以判断能用**：Electron（DSH 桌面端）
+       * 里这个函数存在，但一调用就抛「prompt() is and will not be supported」。抛出去的话
+       * 调用方的 async 处理器直接变成未处理拒绝 —— 界面表现是「点了新建什么都没发生」。
+       * 这里兜住并退回默认名：至少把项目建出来，用户随后改名即可。
+       * （模块六的「新建项目」已经改成自带对话框，不再走这里。）
+       */
+      let value = null;
+      try {
+        value = window.prompt(title, fallback);
+      } catch {
+        return fallback;
+      }
       if (value === null) return null;
       const trimmed = String(value).trim();
       return trimmed === "" ? fallback : trimmed;
@@ -6493,8 +6518,12 @@
           }
         }
         // 悬停格：2px 红框（四条细矩形，不用 stroke，免得被 DPR 影响粗细）
+        // ⚠️ 用**未取模**的坐标定位：环绕时同一格在屏幕上有多份，红框必须画在指针
+        // 所在的那一份上。拿取模后的 r/c 去算，指针在地图外那一份时红框会跳一整张地图。
         if (hover !== null && hover !== undefined) {
-          const topLeft = MAP_cellTopLeft(layout, hover.r, hover.c, layout.grid.tileWidth, layout.grid.tileHeight);
+          const rawC = Math.floor(hover.x / layout.stepX);
+          const rawR = Math.floor(hover.y / layout.stepY);
+          const topLeft = MAP_cellTopLeft(layout, rawR, rawC, layout.grid.tileWidth, layout.grid.tileHeight);
           const thickness = 2 / zoom;
           const w = layout.grid.tileWidth;
           const hh = layout.grid.tileHeight;
@@ -6643,7 +6672,16 @@
           const x = (event.clientX - rect.left) / zoom + pan.x;
           const y = (event.clientY - rect.top) / zoom + pan.y;
           const hit = MAP_pointToCell(layout, x, y);
-          return hit.inMap === true ? hit : null;
+          if (hit.inMap !== true) return null;
+          /**
+           * ⚠️ 把**未取模**的地图坐标一起带出去。
+           *
+           * 环绕模式下同一格会在屏幕上出现好几次（地图比画布小的时候最常见：新建的
+           * 32×32 地图铺满 1024px，缩小后一屏能看见一份半）。只留取模后的 `r/c` 的话，
+           * 红框会画在「地图内的那一份」上 —— 真机表现就是鼠标在左边、红框跑到右边
+           * 一整张地图之外（实测偏差 ≈ 353.6px = 一张地图宽）。
+           */
+          return { r: hit.r, c: hit.c, x, y };
         },
         [layout, zoom, pan]
       );
@@ -6903,10 +6941,84 @@
         }
       };
 
-      const createProject = async () => {
+      /**
+       * 新建 / 重命名项目：**自己弹一个窗口**，不用 `window.prompt`。
+       *
+       * ⚠️ 真机踩过：DSH 桌面端是 Electron，而 Electron **不实现 `window.prompt`**
+       * （函数在、调用直接抛错）。原来「新建项目」点了什么都不发生，就是因为名字拿不到 ——
+       * 而且 `typeof window.prompt === "function"` 这个判断完全看不出来。
+       * 所以这里改成本地渲染的对话框：输入框 + 取消 / 确定，回车确认、Esc 取消。
+       */
+      const [nameAsk, setNameAsk] = React.useState(null);
+      const askProjectName = (mode) =>
+        setNameAsk({
+          mode,
+          title: mode === "create" ? T("新建项目") : T("重命名项目"),
+          label: mode === "create" ? T("新项目的名字") : T("新的项目名"),
+          value: mode === "create" ? T("我的地图") : view === null ? "" : view.name
+        });
+      const submitNameAsk = async () => {
+        const ask = nameAsk;
+        if (ask === null) return;
+        const trimmed = String(ask.value).trim();
+        // 新建：空名用默认名（用户的意图是「建一个」，不该被空字符串卡住）；
+        // 重命名：空名等于没改，直接关掉。
+        if (ask.mode === "rename" && trimmed === "") {
+          setNameAsk(null);
+          return;
+        }
+        setNameAsk(null);
+        if (ask.mode === "create") await createProject(trimmed === "" ? T("我的地图") : trimmed);
+        else await renameProject(trimmed);
+      };
+
+      /** 名字对话框。`position:fixed` 居中，不用原生 prompt / confirm。 */
+      const nameDialog =
+        nameAsk === null
+          ? null
+          : h(
+              "div",
+              { className: "SPR_mapEdDlgMask", "data-testid": "map-name-mask", onClick: () => setNameAsk(null) },
+              h(
+                "div",
+                {
+                  className: "SPR_mapEdDlg",
+                  role: "dialog",
+                  "aria-label": nameAsk.title,
+                  "data-testid": "map-name-dialog",
+                  onClick: (event) => {
+                    if (typeof event.stopPropagation === "function") event.stopPropagation();
+                  }
+                },
+                h("div", { className: "SPR_mapEdDlgTitle" }, nameAsk.title),
+                h("label", { className: "SPR_mapEdDlgLabel" }, nameAsk.label),
+                h("input", {
+                  className: "SPR_mapEdDlgInput",
+                  "data-testid": "map-name-input",
+                  value: nameAsk.value,
+                  autoFocus: true,
+                  onChange: (event) =>
+                    setNameAsk((current) => (current === null ? current : { ...current, value: event.target.value })),
+                  onKeyDown: (event) => {
+                    if (event.key === "Enter") {
+                      if (typeof event.preventDefault === "function") event.preventDefault();
+                      void submitNameAsk();
+                    } else if (event.key === "Escape") {
+                      setNameAsk(null);
+                    }
+                  }
+                }),
+                h(
+                  "div",
+                  { className: "SPR_mapEdDlgRow" },
+                  h(Btn, { "data-testid": "map-name-cancel", onClick: () => setNameAsk(null) }, T("取消")),
+                  h(Btn, { "data-testid": "map-name-ok", primary: true, onClick: () => void submitNameAsk() }, T("确定"))
+                )
+              )
+            );
+
+      const createProject = async (name) => {
         if (api === undefined) return;
-        const name = askNewName(T("新项目的名字"), T("我的地图"));
-        if (name === null) return;
         const created = await withApi(() => api.createMapProject({ name, cols: 32, rows: 32 }));
         if (created === undefined) return;
         await ensureTwoLayers(created.id);
@@ -6916,12 +7028,9 @@
         setOpenCard("assets");
       };
 
-      const renameProject = async () => {
+      const renameProject = async (name) => {
         if (view === null || api === undefined) return;
-        // eslint-disable-next-line no-alert
-        const next = typeof window === "undefined" ? null : window.prompt(T("新的项目名"), view.name);
-        if (next === null || next.trim() === "") return;
-        const ok = await withApi(() => api.saveMapProject({ projectId: view.id, name: next.trim() }), { notice: T("已重命名") });
+        const ok = await withApi(() => api.saveMapProject({ projectId: view.id, name }), { notice: T("已重命名") });
         if (ok === undefined) return;
         await loadProject(view.id, true);
       };
@@ -7096,11 +7205,13 @@
               h(
                 "div",
                 { className: "SPR_mapEdEmptyRow" },
+                h(Btn, { onClick: () => askProjectName("create") }, T("新建项目")),
                 h(Btn, { primary: true, onClick: () => fileRef.current?.click(), busy: busyKey === "upload" }, T("选一张素材图开始")),
                 h(Btn, { onClick: () => void startWithSample(), busy: busyKey === "sample" }, T("用自带素材试试"))
               ),
               notice === null ? null : h("div", { className: `SPR_notice SPR_notice-${notice.kind}` }, notice.text)
-            )
+            ),
+            nameDialog
           )
         );
       }
@@ -7123,7 +7234,7 @@
             className: "SPR_mapEdMenuItem",
             onClick: () => {
               setMenuOpen(false);
-              void createProject();
+              askProjectName("create");
             }
           },
           T("新建项目")
@@ -7135,7 +7246,7 @@
             className: "SPR_mapEdMenuItem",
             onClick: () => {
               setMenuOpen(false);
-              void renameProject();
+              askProjectName("rename");
             }
           },
           T("重命名")
@@ -7746,7 +7857,8 @@
               })
             )
           ),
-          toolTipNode
+          toolTipNode,
+          nameDialog
         )
       );
     }

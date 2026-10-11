@@ -368,6 +368,18 @@ try {
     __ModuleLoader__: { load: (registration) => LOADED.push(registration) },
     location: { origin: "http://127.0.0.1:19387", search: "", href: "http://127.0.0.1:19387/" },
     devicePixelRatio: 1,
+    /**
+     * ⚠️ 原生 prompt 的**假实现**：记录下来，断言模块六一次都没碰它。
+     *
+     * 真机坏在这里：DSH 桌面端是 Electron，`window.prompt` 存在但一调用就抛错
+     * （`typeof` 判断看不出来），于是「新建项目」点了毫无反应。面板必须自带对话框，
+     * 这条桩就是用来钉住「不许再依赖原生 prompt」的 —— 返回 null 会让旧写法什么都不建。
+     */
+    __promptCalls: [],
+    prompt(message, defaultValue) {
+      windowStub.__promptCalls.push({ message, defaultValue });
+      return null;
+    },
     history: {
       replaceState(_state, _title, url) {
         const next = new URL(url, windowStub.location.href);
@@ -813,7 +825,12 @@ try {
         await Promise.resolve();
         if (pendingRender || inFlight > 0) {
           quiet = 0;
-          if (tick > 220) break;
+          if (tick > 220) {
+            // 这里**不该**发生：说明连续 220 个事件循环轮次还没静下来（机器被压满时可能）。
+            // 一旦发生，后面很容易读到「半渲染」的树并报一堆莫名其妙的失败 —— 所以留个明确记号。
+            note(`⚠️ 第 ${pass + 1} 轮渲染：等待稳定超时（tick=${tick}，inFlight=${inFlight}），后面可能会误报`);
+            break;
+          }
         } else if (++quiet >= 3) {
           break;
         }
@@ -827,7 +844,10 @@ try {
         await Promise.resolve();
         if (pendingRender || inFlight > 0) {
           quietAfter = 0;
-          if (tick > 220) break;
+          if (tick > 220) {
+            note(`⚠️ 第 ${pass + 1} 轮渲染（定时器后）：等待稳定超时（tick=${tick}，inFlight=${inFlight}）`);
+            break;
+          }
         } else if (++quietAfter >= 3) {
           break;
         }
@@ -1369,7 +1389,7 @@ try {
     ["MAP_pickVariant", "MAP_drawOrder", "MAP_visibleChunks", "MAP_chunkKey"].filter((name) => mapSource.includes(name)).join(",")
   );
   check("模块六里没有自造坐标变换（只允许那四个 MAP_ 函数 + 取模辅助）", !/layoutOf\(|tileOriginAt\(|stableHash/.test(mapSource));
-  check("模块六没有复用八方向图那个蒙层样式 SPR_stageHint", !mapSource.replace(/\/\*[\s\S]*?\*\//g, "").includes("SPR_stageHint"), "复用它会把说明绝对定位铺满容器");
+  check("模块六没有复用八方向图那个蒙层样式 SPR_stageHint", !mapSource.replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gm, "").includes("SPR_stageHint"), "复用它会把说明绝对定位铺满容器");
   /**
    * ⚠️ 术语黑名单：用户对第一版的反馈就是「门槛太高、专业名词太多」。
    * 只扫模块六那一段 —— 「图集」（Spine 纹理图集）与「等距」（45° 地块）在别的模块里是正确的。
@@ -1394,7 +1414,7 @@ try {
    * ⚠️ 用到的每个 `SPR_` 类都必须真的有 CSS 规则（或本来就是个纯文本容器）。
    * 这条是**真机打脸**换来的：自造的类名一个 CSS 规则都没有 → 界面塌成几个小按钮。
    */
-  const mapCode = mapSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+  const mapCode = mapSource.replace(/^[ \t]*\/\*[\s\S]*?\*\/[ \t]*$/gm, "").replace(/^[ \t]*\/\/.*$/gm, "");
   const styled = new Set();
   for (const match of clientSource.matchAll(/\.(SPR_[A-Za-z0-9_-]+)/g)) styled.add(match[1]);
   const intentionallyUnstyled = new Set(["SPR_moduleBody", "SPR_notice", "SPR_select"]);
@@ -1423,6 +1443,15 @@ try {
     /\.SPR_mapEdTip\{position:fixed[^}]*translate\(-50%,-100%\)/.test(clientSource)
   );
   check("工具小标签贴边时被夹在视口内", /Math\.max\(half, Math\.min\(center, viewWidth - half\)\)/.test(clientSource));
+  // 新建 / 重命名：不许再依赖原生 prompt（Electron 里它是坏的），两个入口都走同一个对话框。
+  // 用剥掉注释的 mapCode：注释里正解释着「为什么不能用 window.prompt」。
+  check("模块六不再调用 window.prompt", !/window\.prompt/.test(mapCode));
+  check("新建与重命名都走自带的名字对话框", /askProjectName\("create"\)/.test(mapCode) && /askProjectName\("rename"\)/.test(mapCode));
+  check("名字对话框用 position:fixed 居中（absolute 会被 overflow 裁掉）", /\.SPR_mapEdDlgMask\{position:fixed/.test(clientSource));
+  check(
+    "悬停红框按**未取模**坐标定位（环绕时同一格有多份，取模后会跳一整张地图）",
+    /const rawC = Math\.floor\(hover\.x \/ layout\.stepX\)/.test(mapCode) && /const rawR = Math\.floor\(hover\.y \/ layout\.stepY\)/.test(mapCode)
+  );
   check("选中的笔刷是红框（outline 2px 红，AsLib 同款）", /\.SPR_mapEdTile\[data-on="true"\]\{outline:2px solid #e23b2b/.test(clientSource));
   check("画布用 image-rendering:pixelated / touch-action:none（像素画不糊、触摸不滚动）", /\.SPR_mapEdCanvas\{[^}]*image-rendering:pixelated[^}]*touch-action:none/.test(clientSource));
   /**
@@ -1489,6 +1518,112 @@ try {
       `首帧 ${drawn.size}/${needed.size} 个像素位置：缺 ${missing.length} 个、多 ${extra.length} 个`
     );
     check("诊断用的全新面板本身渲染正常（视图已加载）", !textOf(freshTree).includes("还没有地图项目"));
+  }
+
+  // ══ 16) 新建 / 重命名 与 悬停红框（都会动到面板状态，所以放在最后）══════════
+  section("16) 新建项目走自带对话框（Electron 里原生 prompt 是坏的）+ 悬停红框跟着指针");
+  {
+    // 前面的用例把 `tree` 留在了别的快照上（第 15 段还单独挂过一次），这里重新挂一份
+    // 自洽的面板再点，免得点到过期闭包上（菜单开关会因此「点了没反应」）。
+    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    // ── 新建 / 重命名：自带对话框，不依赖原生 window.prompt ───────────────
+    windowStub.__promptCalls.length = 0;
+    const projButton = byClass(tree, "SPR_mapEdProj")[0];
+    check("顶栏有项目菜单入口", projButton !== undefined && textOf(projButton).includes("▾"), textOf(projButton ?? null));
+    /** 菜单是开关：前面的用例可能已经把它留着开着了，别盲目再点一下（会关掉）。 */
+    const ensureMenu = async () => {
+      if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
+        byClass(tree, "SPR_mapEdProj")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+      }
+      return byClass(tree, "SPR_mapEdMenuItem");
+    };
+    const menuItems = await ensureMenu();
+    const newItem = menuItems.find((node) => textOf(node) === "新建项目");
+    check("项目菜单里有「新建项目」", newItem !== undefined, menuItems.map((node) => textOf(node)).join(" / "));
+    newItem.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const dlg = byClass(tree, "SPR_mapEdDlg")[0];
+    const nameInput = collect(tree, (node) => node.props?.["data-testid"] === "map-name-input")[0];
+    check("点「新建项目」弹出面板自己的对话框（不再走原生 prompt）", dlg !== undefined && nameInput !== undefined);
+    check(
+      "对话框里预填了默认名，且全程没碰 window.prompt",
+      nameInput?.props.value === "我的地图" && windowStub.__promptCalls.length === 0,
+      `值 ${nameInput?.props.value} / prompt 调用 ${windowStub.__promptCalls.length} 次`
+    );
+    check(
+      "对话框标题与「取消 / 确定」都在",
+      dlg !== undefined && textOf(dlg).includes("新建项目") && collect(dlg, (node) => node.props?.["data-testid"] === "map-name-ok").length === 1 && collect(dlg, (node) => node.props?.["data-testid"] === "map-name-cancel").length === 1,
+      textOf(dlg)
+    );
+    // 输入名字 → 回车确认（与点「确定」共用同一个提交函数）
+    nameInput.props.onChange({ target: { value: "自检建的项目" } });
+    tree = await renderTree(() => MapModule({ api }));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-name-input")[0].props.onKeyDown({ key: "Enter", preventDefault() {} });
+    tree = await renderTree(() => MapModule({ api }));
+    check("回车确认后对话框关掉", byClass(tree, "SPR_mapEdDlg").length === 0);
+    check("项目真的建出来了，并且已经切过去", textOf(byClass(tree, "SPR_mapEdProj")[0] ?? null).includes("自检建的项目"), textOf(byClass(tree, "SPR_mapEdProj")[0] ?? null));
+    const built = await G.listMapProjects();
+    check("宿主侧确实多出这个名字的项目", built.some((item) => item.name === "自检建的项目"), built.map((item) => item.name).join(" / "));
+    // 取消路径：一个项目都不能多出来
+    (await ensureMenu()).find((node) => textOf(node) === "新建项目").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-name-input")[0].props.onChange({ target: { value: "不该被建出来" } });
+    tree = await renderTree(() => MapModule({ api }));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-name-cancel")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const afterCancel = await G.listMapProjects();
+    check(
+      "点「取消」不会建出项目",
+      byClass(tree, "SPR_mapEdDlg").length === 0 && !afterCancel.some((item) => item.name === "不该被建出来"),
+      afterCancel.map((item) => item.name).join(" / ")
+    );
+    // 重命名：同一个对话框（点到「重命名」就换成重命名标题）
+    (await ensureMenu()).find((node) => textOf(node) === "重命名").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("「重命名」弹出的是同一个对话框、预填当前名字", textOf(byClass(tree, "SPR_mapEdDlg")[0] ?? null).includes("重命名项目") && collect(tree, (node) => node.props?.["data-testid"] === "map-name-input")[0]?.props.value === "自检建的项目", textOf(byClass(tree, "SPR_mapEdDlg")[0] ?? null));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-name-cancel")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+  }
+  {
+    // ── 悬停红框必须跟着指针（环绕时同一格在屏幕上有多份）──────────────────
+    // 真机坏过：地图比画布小的时候（新建 32×32 缩到一屏），同一格会在屏幕上出现好几份。
+    // 红框当时按**取模后**的 r/c 画，于是鼠标在左边、红框跑到一整张地图之外（实测差 353.6px）。
+    byTool(tree, "hand")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const dragCanvas = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
+    dragCanvas.props.onPointerDown({ clientX: 100, clientY: 100, button: 0, pointerId: 1 });
+    dragCanvas.props.onPointerMove({ clientX: -2500, clientY: -2500, pointerId: 1 });
+    dragCanvas.props.onPointerUp({ pointerId: 1 });
+    tree = await renderTree(() => MapModule({ api }));
+    tree = await forceFullPlanReload(tree);
+    const plan = apiLog.plans[apiLog.plans.length - 1];
+    // 客户端发的计划里就写着相机口径：view = {x: pan.x, y: pan.y, width: w/zoom, ...}
+    const rectWidth = 900; // 画布桩的 getBoundingClientRect() = 900×520
+    const zoom = rectWidth / plan.view.width;
+    const mapX = 700 / zoom + plan.view.x;
+    const mapY = 300 / zoom + plan.view.y;
+    const hoverCanvas = collect(tree, (node) => node.props?.["data-testid"] === "map-canvas")[0];
+    const before = fillRects.length;
+    hoverCanvas.props.onPointerMove({ clientX: 700, clientY: 300, pointerId: 1 });
+    tree = await renderTree(() => MapModule({ api }));
+    const frame = fillRects.slice(before).filter((item) => item.fillStyle === "#e23b2b");
+    check("悬停画出了红框（四条细矩形）", frame.length === 4, `${frame.length} 条`);
+    const left = Math.min(...frame.map((item) => item.x));
+    const right = Math.max(...frame.map((item) => item.x + item.w));
+    const top = Math.min(...frame.map((item) => item.y));
+    const bottom = Math.max(...frame.map((item) => item.y + item.h));
+    check("指针所在的地图坐标落在红框里（横向）", frame.length === 4 && left <= mapX && mapX <= right, `mapX=${mapX.toFixed(1)} 红框=[${left.toFixed(1)}, ${right.toFixed(1)}]`);
+    check("指针所在的地图坐标落在红框里（纵向）", frame.length === 4 && top <= mapY && mapY <= bottom, `mapY=${mapY.toFixed(1)} 红框=[${top.toFixed(1)}, ${bottom.toFixed(1)}]`);
+    // 反向验证：这一格「地图内的那一份」在别处 —— 说明上面两条有区分力（取模写法会画到那里）。
+    // ⚠️ `apiLog.plans` 存的是**请求**（view/have），地图尺寸要问宿主那一份计划。
+    const hostPlan = await G.mapPlan(projectId, { view: plan.view, have: [] });
+    const canonicalC = ((Math.floor(mapX / 32) % hostPlan.cols) + hostPlan.cols) % hostPlan.cols;
+    check(
+      "反向验证：地图内那一份离指针很远（所以「跳到取模位置」一定会被这条抓到）",
+      Math.abs(canonicalC * 32 - mapX) > 200,
+      `取模位置 x=${canonicalC * 32}，指针 mapX=${mapX.toFixed(1)}`
+    );
   }
 } finally {
   if (projectId !== "") await G.deleteMapProject(projectId).catch(() => undefined);
