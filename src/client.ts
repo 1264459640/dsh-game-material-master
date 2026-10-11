@@ -1387,6 +1387,7 @@
         "\"Empty cells count as\" per layer: when a whole layer is water, counting its empty cells as water is what makes the neighbouring ground grow transition edges; leaving it unset means plain empty ground. Height offset shifts a whole layer up or down a few pixels (that is how wall decorations sit).",
       "优先级": "Priority",
       "变体种子": "Variant seed",
+      "按住拖我调整图层顺序（越靠上越晚画，也就盖住下面的）": "Drag me to reorder layers (higher up is drawn later, so it covers the ones below)",
       "至少要留一个图层": "At least one layer must remain",
       "这一层已画的格子数（宿主统计）": "How many cells this layer has painted (counted by the host)",
       "确定删除图层「{n0}」？它上面已画的 {n1} 格会一起删掉，无法撤销。":
@@ -2326,6 +2327,11 @@
 .SPR_meLayerRow{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:10px;border:1px dashed transparent;background:var(--dsw-alias-bg-layer-2, rgba(0,0,0,.02))}
 .SPR_meLayerRow[data-active="true"]{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1, rgba(0,0,0,.04))}
 .SPR_meLayerMain{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* 图层拖拽排序：把手单独可拖，免得拖动整行时把里面的输入框 / 下拉也带动 */
+.SPR_meLayerGrip{cursor:grab;color:var(--dsw-alias-label-tertiary);user-select:none;font-size:13px;line-height:1;padding:2px 3px;border-radius:6px}
+.SPR_meLayerGrip:hover{background:var(--dsw-alias-bg-layer-2, rgba(0,0,0,.06));color:var(--dsw-alias-label-secondary)}
+.SPR_meLayerRow[data-dragging="true"]{opacity:.55}
+.SPR_meLayerRow[data-drop="true"]{outline:2px dashed color-mix(in srgb, var(--dsw-alias-state-business-primary, #3b82f6) 70%, transparent);outline-offset:2px}
 .SPR_meLayerFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:8px 12px;align-items:end}
 .SPR_meLayerPick{border:none;background:transparent;cursor:pointer;font-size:12px;font-weight:600;padding:2px 4px;text-align:left}
 .SPR_meLayerPick[data-on="true"]::after{content:" ●";color:var(--dsw-alias-state-business-primary, #3b82f6);font-size:10px}
@@ -6170,6 +6176,9 @@
       const [newMapName, setNewMapName] = React.useState("");
       /** 地图尺寸草稿（点「应用尺寸」才提交，避免每敲一个数字就 resize 一次）。 */
       const [mapSizeDraft, setMapSizeDraft] = React.useState({ cols: 32, rows: 32 });
+      /** 图层拖拽排序：正在拖的层 + 当前悬停的目标层（只用于高亮，真正落点看 drop）。 */
+      const [dragLayerId, setDragLayerId] = React.useState(null);
+      const [dragOverId, setDragOverId] = React.useState(null);
       const imageRefs = React.useRef({});
       const canvasRef = React.useRef(null);
       const wrapRef = React.useRef(null);
@@ -6794,6 +6803,19 @@
       };
 
       /**
+       * 拖拽排序：把 `fromId` 这层挪到 `toIndex`。
+       *
+       * 宿主只认 `moveLayer{id,toIndex}`（数组下标），所以这里传的是**目标层的下标**；
+       * 上移 / 下移按钮和拖拽走的是同一条通道，撤销栈也能一起回退。
+       */
+      const moveLayerTo = async (fromId, toIndex) => {
+        if (fromId === null || fromId === undefined || fromId === "") return;
+        if (doc === null || doc === undefined) return;
+        if (doc.layers[toIndex] !== undefined && doc.layers[toIndex].id === fromId) return;
+        await saveDocStructure({ moveLayer: { id: fromId, toIndex } });
+      };
+
+      /**
        * 某一层已画的格子数（宿主算好放在 `doc.filled[layerId]`）。
        *
        * 界面既用它显示「已画 N 格 / 空」，也用在删除确认里——删一层就是**连内容一起删**，
@@ -7148,12 +7170,48 @@
             {
               key: layer.id,
               className: "SPR_meLayerRow",
-              "data-active": activeLayer !== undefined && activeLayer.id === layer.id ? "true" : undefined
+              "data-active": activeLayer !== undefined && activeLayer.id === layer.id ? "true" : undefined,
+              // 拖拽排序：拖到哪一层上，就插到那一层的位置（宿主只认数组下标）
+              "data-dragging": dragLayerId === layer.id ? "true" : undefined,
+              "data-drop": dragOverId === layer.id && dragLayerId !== layer.id ? "true" : undefined,
+              onDragOver: (event) => {
+                if (dragLayerId === null || dragLayerId === layer.id) return;
+                event.preventDefault();
+                if (dragOverId !== layer.id) setDragOverId(layer.id);
+              },
+              onDragLeave: () => setDragOverId((prev) => (prev === layer.id ? null : prev)),
+              onDrop: (event) => {
+                event.preventDefault();
+                const from = dragLayerId ?? (event.dataTransfer === undefined ? "" : event.dataTransfer.getData("text/plain"));
+                setDragLayerId(null);
+                setDragOverId(null);
+                void moveLayerTo(from, index);
+              }
             },
-            // 上行：选层 + 显隐/锁定 + 排序/删除（一眼看清「在改哪一层」）
+            // 上行：拖拽把手 + 选层 + 显隐/锁定 + 排序/删除（一眼看清「在改哪一层」）
             h(
               "div",
               { className: "SPR_meLayerMain" },
+              h(
+                "span",
+                {
+                  className: "SPR_meLayerGrip",
+                  draggable: true,
+                  title: T("按住拖我调整图层顺序（越靠上越晚画，也就盖住下面的）"),
+                  onDragStart: (event) => {
+                    setDragLayerId(layer.id);
+                    if (event.dataTransfer !== undefined) {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", layer.id);
+                    }
+                  },
+                  onDragEnd: () => {
+                    setDragLayerId(null);
+                    setDragOverId(null);
+                  }
+                },
+                "⠿"
+              ),
               h(
                 "button",
                 {

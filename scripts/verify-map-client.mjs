@@ -648,6 +648,15 @@ try {
     numLabels.join(" / ")
   );
   check("图层行有改名按钮（✎）", paintButtonTexts.includes("✎"));
+  // 拖拽排序：把手必须可拖、且行上有 drop 处理（真机用 Playwright dragTo 验过顺序真的换）
+  check(
+    "图层行有可拖的排序把手（⠿）",
+    collect(tree, (node) => node.props?.draggable === true && textOf(node).trim() === "⠿").length >= 1
+  );
+  check(
+    "图层行挂了 onDrop（拖拽排序走宿主 moveLayer）",
+    collect(tree, (node) => typeof node.props?.onDrop === "function").length >= 1
+  );
   check("图层行拆成两行（名字与按钮在上、数值在下）", byClass(tree, "SPR_meLayerFields").length >= 1);
   check("画布下面有操作说明（拖动 / 平移 / 缩放）", byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("平移画布")));
   check("画布下面有快捷键说明", byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("快捷键")));
