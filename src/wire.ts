@@ -670,6 +670,11 @@ const mapPlanSchema = z.object({
    * `z.record(...)` 之外的东西都行，但漏一个字段就是「计划永远算的是 0×0 视口」。
    */
   view: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
+  /**
+   * 预览用：还在笔里、还没提交的 op。宿主盖到一份克隆上算计划，**不落盘** ——
+   * 「画的过程中看得见，但一次都没存」。提交后客户端会把这些 chunk 标成待重拉。
+   */
+  pending: z.array(z.record(z.string(), z.unknown())).optional(),
   /** 客户端已有的 chunk key（未 wrap）。 */
   have: z.array(z.string()).optional(),
   /** 只算这几个层号（0 起）。 */

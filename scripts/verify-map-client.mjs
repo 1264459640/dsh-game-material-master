@@ -727,10 +727,18 @@ try {
       return G.redoMap(id, have);
     },
     mapPlan: async (payload) => {
-      const result = await G.mapPlan(payload.projectId, { view: payload.view, have: payload.have, layerIds: payload.layerIds });
+      const result = await G.mapPlan(payload.projectId, {
+        view: payload.view,
+        have: payload.have,
+        layerIds: payload.layerIds,
+        // 预览是宿主侧的能力（盖在克隆上算计划、不落盘）：夹具必须原样透传，
+        // 否则「拖动期间看得见」这条契约在自检里根本测不到
+        pending: payload.pending
+      });
       apiLog.plans.push({
         view: { ...payload.view },
         have: [...(payload.have ?? [])],
+        pending: payload.pending === undefined ? undefined : [...payload.pending],
         layerIds: payload.layerIds === undefined ? undefined : [...payload.layerIds],
         result
       });
@@ -1344,8 +1352,15 @@ try {
     const from11 = clientOf(viewMidR, viewMidC);
     const to33 = clientOf(viewMidR + 1, viewMidC + 1);
     liveCanvas.props.onPointerDown({ clientX: from11.x, clientY: from11.y, button: 0, pointerId: 1 });
-    await tickTimers(); // 真机上一笔拖拽中间会过好几个 40ms 防抖窗口：这里显式放行一次
+    await tickTimers();
     liveCanvas.props.onPointerMove({ clientX: to33.x, clientY: to33.y, pointerId: 1 });
+    /**
+     * 一笔还没结束：这里要模拟「手还按着、又过了一小会儿」——
+     * 80ms 的预览节拍放行 → 重渲染（查询副作用这时才注册自己的定时器）→ 再放行一次，
+     * 于是产生一条带 `pending` 的**预览查询**（宿主只算不存）。
+     */
+    await tickTimers();
+    tree = await renderTree(() => MapModule({ api }));
     await tickTimers();
     liveCanvas.props.onPointerUp({ pointerId: 1 });
     tree = await renderTree(() => MapModule({ api }));
@@ -1357,6 +1372,27 @@ try {
     check("在画布上按下 → 拖动 → 抬起真的改了地图（宿主计划变了）", JSON.stringify(planAfter.chunks) !== JSON.stringify(planBefore.chunks), `${planBefore.chunks.flatMap((c) => c.ops).length} → ${planAfter.chunks.flatMap((c) => c.ops).length} 条 op`);
     check("改了之后画布重画了", drawFrames.length > framesBefore, `${framesBefore} → ${drawFrames.length} 帧`);
     check("一笔拖拽只提交**一次**（改完样式：不一边画一边存），宿主历史 +1", depthAfter === depthBefore + 1 && submits.length === 1, `depth ${depthBefore} → ${depthAfter}，提交 ${submits.length} 批`);
+    /**
+     * 用户要的其实是两件：**画的过程中看得见**（预览），但**别一边画一边存**（提交）。
+     * 所以拖动期间必须出现带 `pending` 的计划查询（宿主只算不存），而 applyMapOps 一次都不发。
+     */
+    const previewQueries = apiLog.plans.filter((entry) => Array.isArray(entry.pending) && entry.pending.length > 0);
+    check(
+      "拖动期间画得出来：发出了带 pending 的预览查询（宿主只算不存）",
+      previewQueries.length > 0,
+      `预览查询 ${previewQueries.length} 次 / 总共 ${apiLog.plans.length} 次查询`
+    );
+    check(
+      "预览真的把这一笔画进了计划（不是空转）",
+      previewQueries.some((entry) => entry.result.chunks.some((chunk) => chunk.ops.length > 0)) ||
+        previewQueries.some((entry) => entry.result.visibleKeys.length > 0),
+      `预览块 ${previewQueries.map((entry) => entry.result.chunks.length).join(",")}`
+    );
+    check(
+      "预览期间 applyMapOps 一次都没发（只有松手那一次）",
+      apiLog.applies.length - appearsBefore === 1,
+      `${apiLog.applies.length - appearsBefore} 次`
+    );
     check(
       "这一次提交带非空 stroke（少了它一次拖拽会变成好几步撤销）",
       submits.length === 1 && typeof submits[0].stroke === "string" && submits[0].stroke !== "",

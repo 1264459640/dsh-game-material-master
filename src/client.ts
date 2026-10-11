@@ -1131,6 +1131,12 @@
         "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
       "选一张素材图开始":
         "Choose a tile image to start",
+      "已确定":
+        "Confirmed",
+      "再点一下取消确定":
+        "Click again to un-confirm",
+      "这一步没问题，标成已确定":
+        "This step looks good -- mark it confirmed",
       "会动 {n0} 帧":
         "Animates: {n0} frames",
       "新增素材":
@@ -2228,6 +2234,7 @@
 .SPR_mapEdTsMeta{flex:none;font-size:11px;color:#9a9a9a}
 .SPR_mapEdTsBadge{flex:none;padding:0 4px;border-radius:3px;background:#4a4a4a;font-size:10px;color:#e8d7bb}
 .SPR_mapEdTsBadge[data-anim="true"]{background:#2f4a2f;color:#bfe6bf}
+.SPR_mapEdCard .SPR_btn[data-approved="true"]{border-color:#4d7a4d;color:#bfe6bf}
 .SPR_mapEdPair{display:flex;align-items:center;gap:6px}
 .SPR_mapEdTimes{color:#9a9a9a;font-size:12px}
 .SPR_mapEdSeg{display:flex;gap:4px;flex-wrap:wrap}
@@ -6105,6 +6112,17 @@
        */
       const [addDraft, setAddDraft] = React.useState(null);
       const addFileRef = React.useRef(null);
+      /**
+       * 预览节拍：一笔进行中每隔 ~80ms 自增一次，触发下面那个计划查询带上 `pending` ——
+       * 宿主只**算**这份计划（盖在克隆上），不落盘、不进撤销栈。
+       *
+       * 用户要的是「画的过程中格子要显示出来，但别一边画一边存」：所以显示走预览查询，
+       * 真正的提交仍然只在 `pointerup` / 离开 / 取消时发生一次。
+       */
+      const [previewTick, setPreviewTick] = React.useState(0);
+      /** 预览取回来的块号：这些内容只反映了**当时那一部分 op**，提交后必须重拉。 */
+      const previewKeys = React.useRef(new Set());
+      const previewTimer = React.useRef(null);
       const [animFps, setAnimFps] = React.useState(null);
       const [frame, setFrame] = React.useState(0);
       const [truncated, setTruncated] = React.useState(false);
@@ -6390,8 +6408,11 @@
       const applyQuery = React.useCallback((result, view) => {
         const incoming = Array.isArray(result?.[MAP_PLAN_LIST]) ? result[MAP_PLAN_LIST] : [];
         const next = new Map(planRef.current);
+        const previewing = currentStroke.current !== null && pendingOps.current.length > 0;
         for (const entry of incoming) {
           next.set(entry.key, Array.isArray(entry.ops) ? entry.ops : []);
+          // 预览期间取回来的块：内容只反映「当时那一部分 op」，提交后要按真实数据重拉
+          if (previewing) previewKeys.current.add(entry.key);
           // 这一份已经是新的了：不用再重拉
           staleRef.current.delete(entry.key);
           // 记下这一份是「按哪个视口」取回来的：视口再变大时它就不够画了
@@ -6446,12 +6467,16 @@
         let cancelled = false;
         const timer = setTimeout(() => {
           void (async () => {
+            const strokeAtQuery = currentStroke.current;
             try {
               const size = viewportRef.current;
               const currentView = { x: pan.x, y: pan.y, width: size.w / zoom, height: size.h / zoom };
+              const pending = currentStroke.current === null ? undefined : [...pendingOps.current];
               const have = [...planRef.current.keys()].filter((key) => {
                 // 待重拉的键不算「我有」：宿主据此把新内容发回来
                 if (staleRef.current.has(key)) return false;
+                // 预览块同理：它只反映「当时那一部分 op」，这一笔还在长，必须重新算
+                if (previewKeys.current.has(key)) return false;
                 const fetched = fetchedRef.current.get(key);
                 return fetched !== undefined && viewCovers(fetched, currentView);
               });
@@ -6459,9 +6484,16 @@
                 projectId: viewId,
                 view: currentView,
                 have,
+                pending: Array.isArray(pending) && pending.length > 0 ? pending : undefined,
                 layerIds: single === true ? [safeLayerIndex] : undefined
               });
               if (cancelled === true) return;
+              /**
+               * 预览响应回来时这一笔可能已经提交（或换了）：它算的是**过时**的那部分 op，
+               * 应用它会让缓存停在预览上（提交后的真实数据就补不进来了）。直接丢掉，
+               * 交给提交后那次查询重发这几块。
+               */
+              if (strokeAtQuery !== null && strokeAtQuery !== currentStroke.current) return;
               applyQuery(result, currentView);
             } catch (error) {
               if (cancelled === true) return;
@@ -6474,7 +6506,7 @@
           clearTimeout(timer);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [api, viewId, planKey, planEpoch, pan, zoom, viewport, single, safeLayerIndex, measured]);
+      }, [api, viewId, planKey, planEpoch, previewTick, pan, zoom, viewport, single, safeLayerIndex, measured]);
 
       // 视图尺寸变了（面板宽窄、窗口缩放）：重新量一次
       React.useEffect(() => {
@@ -6669,6 +6701,17 @@
           clearTimeout(flushTimer.current);
           flushTimer.current = null;
         }
+        if (previewTimer.current !== null) {
+          clearTimeout(previewTimer.current);
+          previewTimer.current = null;
+        }
+        /**
+         * 这一笔要真正提交了：先把它期间预览出来的块标成「待重拉」——
+         * 那些内容是按**当时那一部分 op** 算的，最后几个格子可能还没进去。
+         * 标记之后宿主会按真实数据把这几块重发一遍，画面不会停在预览上。
+         */
+        for (const key of previewKeys.current) staleRef.current.add(key);
+        previewKeys.current = new Set();
         const ops = pendingOps.current;
         if (ops.length === 0) return;
         if (api === undefined || viewId === null) {
@@ -6738,7 +6781,17 @@
            * 一边保存」—— 顺带也把拖动时的往返次数从每秒 25 次降到一笔一次。
            * 一步完成的编辑（油漆桶 / 一键生成之类）走 `immediate`，立刻提交。
            */
-          if (immediate === true) void flushOps();
+          if (immediate === true) {
+            void flushOps();
+            return;
+          }
+          // 节流预览：让这一笔**看得见**（宿主只算不存），真正的提交仍在 pointerup
+          if (previewTimer.current === null) {
+            previewTimer.current = setTimeout(() => {
+              previewTimer.current = null;
+              setPreviewTick((value) => value + 1);
+            }, 80);
+          }
         },
         [flushOps]
       );
@@ -7847,8 +7900,26 @@
           hint === undefined || hint === "" ? null : h("span", { className: "SPR_mapEdRowHint" }, hint)
         );
 
-      const approvedMark = (stage) =>
-        approvedOf(stage) === true ? h("span", { className: "SPR_mapEdMark" }, "✓") : null;
+      /**
+       * 阶段的「确定」按钮。
+       *
+       * ⚠️ 原来它是「带勾的按下态」（`data-on` + `✓` 角标），看着像复选框 ——
+       * 用户直接问了「为什么做成勾选式的」。这里改成**普通按钮**：没确定时是主按钮
+       * 「确定」，确定过就变成次要按钮「已确定」，再点一下取消（`title` 里说明）。
+       */
+      const approveButton = (stage) => {
+        const done = approvedOf(stage) === true;
+        return h(
+          Btn,
+          {
+            primary: done !== true,
+            "data-approved": done === true ? "true" : undefined,
+            title: done === true ? T("再点一下取消确定") : T("这一步没问题，标成已确定"),
+            onClick: () => void toggleApproved(stage)
+          },
+          done === true ? T("已确定") : T("确定")
+        );
+      };
 
       const speedOptions = [
         ["0.5", T("慢")],
@@ -7919,7 +7990,7 @@
         h(
           "div",
           { className: "SPR_mapEdCardRow" },
-          h(Btn, { on: approvedOf("assets") === true, onClick: () => void toggleApproved("assets") }, T("确定"), approvedMark("assets"))
+          approveButton("assets")
         )
       );
 
@@ -7950,7 +8021,7 @@
           "div",
           { className: "SPR_mapEdCardRow" },
           h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("打开导出目录")),
-          h(Btn, { on: approvedOf("export") === true, onClick: () => void toggleApproved("export") }, T("确定"), approvedMark("export"))
+          approveButton("export")
         ),
         exportFiles.length === 0
           ? h("p", { className: "SPR_mapEdHint" }, T("还没有导出过。"))

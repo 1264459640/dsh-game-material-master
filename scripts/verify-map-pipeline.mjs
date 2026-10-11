@@ -570,6 +570,30 @@ try {
   check("反向验证：关掉环绕后接缝处退化成半格 / 孤岛形状（t 不再是 33/34/37/38）", flatTilesA2.some((t) => ![33, 34, 37, 38].includes(t)), flatTilesA2.join(","));
   await G.saveMapDocStructure(pSeam.id, { wrap: true });
 
+  // ★ 预览：一笔还在手上时「看得见，但不落盘」
+  {
+    const pPrev = await newProject("预览", { cols: 8, rows: 8 });
+    await G.importSampleTileset(pPrev.id);
+    const layerId = "l0"; // 第一个图层（`createMapDoc` 的默认 id）
+    const view = { x: 0, y: 0, width: 128, height: 128 };
+    const pending = [
+      { kind: "paint", layerId, cells: [{ r: 2, c: 2, tile: 1 }, { r: 3, c: 3, tile: 2 }] }
+    ];
+    const preview = await G.mapPlan(pPrev.id, { view, have: [], pending });
+    check(
+      "预览：带 pending 查计划时，这一笔已经在计划里（画的过程中看得见）",
+      opOf(preview, 2, 2).length > 0 && opOf(preview, 3, 3).length > 0,
+      `(2,2)=${opOf(preview, 2, 2).length} (3,3)=${opOf(preview, 3, 3).length}`
+    );
+    const plain = await G.mapPlan(pPrev.id, { view, have: [] });
+    check("预览不落盘：紧接着不带 pending 再查一次，那两格还是空的", opOf(plain, 2, 2).length === 0 && opOf(plain, 3, 3).length === 0);
+    check("预览不动撤销栈（拖动期间一次都没存）", G.historyState(pPrev.id).depth === 0, `depth=${G.historyState(pPrev.id).depth}`);
+    await G.applyMapOps(pPrev.id, pending, { stroke: "s1" });
+    const real = await G.mapPlan(pPrev.id, { view, have: [] });
+    check("提交之后的计划与预览逐字段一致（预览不会撒谎）", JSON.stringify(real.chunks) === JSON.stringify(preview.chunks), `${real.chunks.length} / ${preview.chunks.length} 块`);
+    check("提交之后才进撤销栈", G.historyState(pPrev.id).depth === 1, `depth=${G.historyState(pPrev.id).depth}`);
+  }
+
   // ★ 新增素材：属性在导入那一刻一次定下来；内置素材属性不可改、可删、可一键恢复
   {
     const pNew = await newProject("新增素材属性", { cols: 16, rows: 16 });

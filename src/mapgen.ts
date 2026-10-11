@@ -1364,9 +1364,30 @@ export interface PlanQueryResult {
  * 负数、也可以超过地图尺寸 —— 所以同一格会以多个像素位置出现在计划里，这是
  * 有意的：界面只负责 drawImage，不需要知道环绕。
  */
-export async function mapPlan(projectId: string, o: { view: { x: number; y: number; width: number; height: number }; have?: readonly string[]; layerIds?: readonly number[] }): Promise<PlanQueryResult> {
+export async function mapPlan(
+  projectId: string,
+  o: {
+    view: { x: number; y: number; width: number; height: number };
+    have?: readonly string[];
+    layerIds?: readonly number[];
+    /**
+     * **预览用**：还在笔里、还没提交的 op。
+     *
+     * 盖到一份 `cloneDoc` 上算计划 —— 不 `pushHistory`、不 `scheduleDocWrite`，
+     * 所以「画的过程中格子能显示出来，但一次都没存」。提交之后客户端会把这些
+     * chunk 标成待重拉，宿主再用真实数据发一遍，画面不会停在预览上。
+     */
+    pending?: readonly unknown[];
+  }
+): Promise<PlanQueryResult> {
   const project = await readProjectOrThrow(projectId);
-  const doc = await theDocOrFresh(projectId);
+  let doc = await theDocOrFresh(projectId);
+  if (Array.isArray(o.pending) && o.pending.length > 0) {
+    const preview = cloneDoc(doc);
+    // 同一个 applyOps：预览与真实编辑**走同一套校验与语义**，不会画出「提交后不一样」的东西
+    applyOps(preview, o.pending, layoutOf(project.grid, preview.cols, preview.rows));
+    doc = preview;
+  }
   const context = renderContextFor(project, doc);
   const range = viewCellRange(context.layout, o.view);
   const covering = chunksInRange(range);

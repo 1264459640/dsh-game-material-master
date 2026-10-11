@@ -1058,7 +1058,8 @@ export class GameStudioGateway extends TypertRemoteService {
     return mapgen.mapPlan(asString(input.projectId), {
       view: { x: Number(view.x) || 0, y: Number(view.y) || 0, width: Number(view.width) || 0, height: Number(view.height) || 0 },
       have: mapHave(input.have),
-      layerIds: Array.isArray(input.layerIds) ? input.layerIds.map((entry: unknown) => Number(entry)) : undefined
+      layerIds: Array.isArray(input.layerIds) ? input.layerIds.map((entry: unknown) => Number(entry)) : undefined,
+      pending: Array.isArray(input.pending) ? input.pending : undefined
     });
   }
   /** 一键生成：整层一次提交（一次撤销就能回去），同种子逐字节可复现。 */
