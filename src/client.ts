@@ -1133,6 +1133,28 @@
         "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
       "选一张素材图开始":
         "Choose a tile image to start",
+      "会动吗":
+        "Does it animate?",
+      "不动":
+        "No",
+      "不动：这张图当作一堆静止的图块。":
+        "No: treat this image as a set of still tiles.",
+      "这张图当作一堆静止的图块。":
+        "Treats this image as a set of still tiles.",
+      "翻页图":
+        "Flip-book",
+      "翻页图：像手翻书，每一行是一页，连着播就动起来了。":
+        "Flip-book: like a flip-book, one row per page; playing them in order makes it move.",
+      "像手翻书：每一行是一页，连着播就动起来了。同一列的几行算同一块，画的时候点哪一行都行，整片会一起动。":
+        "Like a flip-book: each row is one page, and playing them in order makes it move. Rows in the same column count as one tile, so it does not matter which row you click when painting -- the whole patch animates together.",
+      "会动：{n0} 行 = {n0} 帧":
+        "Animates: {n0} rows = {n0} frames",
+      "只有 1 行，动不起来（至少要 2 行）":
+        "Only 1 row, so it cannot animate (needs at least 2)",
+      "拼块自动连接本来就是会动的：{n0} 种变体轮流换":
+        "Autotile blocks animate on their own: {n0} variants take turns",
+      "只有 1 种变体，所以不会动 —— 横向多画一列变体就会动。":
+        "Only 1 variant, so nothing moves -- draw one more variant column and it will animate.",
       "地图大小要是 1 以上的整数。":
         "The map size must be a whole number of 1 or more.",
       "地图最大 512×512 格。":
@@ -7653,6 +7675,28 @@
        * 就是「图有多大 ÷ 一格多大」，所以这里把结果直接算给他看；除不尽也说出来，
        * 免得他以为设了 20 就该正好切满。
        */
+      /**
+       * 「会动吗」那一行：素材本身要不要逐行播动画。
+       *
+       * 术语上它叫「逐行动画」（`animRows`），但用户听不懂，所以界面上一律用
+       * **「翻页图」**这个比方：像手翻书，每一行是一页，连着播就动起来了。
+       * 拼块自动连接（A2）是另一套 —— 它的变体本来就是帧，不用选，直接说明就好。
+       */
+      const cellCols = tileset === null ? 1 : Math.max(1, Math.floor(tileset.imageWidth / Math.max(1, tileset.cell.width)));
+      const cellRows = tileset === null ? 1 : Math.max(1, Math.floor(tileset.imageHeight / Math.max(1, tileset.cell.height)));
+      const animHint =
+        tileset === null
+          ? ""
+          : tileset.shape === "a2quad"
+            ? tileset.variants > 1
+              ? T("拼块自动连接本来就是会动的：{n0} 种变体轮流换", { n0: String(tileset.variants) })
+              : T("只有 1 种变体，所以不会动 —— 横向多画一列变体就会动。")
+            : tileset.animRows === true
+              ? cellRows > 1
+                ? T("会动：{n0} 行 = {n0} 帧", { n0: String(cellRows) })
+                : T("只有 1 行，动不起来（至少要 2 行）")
+              : T("不动");
+
       const cellGridHint =
         tileset === null
           ? ""
@@ -7757,6 +7801,56 @@
                   )
                 ),
                 tilesetReason
+              ),
+              row(
+                T("会动吗"),
+                tileset.shape === "a2quad"
+                  ? h("span", { className: "SPR_mapEdHint", "data-testid": "map-anim-note" }, animHint)
+                  : h(
+                      "div",
+                      { className: "SPR_mapEdSeg", "data-testid": "map-anim-seg" },
+                      h(
+                        "button",
+                        {
+                          type: "button",
+                          className: "SPR_mapEdSegBtn",
+                          "data-anim": "off",
+                          "data-on": tileset.animRows === true ? undefined : "true",
+                          "aria-label": T("不动：这张图当作一堆静止的图块。"),
+                          onMouseEnter: showToolTip(T("不动"), T("这张图当作一堆静止的图块。"), null),
+                          onFocus: showToolTip(T("不动"), T("这张图当作一堆静止的图块。"), null),
+                          onMouseLeave: hideToolTip,
+                          onBlur: hideToolTip,
+                          onClick: () => void saveTileset({ animRows: false })
+                        },
+                        T("不动")
+                      ),
+                      h(
+                        "button",
+                        {
+                          type: "button",
+                          className: "SPR_mapEdSegBtn",
+                          "data-anim": "rows",
+                          "data-on": tileset.animRows === true ? "true" : undefined,
+                          "aria-label": T("翻页图：像手翻书，每一行是一页，连着播就动起来了。"),
+                          onMouseEnter: showToolTip(
+                            T("翻页图"),
+                            T("像手翻书：每一行是一页，连着播就动起来了。同一列的几行算同一块，画的时候点哪一行都行，整片会一起动。"),
+                            null
+                          ),
+                          onFocus: showToolTip(
+                            T("翻页图"),
+                            T("像手翻书：每一行是一页，连着播就动起来了。同一列的几行算同一块，画的时候点哪一行都行，整片会一起动。"),
+                            null
+                          ),
+                          onMouseLeave: hideToolTip,
+                          onBlur: hideToolTip,
+                          onClick: () => void saveTileset({ animRows: true })
+                        },
+                        T("翻页图")
+                      )
+                    ),
+                animHint
               ),
               row(
                 T("动画速度"),

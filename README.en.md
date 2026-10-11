@@ -51,7 +51,10 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 > data level (auto-tiling joins the top/bottom and left/right edges). The canvas cannot be dragged off the map —
 > it stops at the edge and the map's top-left lines up with the canvas — and the blank area outside cannot be
 > painted; a built-in tileset is one click away
-> ("try the built-in tileset"), and you can generate random terrain, a maze or a continent in one go.
+> ("try the built-in tileset" — its water already has a 2-frame animation). To animate **your own plain
+> sheets**, pick "**Flip-book**" under "Does it animate?" in the Assets card: like a flip-book, each row is one
+> page, and the card states the result ("Animates: N rows = N frames"). Autotile-block sheets need no setting —
+> their variants are the frames. You can also generate random terrain, a maze or a continent in one go.
 > **Not a single model call is made — so nothing is billed.**
 
 > 🏷️ **Creating anything in any of the six modules asks for a name first**: the field is pre-filled with the

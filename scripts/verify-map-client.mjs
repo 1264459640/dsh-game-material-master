@@ -1922,6 +1922,41 @@ try {
     const savedShape = (await G.readMapProject(projectId)).tilesets[0].shape;
     check("点「普通」真的把用法存进宿主", savedShape === "plain", String(savedShape));
 
+    // ── 「会动吗」：普通素材给「不动 / 翻页图」两个按钮（悬停有解释），A2 直接说明
+    {
+      const propsChip = byClass(assets, "SPR_mapEdChip").find((node) => textOf(node).includes("道具"));
+      propsChip.props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      const card = byClass(tree, "SPR_mapEdCard")[0];
+      const animButtons = collect(card, (node) => typeof node.props?.["data-anim"] === "string");
+      check("普通素材有「不动 / 翻页图」两个按钮", animButtons.length === 2 && animButtons.some((node) => textOf(node) === "翻页图"), animButtons.map((node) => textOf(node)).join(" / "));
+      check("当前是「不动」（宿主 animRows 默认 false）", collect(card, (node) => node.props?.["data-anim"] === "off")[0].props["data-on"] === "true");
+      animButtons.find((node) => node.props["data-anim"] === "rows").props.onMouseEnter({
+        currentTarget: { getBoundingClientRect: () => ({ left: 120, top: 320, width: 60, height: 24 }) }
+      });
+      tree = await renderTree(() => MapModule({ api }));
+      const animTip = textOf(byClass(tree, "SPR_mapEdTip")[0] ?? null);
+      check("悬停「翻页图」用手翻书打比方讲清楚", animTip.includes("翻页图") && animTip.includes("手翻书"), animTip);
+      collect(tree, (node) => node.props?.["data-anim"] === "rows")[0].props.onMouseLeave();
+      tree = await renderTree(() => MapModule({ api }));
+      collect(tree, (node) => node.props?.["data-anim"] === "rows")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      const afterOn = (await G.readMapProject(projectId)).tilesets.find((ts) => ts.name.includes("道具"));
+      check("点「翻页图」真的开起来了（宿主 animRows = true）", afterOn?.animRows === true, JSON.stringify({ animRows: afterOn?.animRows, variants: afterOn?.variants }));
+      const onCard = byClass(tree, "SPR_mapEdCard")[0];
+      check("开关打开后卡片上写明「会动：N 行 = N 帧」", /会动：\d+ 行 = \d+ 帧/.test(textOf(onCard)), textOf(onCard).match(/会动：[^\s]*/)?.[0] ?? "");
+      collect(onCard, (node) => node.props?.["data-anim"] === "off")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      const afterOff = (await G.readMapProject(projectId)).tilesets.find((ts) => ts.name.includes("道具"));
+      check("点「不动」能关回去", afterOff?.animRows === false, String(afterOff?.animRows));
+      // 换回一块**仍是拼块**的素材（草地被上文改成「普通」了，所以用土路）：
+      // 拼块不给开关，而是直接说明「变体轮流换」
+      byClass(byClass(tree, "SPR_mapEdCard")[0], "SPR_mapEdChip")[1].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      const a2Card = byClass(tree, "SPR_mapEdCard")[0];
+      check("拼块素材不给开关，直接说明它会动", collect(a2Card, (node) => typeof node.props?.["data-anim"] === "string").length === 0 && /轮流换/.test(textOf(a2Card)), textOf(a2Card).match(/[^\s]*轮流换/)?.[0] ?? textOf(a2Card).slice(0, 60));
+    }
+
     // ── 通过按钮：文案是「确定」
     const approveBtn = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "确定")[0];
     check("素材卡的通过按钮叫「确定」（不再是「这步看过了」）", approveBtn !== undefined, collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button").map((node) => textOf(node)).join(" / "));
