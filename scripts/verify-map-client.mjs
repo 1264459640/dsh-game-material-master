@@ -596,9 +596,14 @@ try {
   check("看到地形族「草地」", textOf(tree).includes("草地"), textOf(tree).slice(0, 100));
   check("看到掩码覆盖率（47/47 完整）", textOf(tree).includes("47/47") || textOf(tree).includes("完整"), textOf(tree).slice(0, 200));
   check("规则阶段有过渡方案的小字说明", byClass(tree, "SPR_meCardNote").length >= 2, `${byClass(tree, "SPR_meCardNote").length} 条`);
+  // 「族」这个词必须**就地解释清楚**（用户反馈过：只讲机制不讲「族是什么」，看不明白）
   check(
-    "地形族 / 掩码旁边就地有小字（不是集中折叠块）",
-    byClass(tree, "SPR_meCardNote").some((node) => textOf(node).includes("地形族") && textOf(node).includes("掩码"))
+    "规则卡片开头解释了「地形族」是什么（一类地貌 + 为什么要归族）",
+    byClass(tree, "SPR_meHint").some((node) => textOf(node).includes("「地形族」就是一类地貌"))
+  );
+  check(
+    "族编辑器旁讲了「方框里每个字段是什么」与「掩码」",
+    byClass(tree, "SPR_meCardNote").some((node) => textOf(node).includes("下面每个方框就是一个族") && textOf(node).includes("掩码"))
   );
 
   // ── 名词速查与「删除入口」：这是真机反馈过「找不到 / 看不懂」的两块 ──────────
@@ -851,6 +856,9 @@ try {
     check(`模块六的${name}用 DSH 变量（深色主题下不塌）`, clientSource.includes(needle), needle);
   }
   check("导出列表带逐文件说明（exportFileHint）", mapSource.includes("exportFileHint"));
+  // 夹具里已经有族，渲染不出「还没有族」那句；这条改成静态断言它在源码里（用户反馈过
+  // 「只讲机制不讲『族是什么』」，所以空态那段也必须解释一遍）
+  check("还没族时的空提示也解释了「族」", mapSource.includes("「族」就是一类地貌"));
   check("面板正文有内边距（.SPR_moduleBody 以前一条 CSS 都没有，内容贴着左边缘）", clientSource.includes(".SPR_moduleBody{display:block;padding:16px 18px 40px}"));
 
   /**

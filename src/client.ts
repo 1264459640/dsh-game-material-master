@@ -1075,8 +1075,8 @@
         "Import your own tileset image, slice it by grid or rectangles, then assign tiles to terrain families",
       "② 规则":
         "② Rules",
-      "定义地形族与自动过渡（单块 / 16 掩码 / 47 掩码），缺的块会标出来":
-        "Define terrain families and auto-tiling (single / 16-mask / 47-mask); missing pieces are flagged",
+      "定义地形族（一类地貌：草地 / 土路 / 水…）与自动过渡方案（单块 / 16 掩码 / 47 掩码），缺的块会标出来":
+        "Define terrain families (a kind of terrain: grass / dirt road / water…) and the auto-tiling scheme (single / 16-mask / 47-mask); missing pieces are flagged",
       "③ 地图":
         "③ Maps",
       "多张地图、多图层、每层高度偏移；画布上直接刷，撤销重做都在宿主":
@@ -1201,8 +1201,8 @@
         "Assign masks to \"{n0}\" in order",
       "地形族与自动过渡":
         "Terrain families and auto-tiling",
-      "优先级大的族会朝优先级小的邻居长过渡块（草地 < 土路 < 水）。缺掩码的地方会回退成最近的一块，并在下面标出来。":
-        "A family with higher priority grows transition tiles toward lower-priority neighbours (grass < dirt < water). Missing masks fall back to the nearest one and are listed below.",
+      "「地形族」就是一类地貌：草地、土路、水、墙……把图块按地貌归进不同的族，铺图时宿主才知道哪里该换成带过渡边缘的图块（草地边上接着土路，就换成带土路边的草地）。不归族也能画，但只能一块一块手刷，自动过渡不会生效。":
+        "A \"terrain family\" is a kind of terrain: grass, dirt road, water, wall… Assign tiles to families by terrain and the host knows where to swap in edge tiles while painting (grass next to a dirt road becomes grass-with-dirt-edge). You can paint without families, but then every tile is placed by hand and auto-tiling does nothing.",
       "新族":
         "New family",
       "加一个族":
@@ -1211,8 +1211,8 @@
         "Save families",
       "掩码覆盖率":
         "Mask coverage",
-      "还没有族。先加一个族，再把图块归进去。":
-        "No family yet. Add one, then assign tiles to it.",
+      "还没有族。「族」就是一类地貌（草地 / 土路 / 水…）：先「加一个族」，再去①图集把图块归进去，自动过渡才有依据。":
+        "No family yet. A \"family\" is a kind of terrain (grass / dirt road / water…): click \"Add a family\" first, then assign tiles to it over in step ① — that is what auto-tiling works from.",
       "完整":
         "Complete",
       "缺 {n0} 块":
@@ -1276,8 +1276,8 @@
         "Delete the map \"{n0}\"? Everything painted on it is removed too, and this cannot be undone.",
       "格宽 / 格高 = 每块贴图的像素大小；图集四周或块之间有空隙时，把空隙填进边距 / 间距。下面那张网格就是切完的效果，点格子可以多选后归入地形族。":
         "Cell width / height is the pixel size of one tile; if the atlas has padding around it or gaps between tiles, put those into the margins / spacing. The grid below is the result of the current slice — click tiles to multi-select them and assign a family.",
-      "过渡方案怎么选：边界横平竖直的（墙、路）用「四邻域 16 掩码」；要 45° 斜角与内角就选「八邻域 47 掩码」；完全不想要过渡边缘就选「单块」。族名只是给你自己看的标签，不影响出图。":
-        "Which scheme to pick: use \"16-mask (4-neighbour)\" for straight edges (walls, roads); pick \"47-mask (8-neighbour)\" when you want 45° corners and inner corners; choose \"single tile\" if you want no transition edges at all. Family names are just labels for you and do not affect the output.",
+      "过渡方案怎么选：边界横平竖直的（墙、路）用「四邻域 16 掩码」；要 45° 斜角与内角就选「八邻域 47 掩码」；完全不想要过渡边缘就选「单块」。优先级管「谁朝谁长边」——数字大的族会朝数字小的邻居长过渡块（草地 < 土路 < 水）；缺掩码的地方会回退成最接近的一块，并在下面标出来。":
+        "Which scheme to pick: use \"16-mask (4-neighbour)\" for straight edges (walls, roads); pick \"47-mask (8-neighbour)\" when you want 45° corners and inner corners; choose \"single tile\" if you want no transition edges at all. Priority decides who grows an edge into whom: a bigger number grows its transition into smaller-numbered neighbours (grass < dirt road < water). Missing masks fall back to the closest one and are listed below.",
       "数字越大越「强势」：它会朝数字小的邻居长过渡块":
         "Bigger numbers win: this family grows its transition into smaller-numbered neighbours",
       "这里看你给每个族配齐了没有：47 掩码方案要有 47 块不同拼接形状（16 掩码要 16 块）。缺的块运行时回退成最接近的一块，不会报错，但过渡会显得生硬。":
@@ -1381,8 +1381,8 @@
       // ── 地图编辑器：就地小字（原来的「名词速查」折叠块已拆到各自控件旁）＋ 图层删除确认 ──
       "点一块图作为笔刷（序号 {n0}）。带底色的是已归族的块。序号是「全项目统一的图块编号」，不是第几行第几列。":
         "Click a tile to use it as the brush (index {n0}). Tinted tiles belong to a family. The index is the project-wide tile number, not a row/column.",
-      "上面那行是「地形族」（一类地貌）的名字，下面是它用的「掩码」方案——掩码就是在说「这块图的哪几条边 / 角上挨着同族邻居」。想改族名直接在输入框里改，点「保存族」生效。":
-        "The first field is the terrain family (a kind of terrain) and the next one is its mask scheme — a mask says which edges/corners of a tile touch a neighbour of the same family. Edit the name right in the field and click \"Save families\" to apply.",
+      "下面每个方框就是一个族：左边输入框是它的名字（只给你自己看，随便起），接着选它的过渡方案、填优先级，改完点「保存族」生效。「掩码」说的是这块图的哪几条边 / 角上挨着同族邻居——方案选完之后，你在①图集里把图块按顺序归族，就是在告诉宿主哪一块对应哪种掩码。":
+        "Each block below is one family: the first field is its name (just a label for you — call it anything), then its tiling scheme and priority; click \"Save families\" to apply. A mask says which edges/corners of a tile touch a neighbour of the same family — after picking the scheme, assigning tiles to the family over in step ① is how you tell the host which tile stands for which mask.",
       "图层里的「空单元格算哪个族」：整层是水时，把空着的地方也算成水，接壤的地面才会长出过渡边；不设就是普通空地。「高度偏移」让整层上下挪几像素（做贴墙装饰那种层次）。":
         "\"Empty cells count as\" per layer: when a whole layer is water, counting its empty cells as water is what makes the neighbouring ground grow transition edges; leaving it unset means plain empty ground. Height offset shifts a whole layer up or down a few pixels (that is how wall decorations sit).",
       "优先级": "Priority",
@@ -1867,7 +1867,7 @@
     function make_MAP_STAGES() {
       return [
       { key: "assets", title: T("① 图集"), hint: T("导入你自己的 tileset 图，按网格或矩形切分，再把图块归入地形族") },
-      { key: "rules", title: T("② 规则"), hint: T("定义地形族与自动过渡（单块 / 16 掩码 / 47 掩码），缺的块会标出来") },
+      { key: "rules", title: T("② 规则"), hint: T("定义地形族（一类地貌：草地 / 土路 / 水…）与自动过渡方案（单块 / 16 掩码 / 47 掩码），缺的块会标出来") },
       { key: "paint", title: T("③ 地图"), hint: T("多张地图、多图层、每层高度偏移；画布上直接刷，撤销重做都在宿主") },
       { key: "export", title: T("④ 导出"), hint: T("PNG 分层与合并 + 自有 JSON + Tiled .tmj/.tsj，全部本地免费") }
     ];
@@ -7563,9 +7563,9 @@
           "div",
           { className: "SPR_meCard" },
           h("h4", null, T("地形族与自动过渡")),
-          h("p", { className: "SPR_meHint" }, T("优先级大的族会朝优先级小的邻居长过渡块（草地 < 土路 < 水）。缺掩码的地方会回退成最近的一块，并在下面标出来。")),
-          h("p", { className: "SPR_meCardNote" }, T("过渡方案怎么选：边界横平竖直的（墙、路）用「四邻域 16 掩码」；要 45° 斜角与内角就选「八邻域 47 掩码」；完全不想要过渡边缘就选「单块」。族名只是给你自己看的标签，不影响出图。")),
-          h("p", { className: "SPR_meCardNote" }, T("上面那行是「地形族」（一类地貌）的名字，下面是它用的「掩码」方案——掩码就是在说「这块图的哪几条边 / 角上挨着同族邻居」。想改族名直接在输入框里改，点「保存族」生效。")),
+          h("p", { className: "SPR_meHint" }, T("「地形族」就是一类地貌：草地、土路、水、墙……把图块按地貌归进不同的族，铺图时宿主才知道哪里该换成带过渡边缘的图块（草地边上接着土路，就换成带土路边的草地）。不归族也能画，但只能一块一块手刷，自动过渡不会生效。")),
+          h("p", { className: "SPR_meCardNote" }, T("过渡方案怎么选：边界横平竖直的（墙、路）用「四邻域 16 掩码」；要 45° 斜角与内角就选「八邻域 47 掩码」；完全不想要过渡边缘就选「单块」。优先级管「谁朝谁长边」——数字大的族会朝数字小的邻居长过渡块（草地 < 土路 < 水）；缺掩码的地方会回退成最接近的一块，并在下面标出来。")),
+          h("p", { className: "SPR_meCardNote" }, T("下面每个方框就是一个族：左边输入框是它的名字（只给你自己看，随便起），接着选它的过渡方案、填优先级，改完点「保存族」生效。「掩码」说的是这块图的哪几条边 / 角上挨着同族邻居——方案选完之后，你在①图集里把图块按顺序归族，就是在告诉宿主哪一块对应哪种掩码。")),
           h(
             "div",
             { className: "SPR_meFamilyEdit" },
@@ -7639,7 +7639,7 @@
           h("h4", null, T("掩码覆盖率")),
           h("p", { className: "SPR_meCardNote" }, T("这里看你给每个族配齐了没有：47 掩码方案要有 47 块不同拼接形状（16 掩码要 16 块）。缺的块运行时回退成最接近的一块，不会报错，但过渡会显得生硬。")),
           coverage.length === 0
-            ? h("p", { className: "SPR_meHint" }, T("还没有族。先加一个族，再把图块归进去。"))
+            ? h("p", { className: "SPR_meHint" }, T("还没有族。「族」就是一类地貌（草地 / 土路 / 水…）：先「加一个族」，再去①图集把图块归进去，自动过渡才有依据。"))
             : h(
                 "div",
                 { className: "SPR_meCoverage" },
