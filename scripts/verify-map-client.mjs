@@ -1382,11 +1382,27 @@ try {
       previewQueries.length > 0,
       `预览查询 ${previewQueries.length} 次 / 总共 ${apiLog.plans.length} 次查询`
     );
+    /**
+     * ⚠️ 这条原来写得太松（「有一块带 op」或「visibleKeys 非空」都算过），结果放过去一个真机 bug：
+     * 预览查询带着 `have`，宿主认为「你有这一块」就不回传 —— 于是拖动期间**一片空白**，
+     * 松手提交后靠 dropKeys 重拉才出现。现在按「返回的那块里、那一格的 op 真的换了」来判。
+     */
+    const opAt = (result, r, c) => {
+      for (const chunk of result.chunks ?? []) {
+        const hit = chunk.ops.find((op) => op.r === r && op.c === c);
+        if (hit !== undefined) return hit;
+      }
+      return null;
+    };
+    const beforeOp = opAt(planBefore, viewMidR, viewMidC);
+    const strictPreview = previewQueries.some((entry) => {
+      const op = opAt(entry.result, viewMidR, viewMidC);
+      return op !== null && (beforeOp === null || op.t !== beforeOp.t);
+    });
     check(
-      "预览真的把这一笔画进了计划（不是空转）",
-      previewQueries.some((entry) => entry.result.chunks.some((chunk) => chunk.ops.length > 0)) ||
-        previewQueries.some((entry) => entry.result.visibleKeys.length > 0),
-      `预览块 ${previewQueries.map((entry) => entry.result.chunks.length).join(",")}`
+      "预览真的把这一笔画进了计划（返回块里那一格的内容变了，不是空转）",
+      strictPreview,
+      `按下格 ${viewMidR},${viewMidC}：拖动前 ${beforeOp === null ? "无 op" : "t" + beforeOp.t}，预览回传块 ${previewQueries.map((entry) => entry.result.chunks.length).join(",")}`
     );
     check(
       "预览期间 applyMapOps 一次都没发（只有松手那一次）",
@@ -1987,13 +2003,24 @@ try {
     tree = await renderTree(() => MapModule({ api }));
     check("「恢复默认素材」把它拿回来（同名不会变成两份）", rowCount() === beforeRows && textOf(byClass(tree, "SPR_mapEdCard")[0]).includes(builtinName), `${rowCount()} 张`);
 
-    // ── 通过按钮：文案是「确定」
-    const approveBtn = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "确定")[0];
-    check("素材卡的通过按钮叫「确定」（不再是「这步看过了」）", approveBtn !== undefined, collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button").map((node) => textOf(node)).join(" / "));
-    approveBtn.props.onClick();
+    // ── 通过按钮：普通按钮「确定」，按下即标记 + **收起卡片**，没有「取消确认」这一说
+    const cardBeforeConfirm = byClass(tree, "SPR_mapEdCard")[0];
+    const confirmBtn = collect(cardBeforeConfirm, (node) => node.type === "button" && textOf(node) === "确定")[0];
+    check(
+      "素材卡的通过按钮叫「确定」（不再是「这步看过了」）",
+      confirmBtn !== undefined && confirmBtn.props["data-on"] === undefined && confirmBtn.props["data-approved"] === undefined,
+      collect(cardBeforeConfirm, (node) => node.type === "button").map((node) => textOf(node)).join(" / ")
+    );
+    check(
+      "它不是勾选式、也没有「取消确认」（用户：素材根本没有取消确认这一说）",
+      !/✓|已确定|取消确定/.test(textOf(cardBeforeConfirm)),
+      textOf(cardBeforeConfirm).match(/[^\s]*(?:已确定|取消确定|✓)[^\s]*/)?.[0] ?? "（没有这类文案）"
+    );
+    confirmBtn.props.onClick();
     tree = await renderTree(() => MapModule({ api }));
     const stages = (await G.readMapProject(projectId)).stages;
     check("点「确定」标记素材阶段已通过", stages?.assets?.status === "done", JSON.stringify(stages));
+    check("点「确定」之后卡片收起来（回到画布，不是留着一个已确定的按钮）", byClass(tree, "SPR_mapEdCard").length === 0, `还剩 ${byClass(tree, "SPR_mapEdCard").length} 张卡片`);
   }
 
 } finally {

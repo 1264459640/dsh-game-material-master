@@ -580,6 +580,18 @@ try {
       { kind: "paint", layerId, cells: [{ r: 2, c: 2, tile: 1 }, { r: 3, c: 3, tile: 2 }] }
     ];
     const preview = await G.mapPlan(pPrev.id, { view, have: [], pending });
+    /**
+     * ★ 真机踩过的坑：客户端查计划会带 `have`。如果宿主因为「你有这一块」就不回传，
+     * 那么**预览改动落在已有块里时什么都画不出来** —— 拖动期间一片空白，松手提交后
+     * 靠 `dropKeys` 重拉才出现。这里钉住：带上 have（缓存里有这一块）也要把它发回来。
+     */
+    const withHave = await G.mapPlan(pPrev.id, { view, have: preview.visibleKeys, pending });
+    const forcedBack = withHave.chunks.filter((chunk) => chunk.ops.some((op) => (op.r === 2 && op.c === 2) || (op.r === 3 && op.c === 3)));
+    check(
+      "预览：即使客户端说「这几块我有」，受影响的那块也会被强制发回来（否则拖动期间一片空白）",
+      forcedBack.length > 0,
+      `回传 ${withHave.chunks.length} 块，其中带预览格的 ${forcedBack.length} 块`
+    );
     check(
       "预览：带 pending 查计划时，这一笔已经在计划里（画的过程中看得见）",
       opOf(preview, 2, 2).length > 0 && opOf(preview, 3, 3).length > 0,

@@ -1131,12 +1131,6 @@
         "Choose a tile image to start, or try the built-in one. What you get is a 32 by 32 map with two layers, ready to paint.",
       "选一张素材图开始":
         "Choose a tile image to start",
-      "已确定":
-        "Confirmed",
-      "再点一下取消确定":
-        "Click again to un-confirm",
-      "这一步没问题，标成已确定":
-        "This step looks good -- mark it confirmed",
       "会动 {n0} 帧":
         "Animates: {n0} frames",
       "新增素材":
@@ -6472,7 +6466,16 @@
               const size = viewportRef.current;
               const currentView = { x: pan.x, y: pan.y, width: size.w / zoom, height: size.h / zoom };
               const pending = currentStroke.current === null ? undefined : [...pendingOps.current];
-              const have = [...planRef.current.keys()].filter((key) => {
+              /**
+               * ⚠️ **预览查询一律不带 `have`**（说自己什么都没有）。
+               *
+               * 真机踩过：预览改的格子往往落在**已经缓存过的块**里，宿主一看「你有这一块」
+               * 就不回传 —— 于是拖动期间一片空白，松手提交后靠 `dropKeys` 重拉才出现。
+               * 客户端又不许自己算「这一笔碰到哪些块」（那是宿主的几何），所以预览时
+               * 干脆要一整份可视块：多传几十块，换「拖着就能看见」，值。
+               * （宿主那边另有强制回传，见 `mapgen.mapPlan` 的 `forced`。）
+               */
+              const have = pending !== undefined ? [] : [...planRef.current.keys()].filter((key) => {
                 // 待重拉的键不算「我有」：宿主据此把新内容发回来
                 if (staleRef.current.has(key)) return false;
                 // 预览块同理：它只反映「当时那一部分 op」，这一笔还在长，必须重新算
@@ -7901,25 +7904,24 @@
         );
 
       /**
-       * 阶段的「确定」按钮。
+       * 阶段的「确定」：标记这一步看过了，**并把这个卡片关掉**。
        *
-       * ⚠️ 原来它是「带勾的按下态」（`data-on` + `✓` 角标），看着像复选框 ——
-       * 用户直接问了「为什么做成勾选式的」。这里改成**普通按钮**：没确定时是主按钮
-       * 「确定」，确定过就变成次要按钮「已确定」，再点一下取消（`title` 里说明）。
+       * ⚠️ 用户的原话：「确认后应该关闭窗口，目前就素材来说根本没有『取消确认』这一说」。
+       * 所以它既不做成勾选式（曾经是 `data-on` + `✓`），也不提供反向操作 ——
+       * 按一下就是「看完了，收工」，卡片收起、回到画布。（阶段标记本身仍可由验收流程改，
+       * 界面上不暴露。）
        */
-      const approveButton = (stage) => {
-        const done = approvedOf(stage) === true;
-        return h(
-          Btn,
-          {
-            primary: done !== true,
-            "data-approved": done === true ? "true" : undefined,
-            title: done === true ? T("再点一下取消确定") : T("这一步没问题，标成已确定"),
-            onClick: () => void toggleApproved(stage)
-          },
-          done === true ? T("已确定") : T("确定")
-        );
+      const confirmStage = async (stage) => {
+        if (view === null || api === undefined) return;
+        setOpenCard(null); // 先收起卡片：这是「看完了」的动作，反馈要立刻
+        if (approvedOf(stage) === true) return; // 已经标过就不用再发一次
+        const done = await withApi(() => api.setMapApproved({ projectId: view.id, stage, approved: true }));
+        if (done === undefined) return;
+        await loadProject(view.id, true);
       };
+
+      const confirmButton = (stage) =>
+        h(Btn, { primary: true, "data-testid": `map-confirm-${stage}`, onClick: () => void confirmStage(stage) }, T("确定"));
 
       const speedOptions = [
         ["0.5", T("慢")],
@@ -7990,7 +7992,7 @@
         h(
           "div",
           { className: "SPR_mapEdCardRow" },
-          approveButton("assets")
+          confirmButton("assets")
         )
       );
 
@@ -8021,7 +8023,7 @@
           "div",
           { className: "SPR_mapEdCardRow" },
           h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("打开导出目录")),
-          approveButton("export")
+          confirmButton("export")
         ),
         exportFiles.length === 0
           ? h("p", { className: "SPR_mapEdHint" }, T("还没有导出过。"))
