@@ -127,42 +127,9 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 | `0.2.1` | 2026-09-30 14:18 | 合并 PR #2（来自 qiufl）：适配新版 DSH 的 strict codec `create()` 契约（`fix(typert)`，含 revert 后修正版）；阶段①「提取序列帧」新增**手动选帧**功能，15 文件 +1387 行 |
 | `0.3.0` | 2026-10-05 12:56 | 新增**多语言支持**（界面文案与内置提示词跟随 DSH 语言设置，中 / 英，`feat(i18n)`，README 增加英文版）；新增模块五「**45°地图地块生成**」（实验性：等距地块 → 拼成整张地图，`feat(tile)`）；另有 `fix(tools)` 工具返回值统一过 `jsonSafe`、`fix(scripts)` verify-live-bundle 兼容 |
 | `0.4.0` | 2026-10-09 14:12 | 设置页新增「**功能管理**」（`feat(settings)`）：逐个开关五个模块，隐藏后界面上不再出现它的页签与侧栏菜单项，**对话工具面同样拒绝调用**（`game_material_call` / `status` / `intake` / `upload` / `wait` / `review` / `approve`），且可见性只能由用户在设置页里改；侧栏「游戏素材大师」入口上新增**快捷菜单按钮**，点击直接弹出五个功能 |
+| `0.6.0` | 2026-10-15 08:50 | **模块六「地图编辑器」推倒重做**（`feat(map)`，实验性，**全本地零计费**）：参照 [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) 的 **RPG Map Maker** 改成**一屏、纯图标、零术语**（左侧素材调色板 + 12 个图标按钮，右侧画布，选一张素材图就能开画）；素材形态（RPG Maker A2 拼块 / 整格 16 块 / 普通图块）由尺寸**自动识别**；**地图四周环绕**（相机 / 命中 / 绘制范围 / 脏块 / 邻域判断全部取模）；一格的 A2 自动连接由宿主展开成 **4 条象限 op**（客户端仍只 `drawImage`）；**动画地块**走 op 上的 `cycle` + 全局帧号；自带**程序化生成的内置素材**（4 张 A2 + 1 张道具，水有 2 帧动画；AsLib 的 pipo 素材是第三方版权，不打包）；新增**一键生成**（随机铺满 / 迷宫 / 大陆，同种子逐字节可复现）；编辑协议新增 **`dropKeys`**（界面把缓存 chunk key 报上来，宿主只回真正失效的那几个），`mapPlan` 改成按视口查询（`view` + `have`）；「**翻页图**」给自己的普通素材开逐行动画；**导出窗口按正常操作逻辑重做**（内容三只复选框多选 / 只有一个「导出」/ 多产物自动打一个 `<地图名>.zip`，`src/zip.ts` 手写且时间戳写死所以可复现 / 卡片写出本机绝对路径、「另存为…」走浏览器原生保存框）；**删除**：2:1 等距、多地图、图层高度 / 不透明度 / 类型 / 锁定、地形族与掩码编辑器、掩码覆盖率、Tiled `.tmj` `.tsj` 导出、带图例的自有 JSON、切片 contact sheet（`map-jobs/<id>/maps/` 目录消失，单张地图直接落 `map.json`）；wire 方法删 4 个（`saveMapFamilies` / `createMapDoc` / `deleteMapDoc` / `duplicateMapDoc`）、加 2 个（`runMapGenerate` / `importSampleTileset`）；自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。⚠️ 改完必须重启 DSH（宿主半区）。（`0.5.0` 从未发布，其模块六实现已被本次重做整体取代） |
 
 下一次发布请**在表中追加一行**，写明版本、UTC 时间与内容。
-
-### ⏳ 已改好版本号、**尚未发布**：`0.6.0`
-
-`package.json` 已是 `0.6.0`，但**还没有** `npm publish`（发布由用户决定）。
-（`0.5.0` 从未发布；它当初的模块六实现已被下面这次重做整体取代，所以这里只写 0.6.0 的内容。）内容：
-
-> **模块六「地图编辑器」推倒重做**（`feat(map)`，实验性，**全本地零计费**）：参照
-> [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) 的 **RPG Map Maker** 改成**一屏、纯图标、零术语** ——
-> 左侧素材调色板 + 12 个图标按钮，右侧画布，选一张素材图就能开画。
-> 素材形态（RPG Maker A2 拼块 / 整格 16 块 / 普通图块）由尺寸**自动识别**，识别错了一个下拉改；
-> **地图四周环绕**（相机、命中、绘制范围、脏块、邻域判断全部取模）；一格的 A2 自动连接由宿主
-> 展开成 **4 条象限 op**（客户端仍然只 `drawImage`）；**动画地块**走 op 上的 `cycle` + 全局帧号；
-> 自带一套**程序化生成的内置素材**（4 张 A2 + 1 张道具，水有 2 帧动画；AsLib 的 pipo 素材是第三方
-> 版权，不打包）；新增**一键生成**（随机铺满 / 迷宫 / 大陆，同种子逐字节可复现）。
-> 编辑协议新增 **`dropKeys`**：界面把缓存的 chunk key 报上来，宿主只回「真正失效的那几个」，
-> 于是界面里连 chunk 计算都没有；`mapPlan` 改成按视口查询（`view` + `have`）。
-> **删除**：2:1 等距、多地图、图层高度 / 不透明度 / 类型 / 锁定、地形族与掩码编辑器、掩码覆盖率、
-> Tiled `.tmj`/`.tsj` 导出、带图例的自有 JSON、切片 contact sheet；`map-jobs/<id>/maps/` 目录消失
-> （单张地图直接落 `map.json`）。wire 方法删 4 个（`saveMapFamilies` / `createMapDoc` /
-> `deleteMapDoc` / `duplicateMapDoc`）、加 2 个（`runMapGenerate` / `importSampleTileset`）。
-> **导出窗口按正常操作逻辑重做**（`fix(map)`）：内容是「地图图片 PNG / 存档数据 JSON / 素材原图」
-> 三只复选框（以前是两个看着像页签、点一下就立刻导的按钮），执行只有**一个「导出」**；产物超过一个
-> 时宿主**自动打一个 `<地图名>.zip`**（`src/zip.ts` 手写，时间戳写死所以可复现），界面主按钮就是
-> 下载这个 zip，「另存为…」走浏览器原生保存框（有才显示）——「位置由浏览器决定」这句也写在卡片上；
-> 卡片会写出导出目录的**本机绝对路径**，「打开导出目录」打开的终于是导出目录本身（以前打开的是项目根）。
-> wire 的 `runMapExport.formats` 从 `record(unknown)` 改成**逐项声明**（png / json / tilesets / zip / scale），
-> `revealMapProject` 新增 `target: "project" | "export"`（漏进 schema 就会被静默丢掉）。
-> 卡片里的「确定」按钮也删了（用户：「确定键可以删了，和右上角的 x 没区别」）—— 阶段标记在界面上
-> 不可见，那颗按钮对用户就只剩「关掉卡片」；现在关卡片只有右上角的 ×，标记仍可由对话面 /
-> 设置卡里那颗**有状态**的「整个模块看过了」改。
-> 自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。
-> ⚠️ **改完必须重启 DSH**（宿主半区），且对话面方法枚举会在重启后更新。
-
-发布时按下面的流程走，并**把这段挪进上面的「已发布版本」表**（补上 UTC 时间）。
 
 ### 流程
 
@@ -217,7 +184,7 @@ npm view dsh-game-material-master dist-tags
   代价是仓库内改图后要跟着改 URL，别写成相对路径「图方便」。
 - **截图不进 npm tarball。** `files` 白名单只有 `lib` / `README.md` / `README.en.md` /
   `cordis.patch.yml`，`docs/` 不发布——这也是上一条必须用绝对 URL 的原因。
-  tarball 约 415 kB / 32 个文件。
+  tarball 约 665 kB / 46 个文件（0.6.0 实测；0.1.1 时是 415 kB / 32 个文件）。
 - **两份 README 要成对改。** `README.md` 是中文原文，`README.en.md` 是英文版，
   两边顶部各有一条指向对方的**绝对**链接（npm 包页面解析不了相对路径，理由同上一条）。
   改了结构或数字（自检项数、tarball 大小等）就两边一起改。
