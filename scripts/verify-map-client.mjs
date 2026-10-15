@@ -17,7 +17,8 @@
  *    都在这条链路上验。
  *
  * ③ **界面结构与纪律**。左列调色板（8 列 / 可选中 / 可滚动）、12 个图标按钮、
- *    顶栏没有阶段条、空态两个按钮、实验性弹窗、术语黑名单、每个 `SPR_` 类都有 CSS。
+ *    顶栏没有阶段条、空态两个按钮、**「不是实验性功能」的三处反向验证**（角标 /
+ *    弹窗 / 常驻提示条一个都不能有）、术语黑名单、每个 `SPR_` 类都有 CSS。
  *
  * 用法：node scripts/verify-map-client.mjs [lib/client.js]
  */
@@ -571,8 +572,13 @@ try {
   check("apply 可执行", true);
 
   const test = bundle.__test ?? {};
-  const { MapModule, MapExperimentalDialog, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells } = test;
-  check("产物带出 MapModule 与实验性弹窗", typeof MapModule === "function" && typeof MapExperimentalDialog === "function");
+  const { MapModule, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells } = test;
+  check("产物带出 MapModule", typeof MapModule === "function");
+  /**
+   * 反向验证：模块⑥**不再是实验性功能**，所以那个弹窗组件必须从产物里彻底消失。
+   * 只删渲染、留着组件的话，下一个人「顺手」把它挂回去就又变回实验性了。
+   */
+  check("产物里不再有 MapExperimentalDialog（模块⑥已转正）", test.MapExperimentalDialog === undefined, Object.keys(test).filter((key) => /Experimental/.test(key)).join(","));
   check(
     "产物带出四个黄金对照函数（命中测试必需的那份复刻）",
     typeof MAP_pointToCell === "function" && typeof MAP_cellAnchor === "function" && typeof MAP_cellTopLeft === "function" && typeof MAP_lineCells === "function"
@@ -1016,11 +1022,12 @@ try {
   check("面板能渲染（无异常、不是空态）", tree !== null && tree !== undefined && !textOf(tree).includes("还没有地图项目"), textOf(tree).slice(0, 60));
 
   /**
-   * ⚠️ 别在面板树里展开 `MapExperimentalDialog`：它自己有 Hook，跑在面板的存储上
-   * 会把槽位读串。这里只看「面板挂出了这个元素」，内容另开一份独立存储渲染。
+   * ⚠️ 模块⑥转正后这里**不能**再出现 `MapExperimentalDialog`。
+   * 早退分支（空态）与正常分支都要查：只改一处的话，用户从空态进去仍会看到
+   * 「实验性」弹窗，与页签上的正式模样自相矛盾。
    */
-  const gateElement = collect(tree, (node) => typeof node.type === "function" && node.type.name === "MapExperimentalDialog")[0];
-  check("进入模块⑥会弹实验性说明（实验性模块不能没有标记）", gateElement !== undefined);
+  const gateElement = collect(tree, (node) => typeof node.type === "function" && /Experimental(Dialog|Bar)/.test(node.type.name ?? ""))[0];
+  check("进入模块⑥**不弹**实验性说明（它不是实验性功能）", gateElement === undefined, gateElement?.type?.name ?? "");
 
   // ── 顶栏 ────────────────────────────────────────────────────────────────
   const projButton = byClass(tree, "SPR_mapEdProj")[0];
@@ -1814,7 +1821,7 @@ try {
     const emptyTree = await renderTree(() => MapModule({ api: emptyApi }), { fresh: true });
     check("没有项目时给空态而不是崩", textOf(emptyTree).includes("还没有地图项目"), textOf(emptyTree).slice(0, 60));
     check("空态有两个按钮：选一张素材图开始 / 用自带素材试试", /选一张素材图开始/.test(textOf(emptyTree)) && /用自带素材试试/.test(textOf(emptyTree)), textOf(emptyTree).slice(0, 120));
-    check("空态也带着实验性说明弹窗（早退分支不能漏）", collect(emptyTree, (node) => typeof node.type === "function" && node.type.name === "MapExperimentalDialog").length === 1);
+    check("空态也不带实验性弹窗 / 提示条（早退分支同样不能漏）", collect(emptyTree, (node) => typeof node.type === "function" && /Experimental(Dialog|Bar)/.test(node.type.name ?? "")).length === 0 && byClass(emptyTree, "SPR_expTag").length === 0);
     check("空态不出现阶段条 / 自造阶段类名", byClass(emptyTree, "SPR_step").length === 0 && byClass(emptyTree, "SPR_meSteps").length === 0);
     const startBtn = collect(emptyTree, (node) => node.type === "button" && textOf(node).includes("选一张素材图开始"))[0];
     if (startBtn !== undefined) startBtn.props.onClick();
@@ -1822,22 +1829,24 @@ try {
     check("空态文本里不出现 markdown 星号", !textOf(emptyTree).includes("**"));
   }
 
-  // ══ 13. 实验性弹窗 ═══════════════════════════════════════════════════════
-  section("13) 实验性弹窗（能关、文言不复讲旧功能）");
+  // ══ 13. 模块⑥不是实验性功能 ══════════════════════════════════════════════
+  section("13) 模块⑥已转正：角标 / 弹窗 / 常驻提示条三处一个都不能有");
   {
-    const gate = await withFreshHooks(async () => {
-      let closed = false;
-      const raw = await renderTree(() => MapExperimentalDialog({ onClose: () => { closed = true; } }));
-      const expanded = expandComponents(raw);
-      const closer = collect(expanded, (node) => node.props?.["data-testid"] === "rig-experimental-ok")[0] ?? collect(expanded, (node) => node.type === "button" && textOf(node).trim() !== "")[0];
-      if (closer !== undefined) closer.props.onClick({ stopPropagation() {} });
-      return { expanded, closer, closed };
-    });
-    const gateText = textOf(gate.expanded);
-    check("弹窗列出模块六自己的要点（>= 3 条）", byClass(gate.expanded, "SPR_gateBody").length >= 3, `${byClass(gate.expanded, "SPR_gateBody").length} 条`);
-    check("弹窗讲的是「本地跑、不花钱」（模块六的性质）", gateText.includes("全本地") || gateText.includes("不花钱"), gateText.slice(0, 60));
-    check("弹窗内容不再讲旧功能（地形族 / 掩码 / 切分 / 图集 / Tiled / 等距 / chunk / 阶段）", !/地形族|掩码|切分|图集|Tiled|等距|chunk|优先级|阶段/.test(gateText), gateText.slice(0, 80));
-    check("弹窗有关闭按钮，点了会回调 onClose", gate.closer !== undefined && gate.closed === true, `closed=${String(gate.closed)}`);
+    const source = readFileSync(fileURLToPath(new URL("../src/client.ts", import.meta.url)), "utf8");
+    /**
+     * 「转正」这件事必须三处同时改，只改一处的结果是：
+     *   · 只删弹窗 → 页签上还挂着「实验性」角标（用户在入口就看到矛盾信息）；
+     *   · 只删角标 → 进去还弹「仍在开发中」；
+     *   · 留着常驻提示条 → 弹窗关掉之后模块里一直写着「该模块功能尚不完善」。
+     */
+    const modulesBlock = (source.match(/function make_MODULES\(\) \{[\s\S]*?\n\s*\];/) ?? [])[0] ?? "";
+    const mapEntry = (modulesBlock.match(/\{ key: "map"[^}]*\}/) ?? [])[0] ?? "";
+    check("MODULES 里模块⑥的条目存在且没有 experimental: true", mapEntry !== "" && !mapEntry.includes("experimental"), mapEntry);
+    check("源码里不再有 MapExperimentalDialog / MAP_EXPERIMENTAL_POINTS", !source.includes("MapExperimentalDialog") && !source.includes("MAP_EXPERIMENTAL_POINTS"));
+    check("实验性「不再提示」标志里没有 map 这一格（模块④⑤之外不该有）", !/experimentalGateMuted = \{[^}]*\bmap\b/.test(source));
+    check("模块⑤仍然是实验性（别把转正顺手扩大化）", /title: T\("45°地图地块生成"\)[^}]*experimental: true/.test(source));
+    const treeNow = await withFreshHooks(() => renderTree(() => MapModule({ api })));
+    check("面板里没有实验性角标与常驻提示条", byClass(treeNow, "SPR_expTag").length === 0 && byClass(treeNow, "SPR_expBar").length === 0);
   }
 
   // ══ 14. 静态源码约束 ═════════════════════════════════════════════════════

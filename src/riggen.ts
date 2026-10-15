@@ -29,7 +29,16 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { loadConfig, rigJobsRoot } from "./config.js";
-import { generateImage } from "./ark.js";
+import {
+  assertImageProviderReady,
+  generateImageWithProvider,
+  imageModelOf,
+  imageProviderBlocker,
+  imageSizeOf,
+  imageTimeoutOf,
+  imageWatermarkOf,
+  isCustomProvider
+} from "./imageprovider.js";
 import { decodeToRgba, mimeOf, toDataUri } from "./media.js";
 import { encodePng } from "./png.js";
 import { appendJobLog, messageOf, readJson, writeJsonAtomic, type JobLogEntry } from "./jsonio.js";
@@ -600,9 +609,9 @@ export async function createRigJob(name: string): Promise<RigJob> {
     updatedAt: now,
     prompts: { sheet: "", suffix: "" },
     settings: {
-      model: config.arkModel,
-      size: config.arkSize,
-      watermark: config.arkWatermark,
+      model: imageModelOf(config),
+      size: imageSizeOf(config),
+      watermark: imageWatermarkOf(config),
       gridColumns: RIG_GRID_COLUMNS,
       gridRows: RIG_GRID_ROWS,
       backgroundTolerance: 30,
@@ -1904,23 +1913,26 @@ export async function redrawRigPart(
   if (active === undefined) throw new Error(`「${name}」还没有贴图`);
 
   const config = await loadConfig();
-  if (config.arkApiKey.trim() === "") throw new Error("尚未配置火山方舟 API Key，无法重绘（可以在界面里手工换色或上传替换，都不花钱）");
+  const blocker = imageProviderBlocker(config);
+  if (blocker !== undefined) {
+    throw new Error(`${blocker}，无法重绘（可以在界面里手工换色或上传替换，都不花钱）`);
+  }
 
   const decoded = await decodeToRgba(rigAssetPath(jobId, active.file), 2048);
   const original: Rgba = { data: decoded.rgba, width: decoded.width, height: decoded.height };
   const square = padToSquare(original, REDRAW_PAD_COLOR);
   const dataUri = `data:image/png;base64,${encodePng(square.image.data, square.image.width, square.image.height).toString("base64")}`;
 
-  const redrawModel = config.arkRedrawModel.trim() === "" ? config.arkModel : config.arkRedrawModel.trim();
-  const result = await generateImage({
-    baseUrl: config.arkBaseUrl,
-    apiKey: config.arkApiKey,
+  // 部件重绘单独指定模型的开关只在火山方舟下有意义；自定义后端只有一个模型名。
+  const redrawModel = isCustomProvider(config) ? "" : config.arkRedrawModel.trim();
+  /** 这一次真正会用的模型名（只用于报错文案）。 */
+  const modelUsedForRedraw = isCustomProvider(config) ? config.customModel : redrawModel || config.arkModel;
+  const result = await generateImageWithProvider({
     model: redrawModel,
     prompt: buildRedrawPrompt(prompt, { role: part.role }),
     images: [dataUri],
-    size: config.arkSize,
-    watermark: config.arkWatermark,
-    timeoutMs: config.arkTimeoutMs
+    size: imageSizeOf(config),
+    watermark: imageWatermarkOf(config)
   });
 
   // 模型交回来的图要落盘才能解码（解码器是 ffmpeg，吃文件路径）。
@@ -1948,8 +1960,8 @@ export async function redrawRigPart(
   if (stats.stdDev < MIN_REDRAW_CONTRAST) {
     throw new Error(
       `重绘结果几乎是纯色（亮度 ${stats.meanLuma.toFixed(0)}、标准差 ${stats.stdDev.toFixed(1)}），` +
-        `模型「${redrawModel}」没有画出内容，已丢弃（没有新增版本）。` +
-        "可以换个更具体的提示词，或在「设置 → 游戏素材大师 → 部件重绘模型」里换一个模型；" +
+        `模型「${modelUsedForRedraw}」没有画出内容，已丢弃（没有新增版本）。` +
+        "可以换个更具体的提示词，或在「设置 → 游戏素材大师 → 生图后端」里换一个模型；" +
         "只是想让颜色变一下的话，「换色」是免费的。"
     );
   }
@@ -2925,26 +2937,26 @@ export async function generateSheet(jobId: string): Promise<void> {
   const job = await readRigJob(jobId);
   if (job === undefined) throw new Error(`任务不存在：${jobId}`);
   const config = await loadConfig();
-  if (config.arkApiKey.trim() === "") throw new Error("尚未配置火山方舟 API Key");
+  assertImageProviderReady(config);
   if (job.source === undefined) throw new Error("还没有角色参考图，请先上传一张整图");
 
   const prompt = buildSheetRequest(job);
-  job.settings.model = config.arkModel;
+  const model = imageModelOf(config);
+  job.settings.model = model;
+  if (isCustomProvider(config)) job.settings.size = config.customSize;
   job.sheet = { ...job.sheet, status: "running", error: undefined };
-  appendJobLog(job.log, "info", `开始拆件生图（模型 ${config.arkModel}）`);
+  appendJobLog(job.log, "info", `开始拆件生图（模型 ${model}）`);
   await writeRigJob(job);
 
   try {
     const reference = await toDataUri(rigAssetPath(jobId, job.source.file), mimeOf(job.source.file));
-    const result = await generateImage({
-      baseUrl: config.arkBaseUrl,
-      apiKey: config.arkApiKey,
-      model: config.arkModel,
+    const result = await generateImageWithProvider({
       prompt,
       images: [reference],
-      size: job.settings.size || config.arkSize,
-      watermark: job.settings.watermark,
-      timeoutMs: config.arkTimeoutMs
+      size: job.settings.size || imageSizeOf(config),
+      // 与图片生成那条路同口径：全局设置或任务上的旧覆盖位，任一为真就带水印。
+      watermark: imageWatermarkOf(config) || job.settings.watermark === true,
+      timeoutMs: imageTimeoutOf(config)
     });
     const relative = `sheet/parts-sheet.${result.ext}`;
     await mkdir(join(rigJobDir(jobId), "sheet"), { recursive: true });

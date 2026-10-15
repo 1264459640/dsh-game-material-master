@@ -750,6 +750,7 @@ const setMapApprovedSchema = z.object({
 export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configViewSchema },
   { method: "saveConfig", payload: saveConfigSchema, result: configViewSchema },
   { method: "testArk", result: jsonObject },
+  { method: "testCustomImage", result: jsonObject },
   { method: "testMinimax", result: jsonObject },
   // 浏览器半区在挂载时上报 origin，供宿主拼深链接；不是用户可调用的功能。
   { method: "reportClientOrigin", payload: reportOriginSchema, result: okSchema, clientOnly: true },

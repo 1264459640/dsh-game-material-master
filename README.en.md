@@ -33,7 +33,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 | **② Image generation** | Prompt (optionally with reference images) → images → green-screen keying | Clean transparent PNG character art / props |
 | **③ Sequence frames** | First/last frame or a reference video → generate video → extract frames → key | A horizontally laid out, loopable sequence |
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
-| **⑥ Map editor** (experimental, **fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon; three default layers — terrain / decor / buildings — that you can rename and reorder; a **marker layer**: one nameable marker per cell, drawn as a numbered circle) | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles, markers); tick what to export and multiple files come as one ZIP download |
+| **⑥ Map editor** (**fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon; three default layers — terrain / decor / buildings — that you can rename and reorder; a **marker layer**: one nameable marker per cell, drawn as a numbered circle) | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles, markers); tick what to export and multiple files come as one ZIP download |
 | ~~④ Rigged animation~~ | Part extraction → assembly → skeletal animation → Spine / DragonBones atlas | **Experimental, not covered in this document** |
 
 > 💡 **Module ⑤ "Map tile generation" is built on one idea: geometry by code, content by AI.**
@@ -237,7 +237,7 @@ flowchart LR
 
 ## Driving it from chat
 
-**Every feature of all six modules** (including the experimental rigged animation, map tiles and the map editor) **is available through
+**Every feature of all six modules** (including the experimental rigged animation and map tiles) **is available through
 chat**. The plugin registers the whole pipeline as `game_material_*` tools, so an agent can drive it forward,
 wait, review, and also stop at each step for you to approve.
 
@@ -289,8 +289,12 @@ point `FFMPEG_PATH` / `FFPROBE_PATH` at absolute paths. The package has **no run
 
 | Item | Description |
 |---|---|
+| Image backend | Pick **Volcengine Ark Seedream** (default) or a **custom image model**; switching here redirects every image-generating module |
 | Volcengine Ark API Key | "Test connection" really generates a 1K thumbnail (a small charge) and validates both the key and the model |
 | Image model | Defaults to `doubao-seedream-5-0-flash-260915`; switchable to 5.0 Pro / Lite / 4.5 |
+| Custom protocol | One of `OpenAI API` / `ComfyUI API` / `Stable Diffusion WebUI API`; just give the host root URL |
+| Custom parameters | Model name, output size (width x height), negative prompt, steps / CFG / sampler, img2img denoising, seed, timeout |
+| ComfyUI workflow | Paste the whole JSON from "Export (API)"; placeholders `{{prompt}}` `{{width}}` `{{seed}}` `{{image}}` and friends are supported, and a workflow with none runs as-is |
 | MiniMax API Key | "Test connection" is free and can tell an invalid key apart from other errors |
 | Video model | Defaults to `MiniMax-H3` (v2 protocol); Hailuo / I2V use v1; the UCloud version of H3 is selected explicitly |
 | Base URL | Host root, without `/v1` or `/v2`. `api.minimax.cn` in mainland China, `api.minimaxi.com` internationally |
@@ -298,8 +302,23 @@ point `FFMPEG_PATH` / `FFPROBE_PATH` at absolute paths. The package has **no run
 | Feature management | Per-module switches: a disabled module disappears from the UI **and the agent cannot call it either** (see below) |
 
 Keys are written only to `<DSH_HOME>/game-material-master/config.json` on your machine, and the UI always
-masks them when displaying them back. **The model is a plugin-level setting shared by all three modules**;
-after you switch models, tasks align to the new tier automatically.
+masks them when displaying them back. **The image backend and model are plugin-level settings shared by
+every module that generates images**; after you switch, tasks align to the new tier automatically.
+Image-to-video always goes through MiniMax and is unaffected by the image backend.
+
+### Custom image backend
+
+Besides Volcengine Ark you can plug in **your own image service** (Settings → Game Material Master → Image backend):
+
+| Protocol | Text-to-image | With reference images | Notes |
+|---|---|---|---|
+| OpenAI API | `POST {base}/images/generations` | `POST {base}/images/edits` (falls back to the `image` field of generations when the endpoint does not exist) | Works with OpenAI itself and compatible gateways; both `b64_json` and `url` responses are accepted |
+| ComfyUI API | `POST {base}/prompt` → poll `/history` → `GET /view` | `POST {base}/upload/image` first, then the file name goes into the workflow | Needs an **API-format** workflow JSON; when `{{image}}` is absent the `LoadImage` node is patched automatically |
+| Stable Diffusion WebUI API | `POST {base}/sdapi/v1/txt2img` | `POST {base}/sdapi/v1/img2img` (`init_images` + denoising strength) | WebUI must be started with `--api`; an API key of `user:pass` uses HTTP Basic |
+
+Local servers usually need no API key; enter the **host root** (for example `http://127.0.0.1:8188`) and the
+plugin appends the protocol-specific endpoint. Hit "Test connection" to really generate one test image and
+prove the whole path works.
 
 ### Feature management (hiding modules you do not use)
 

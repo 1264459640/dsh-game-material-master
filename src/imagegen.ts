@@ -17,7 +17,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { imageJobsRoot, loadConfig } from "./config.js";
-import { generateImage } from "./ark.js";
+import { generateImageWithProvider, imageModelOf, imageSizeOf, imageWatermarkOf, assertImageProviderReady, isCustomProvider } from "./imageprovider.js";
 import { decodeToRgba, mimeOf, toDataUri } from "./media.js";
 import { keyGreen } from "./chroma.js";
 import { encodePng } from "./png.js";
@@ -121,10 +121,10 @@ export async function createImageJob(name: string): Promise<ImageJob> {
     suffix: "",
     refs: [],
     settings: {
-      model: config.arkModel,
-      size: config.arkSize,
+      model: imageModelOf(config),
+      size: imageSizeOf(config),
       count: 1,
-      watermark: config.arkWatermark
+      watermark: imageWatermarkOf(config)
     },
     keying: {
       enabled: false,
@@ -274,10 +274,12 @@ export async function generateImageItem(jobId: string, index: number): Promise<v
   const config = await loadConfig();
   const prompt = buildPrompt(job);
   if (prompt === "") throw new Error("提示词为空，请先填写");
-  if (config.arkApiKey.trim() === "") throw new Error("尚未配置火山方舟 API Key");
+  assertImageProviderReady(config);
 
-  // 生图模型同样是全局设置（设置 → 游戏素材大师 → 生图模型），任务只跟随、不覆盖。
-  job.settings.model = config.arkModel;
+  // 生图模型同样是全局设置（设置 → 游戏素材大师 → 生图后端），任务只跟随、不覆盖。
+  job.settings.model = imageModelOf(config);
+  // 自定义后端的尺寸是全局参数（任务上的 size 是火山方舟时代的遗留），跟着配置走。
+  if (isCustomProvider(config)) job.settings.size = config.customSize;
 
   const item: ImageItem = job.items[index] ?? { index, status: "empty", source: "generated" };
   job.items[index] = { ...item, status: "running", error: undefined };
@@ -286,15 +288,13 @@ export async function generateImageItem(jobId: string, index: number): Promise<v
 
   try {
     const refs = await Promise.all(job.refs.map((ref) => toDataUri(imageAssetPath(jobId, ref.file), mimeOf(ref.file))));
-    const result = await generateImage({
-      baseUrl: config.arkBaseUrl,
-      apiKey: config.arkApiKey,
-      model: config.arkModel,
+    const result = await generateImageWithProvider({
       prompt,
       images: refs,
-      size: job.settings.size || config.arkSize,
-      watermark: job.settings.watermark,
-      timeoutMs: config.arkTimeoutMs
+      size: job.settings.size || imageSizeOf(config),
+      // 水印是火山方舟特有的参数（自定义后端忽略它）。任务上那份是旧版本留下的
+      // 覆盖位，仍然尊重；与全局设置取或，两种写法都不会让水印「突然消失」。
+      watermark: imageWatermarkOf(config) || job.settings.watermark === true
     });
 
     const relative = `out/img-${String(index).padStart(2, "0")}.${result.ext}`;

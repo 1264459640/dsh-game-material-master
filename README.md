@@ -28,7 +28,7 @@
 | **② 图片生成** | 提示词（可带参考图）→ 出图 → 抠绿幕 | 干净透明的 PNG 立绘 / 道具 |
 | **③ 序列帧生成** | 首尾帧或参考视频 → 生成视频 → 抽帧 → 抠像 | 横向排布、可循环播放的序列帧 |
 | **⑤ 45°地图地块生成**（实验性） | 45° 等距地块 → 铺成整张地图 | 地块包（PNG）+ 地图 PNG + 布局 JSON |
-| **⑥ 地图编辑器**（实验性，**全本地零计费**） | 选一张素材图 → 直接画（参照 AsLib 的 RPG Map Maker 重做：一屏、纯图标、零术语；默认「地理层 / 装饰层 / 建筑层」三层且可改名换序；**标记层**：每格放一个可命名的标记，画成圆圈里的数字） | PNG + 存档 JSON（地图四周环绕、自动连接、动画地块、标记点）；勾几项就导几项，多个产物自动打成一个 ZIP 下载 | 
+| **⑥ 地图编辑器**（**全本地零计费**） | 选一张素材图 → 直接画（参照 AsLib 的 RPG Map Maker 重做：一屏、纯图标、零术语；默认「地理层 / 装饰层 / 建筑层」三层且可改名换序；**标记层**：每格放一个可命名的标记，画成圆圈里的数字） | PNG + 存档 JSON（地图四周环绕、自动连接、动画地块、标记点）；勾几项就导几项，多个产物自动打成一个 ZIP 下载 | 
 | ~~④ 骨骼动画生成~~ | 拆件 → 装配 → 骨骼动画 → Spine / DragonBones 图集 | **实验性功能，本文不展示** |
 
 > 💡 **模块⑤「45°地图地块生成」的核心思路是「几何交给代码，内容交给 AI」。**
@@ -199,7 +199,7 @@ flowchart LR
 
 ## 用对话驱动
 
-六个模块（含实验性的骨骼动画、地图地块与地图编辑器）的**全部功能都能通过对话调用**。插件把整条流水线注册成
+六个模块（含实验性的骨骼动画与地图地块）的**全部功能都能通过对话调用**。插件把整条流水线注册成
 `game_material_*` 工具，agent 能自己推进、等待、审查，也可以在每一步停下来让你验收。
 
 | 工具 | 作用 |
@@ -248,8 +248,12 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 
 | 项 | 说明 |
 |---|---|
+| 生图后端 | 选**火山方舟 Seedream**（默认）或**自定义生图模型**；换后端只改这一处，所有生图模块都跟着走 |
 | 火山方舟 API Key | 「测试连接」会真实生成一张 1K 小图（少量费用），同时验证 Key 与模型 |
 | 生图模型 | 默认 `doubao-seedream-5-0-flash-260915`，可切 5.0 Pro / Lite / 4.5 |
+| 自定义生图协议 | `OpenAI API` / `ComfyUI API` / `Stable Diffusion WebUI API` 三选一，填主机根地址即可 |
+| 自定义生图参数 | 模型名、输出尺寸（宽x高）、负面提示词、采样步数 / CFG / 采样器、图生图重绘强度、种子、超时 |
+| ComfyUI 工作流 | 整段粘贴「导出（API）」的 JSON；支持 `{{prompt}}` `{{width}}` `{{seed}}` `{{image}}` 等占位符，不写占位符就原样跑 |
 | MiniMax API Key | 「测试连接」免费，能区分 Key 无效与其它错误 |
 | 视频模型 | 默认 `MiniMax-H3`（v2 协议）；Hailuo / I2V 走 v1；优云智算版 H3 显式选择 |
 | Base URL | 主机根，不含 `/v1` `/v2`。国内 `api.minimax.cn`，国际 `api.minimaxi.com` |
@@ -257,7 +261,21 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 | 功能管理 | 逐个开关六个模块：关掉的模块界面上不再出现，**对话里的 AI 也调不到**（见下） |
 
 Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，界面回显始终脱敏。
-**模型是插件级设置，三个模块共用**，切换模型后任务自动对齐新档位。
+**生图后端与模型是插件级设置，所有需要生图的模块共用**，切换后任务自动对齐新档位。
+图生视频始终只走 MiniMax，不受生图后端影响。
+
+### 自定义生图后端
+
+除了火山方舟，插件也支持把你的**自己的生图服务**接进来（设置 → 游戏素材大师 → 生图后端）：
+
+| 协议 | 生图 | 带参考图 | 说明 |
+|---|---|---|---|
+| OpenAI API | `POST {base}/images/generations` | `POST {base}/images/edits`（端点不存在时退回 generations 的 `image` 字段） | 兼容 OpenAI 官方与各家兼容网关；`b64_json` / `url` 两种返回都认 |
+| ComfyUI API | `POST {base}/prompt` → 轮询 `/history` → `GET /view` | 先 `POST {base}/upload/image`，把文件名写进工作流 | 需要**API 格式**的工作流 JSON；`{{image}}` 占位符没写时自动改 `LoadImage` 节点 |
+| Stable Diffusion WebUI API | `POST {base}/sdapi/v1/txt2img` | `POST {base}/sdapi/v1/img2img`（`init_images` + 重绘强度） | 需要 WebUI 以 `--api` 启动；API Key 填 `user:pass` 走 HTTP Basic |
+
+本地服务通常不需要 API Key；地址填**主机根**（例如 `http://127.0.0.1:8188`），具体端点由插件按协议拼。
+配好点「测试连接」即可真跑一张测试图确认链路通。
 
 ### 功能管理（隐藏不用的模块）
 

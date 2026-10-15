@@ -32,7 +32,13 @@ import {
   turnOrder,
   type TurnDirection
 } from "./directions.js";
-import { generateImage } from "./ark.js";
+import {
+  assertImageProviderReady,
+  generateImageWithProvider,
+  imageModelOf,
+  imageSizeOf,
+  imageWatermarkOf
+} from "./imageprovider.js";
 import { downloadVideo, queryVideo, retrieveFile, submitVideo } from "./minimax.js";
 import { extractFrames, mimeOf, sniffVideo, toDataUri, toJpegDataUri } from "./media.js";
 import { composeSheet, keyGreen, type SheetRow } from "./chroma.js";
@@ -94,15 +100,6 @@ export function listJobs(projectId: string): JobInfo[] {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function arkRequest(config: Config) {
-  return {
-    baseUrl: config.arkBaseUrl,
-    apiKey: config.arkApiKey,
-    model: config.arkModel,
-    timeoutMs: config.arkTimeoutMs
-  };
 }
 
 function miniMaxRequest(config: Config) {
@@ -190,6 +187,8 @@ async function generateOne(projectId: string, key: string, promptOverride?: stri
   const project = await readProject(projectId);
   if (project === undefined) throw new Error(`项目不存在：${projectId}`);
   const config = await loadConfig();
+  // 后端没配好就不要往下走：这一步会真实计费，早失败比「跑到一半报错」好。
+  assertImageProviderReady(config);
 
   const basePrompt = (promptOverride ?? project.prompts.images[key] ?? "").trim();
   if (basePrompt === "") throw new Error("提示词为空，请先填写生图提示词");
@@ -214,12 +213,11 @@ async function generateOne(projectId: string, key: string, promptOverride?: stri
   const startedAt = Date.now();
   try {
     const images = await Promise.all(refs.map((file) => toDataUri(file, mimeOf(file))));
-    const result = await generateImage({
-      ...arkRequest(config),
+    const result = await generateImageWithProvider({
       prompt,
       images,
-      size: config.arkSize,
-      watermark: config.arkWatermark
+      size: imageSizeOf(config),
+      watermark: imageWatermarkOf(config)
     });
 
     const relative = `images/${key}.${result.ext}`;
@@ -234,7 +232,7 @@ async function generateOne(projectId: string, key: string, promptOverride?: stri
         file: relative,
         approved: false,
         stale: false,
-        model: config.arkModel,
+        model: imageModelOf(config),
         elapsedMs: elapsed,
         updatedAt: Date.now()
       };

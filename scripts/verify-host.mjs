@@ -118,7 +118,8 @@ async function main() {
   // 方法数是**清单完整性**的锚点：新增 / 删除远程方法时必须同步改这个数字。
   // 模块六重做时删了 4 个（族 / 多地图）加了 2 个（一键生成 / 内置素材），132 → 130。
   // 八方向图加「本地自选视频」与「中间图片打包」两个方法，130 → 132。
-  check("manifest 方法数为 132（新增远程方法时同步改这个数）", invocations.length === 132, `实际 ${invocations.length}`);
+  // 生图后端加「自定义后端连接测试」（testCustomImage），132 → 133。
+  check("manifest 方法数为 133（新增远程方法时同步改这个数）", invocations.length === 133, `实际 ${invocations.length}`);
   const ids = new Set(invocations.map((i) => i.id));
   check("方法 id 唯一", ids.size === invocations.length);
   check("所有方法都声明在 gameStudio 服务下", invocations.every((i) => i.service === "gameStudio" && i.namespace === "gameStudio"));
@@ -319,6 +320,46 @@ async function main() {
   check("不带 Key 的保存不会清空 Key", kept.arkApiKeySet === true);
   const cleared = await studio.saveConfig({ clearArkApiKey: true });
   check("clearArkApiKey 能清空 Key", cleared.arkApiKeySet === false);
+
+  // ── 2c. 生图后端：ark / custom 两条路走真实网关 ───────────────────────
+  // 只在这里验「配置能不能存进去、能不能读出来、脱敏对不对、阻塞判断是不是宿主算的」；
+  // 三种协议本身的请求细节由 scripts/verify-custom-image.mjs 打本地假服务端覆盖。
+  check("默认生图后端是火山方舟", initial.imageProvider === "ark", String(initial.imageProvider));
+  check("配置视图给出三种自定义协议", Array.isArray(initial.customProtocols) && initial.customProtocols.map((entry) => entry.id).join(",") === "openai,comfyui,sdwebui", JSON.stringify((initial.customProtocols ?? []).map((entry) => entry.id)));
+  check("每个协议都带默认地址与端点说明", (initial.customProtocols ?? []).every((entry) => typeof entry.baseUrl === "string" && entry.baseUrl !== "" && typeof entry.hint === "string" && entry.hint !== ""));
+  // 「当前后端」与「自定义那一组」是**两份**阻塞：前者决定能不能开跑，
+  // 后者决定自定义那一组的「测试连接」按钮能不能点 —— 两组互不牵连，
+  // 否则没配火山方舟 Key 的用户连自己的本地服务都测不了。
+  check("默认按火山方舟判定当前后端（没有 Key 就拦）", /火山方舟 API Key/.test(String(initial.imageProviderBlocker)), String(initial.imageProviderBlocker));
+  check("默认的自定义那一组是齐的（有默认地址与模型名）", initial.customImageBlocker === null, String(initial.customImageBlocker));
+  check("摘要写明当前生效的后端", typeof initial.imageProviderSummary === "string" && initial.imageProviderSummary.includes("火山方舟"), String(initial.imageProviderSummary));
+
+  const customSaved = await studio.saveConfig({
+    imageProvider: "custom",
+    customProtocol: "comfyui",
+    customBaseUrl: "http://127.0.0.1:8188",
+    customApiKey: "local-secret-9",
+    customModel: "sdxl.safetensors",
+    customWorkflow: '{"1":{"class_type":"KSampler","inputs":{"seed":"{{seed}}"}}}'
+  });
+  check("保存后当前后端是自定义", customSaved.imageProvider === "custom");
+  check("自定义 Key 只回传尾号提示", customSaved.customApiKeyHint === "…et-9", customSaved.customApiKeyHint);
+  check("返回体里没有自定义 Key 明文", JSON.stringify(customSaved).includes("local-secret-9") === false);
+  check("配好之后宿主判定可以开跑", customSaved.imageProviderBlocker === null, String(customSaved.imageProviderBlocker));
+  check(
+    "选了自定义后端后，缺火山方舟 Key 不再阻塞（两套配置互不牵连）",
+    customSaved.arkApiKeySet === false && customSaved.imageProviderBlocker === null
+  );
+  check("摘要带上协议与地址", customSaved.imageProviderSummary.includes("ComfyUI API") && customSaved.imageProviderSummary.includes("127.0.0.1:8188"), customSaved.imageProviderSummary);
+  await studio.saveConfig({ customWorkflow: "" });
+  check(
+    "ComfyUI 没填工作流时宿主给出阻塞说明（界面与工具面共用同一份判断）",
+    /工作流 JSON/.test(String((await studio.getConfig()).imageProviderBlocker)),
+    String((await studio.getConfig()).imageProviderBlocker)
+  );
+  const backToArk = await studio.saveConfig({ imageProvider: "ark", customWorkflow: "", customApiKey: "" });
+  check("切回火山方舟后阻塞回到 Key 那一句", /火山方舟 API Key/.test(String(backToArk.imageProviderBlocker)), String(backToArk.imageProviderBlocker));
+  check("清空自定义 Key 生效", backToArk.customApiKeySet === false);
 
   // ── 3. 项目 CRUD ──────────────────────────────────────────────────────
   console.log("3) 项目增删改查");

@@ -1268,6 +1268,18 @@ section("功能管理（隐藏模块）");
   if (typeof ConfigSection === "function") {
     const featureConfig = {
       hiddenModules: ["rig"],
+      imageProvider: "ark",
+      customProtocol: "openai",
+      customBaseUrl: "https://api.openai.com/v1",
+      customModel: "gpt-image-1",
+      customSize: "1024x1024",
+      customWorkflow: "",
+      customApiKeySet: false,
+      customApiKeyHint: "",
+      customProtocols: [],
+      imageProviderSummary: "火山方舟 · doubao-seedream-5-0-flash-260915",
+      imageProviderBlocker: "尚未配置火山方舟 API Key（设置 → 游戏素材大师 → 生图后端 → 火山方舟）",
+      customImageBlocker: null,
       arkApiKeySet: false,
       minimaxApiKeySet: false,
       arkModel: "doubao-seedream-5-0-flash-260915",
@@ -1309,7 +1321,9 @@ section("功能管理（隐藏模块）");
     };
 
     // Hook 顺序：0 useLocaleTick / 1 config / 2 arkKey / 3 minimaxKey / 4 notice / 5 testing。
-    HOOK.slots = [0, featureConfig, "", "", null, null];
+    // Hook 顺序：0 useLocaleTick / 1 config / 2 arkKey / 3 customKey / 4 minimaxKey /
+    //             5 notice / 6 testing / 7 workflowDraft。
+    HOOK.slots = [0, featureConfig, "", "", "", null, null, ""];
     HOOK.cursor = 0;
     hookOverflow = false;
     const settings = ConfigSection({ api: configApi });
@@ -1334,6 +1348,76 @@ section("功能管理（隐藏模块）");
     checkboxes.find((node) => node.props["data-testid"] === "cfg-feature-sprite").props.onChange({ target: { checked: false } });
     check("取消勾选后写回宿主", JSON.stringify(saved.at(-1)) === JSON.stringify({ hiddenModules: ["sprite", "rig"] }), JSON.stringify(saved.at(-1)));
     check("设置页说明隐藏后 AI 也调不到", textOf(settings).includes("对话里的 AI 也无法调用它"));
+
+    /**
+     * 生图后端：ark / custom 两组配置同屏，只由「当前使用」那一个下拉决定用哪一组。
+     *
+     * 这两组**必须同时渲染**：用户经常要先配好自定义服务、点一次「测试连接」，
+     * 确认能出图之后再把它切成当前后端。只渲染「当前那一组」的话，
+     * 没配火山方舟 Key 的用户连自己的本地服务都配不上。
+     */
+    const providerSelect = collect(settings, (node) => node.props?.["data-testid"] === "cfg-image-provider")[0];
+    check("设置页有「生图后端」选择器", providerSelect !== undefined);
+    check("后端选择器把 ark / custom 两个选项都列出来", collect(providerSelect, (node) => node.type === "option").length === 2);
+    check("缺 Key 时给出「还不能开跑」的提示，而不是静默", textOf(settings).includes("还不能开跑"));
+    check("火山方舟那一组标注了当前使用", textOf(settings).includes("当前使用"));
+
+    // 默认协议是 openai：协议下拉、地址、模型名、尺寸、测试按钮都要在。
+    check("自定义那一组有协议下拉（三种协议由宿主给）", collect(settings, (node) => node.props?.["data-testid"] === "cfg-custom-protocol").length === 1);
+    check("自定义那一组有 Base URL 与模型名输入框", collect(settings, (node) => node.props?.["data-testid"] === "cfg-custom-base-url").length === 1 && collect(settings, (node) => node.props?.["data-testid"] === "cfg-custom-model").length === 1);
+    check("自定义那一组有输出尺寸输入框", collect(settings, (node) => node.props?.["data-testid"] === "cfg-custom-size").length === 1);
+    check("OpenAI 协议不显示 ComfyUI 的工作流文本框（调了也没用的控件不该出现）", collect(settings, (node) => node.props?.["data-testid"] === "cfg-custom-workflow").length === 0);
+    check("自定义那一组也有自己的「测试连接」", textOf(settings).includes("测试连接（会真实生成 1 张测试图"));
+
+    // 切到 ComfyUI：工作流文本框与保存按钮出现（UTF-8 JSON 不能每敲一个字就提交一次）。
+    const comfyConfig = {
+      ...featureConfig,
+      imageProvider: "custom",
+      customProtocol: "comfyui",
+      customBaseUrl: "http://127.0.0.1:8188",
+      customModel: "sdxl.safetensors",
+      customSize: "1024x1024",
+      customWorkflow: '{"1":{}}',
+      customProtocols: [
+        { id: "openai", label: "OpenAI API", baseUrl: "https://api.openai.com/v1", hint: "hint" },
+        { id: "comfyui", label: "ComfyUI API", baseUrl: "http://127.0.0.1:8188", hint: "hint" },
+        { id: "sdwebui", label: "Stable Diffusion WebUI API", baseUrl: "http://127.0.0.1:7860", hint: "hint" }
+      ],
+      imageProviderSummary: "自定义 · ComfyUI API · http://127.0.0.1:8188",
+      imageProviderBlocker: null,
+      customImageBlocker: null
+    };
+    const saved2 = [];
+    const api2 = {
+      getConfig: () => Promise.resolve(comfyConfig),
+      saveConfig: (payload) => {
+        saved2.push(payload);
+        return Promise.resolve({ ...comfyConfig, ...payload });
+      },
+      testArk: () => Promise.resolve({}),
+      testCustomImage: () => Promise.resolve({ provider: "自定义 · ComfyUI API", bytes: 1 }),
+      testMinimax: () => Promise.resolve({})
+    };
+    HOOK.slots = [0, comfyConfig, "", "", "", null, null, null];
+    HOOK.cursor = 0;
+    hookOverflow = false;
+    const comfySettings = ConfigSection({ api: api2 });
+    const workflowBox = collect(comfySettings, (node) => node.props?.["data-testid"] === "cfg-custom-workflow")[0];
+    check("切到 ComfyUI 后出现工作流文本框", workflowBox !== undefined);
+    check("工作流文本框里是已经存过的那份", workflowBox?.props?.value === '{"1":{}}', String(workflowBox?.props?.value).slice(0, 40));
+    check("后端切换器选中自定义", collect(comfySettings, (node) => node.props?.["data-testid"] === "cfg-image-provider")[0]?.props?.value === "custom");
+    check("后端就绪时给出「后端已就绪」而不是阻塞提示", textOf(comfySettings).includes("后端已就绪") && !textOf(comfySettings).includes("还不能开跑"));
+    // NumField 是函数组件，`textOf` 展不开它，只能按 props.label 找。
+    check(
+      "ComfyUI 下显示采样步数 / CFG 等高级参数",
+      collect(comfySettings, (node) => node.props?.label === "采样步数").length === 1 &&
+        collect(comfySettings, (node) => node.props?.label === "CFG / 引导强度").length === 1
+    );
+    check("超时对所有协议都显示（不受协议条件块影响）", collect(comfySettings, (node) => node.props?.label === "请求超时（毫秒，本地模型建议给足）").length === 1);
+    check("协议说明里写出真实端点", textOf(comfySettings).includes("请求端点"));
+    // 每敲一个字都不发请求：草稿只在变化后由「保存工作流」提交。
+    workflowBox.props.onChange({ target: { value: '{"1":{"a":1}}' } });
+    check("改工作流不立刻写配置（大 JSON 每字符一次往返会卡）", saved2.length === 0, JSON.stringify(saved2));
   }
 
   // 收尾：把共享状态复位，免得影响后续断言。
