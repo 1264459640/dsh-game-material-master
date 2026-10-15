@@ -1279,10 +1279,48 @@
         "How this image is used",
       "动画速度":
         "Animation speed",
-      "导出图片 PNG":
-        "Export image PNG",
-      "导出存档 JSON":
-        "Export save JSON",
+      "导出内容":
+        "What to export",
+      "地图图片 PNG":
+        "Map image (PNG)",
+      "地图长什么样，直接能放进游戏":
+        "How the map looks - ready to drop into a game",
+      "存档数据 JSON":
+        "Save data (JSON)",
+      "每一格是什么，给引擎和工具读":
+        "Which tile sits in each cell, for engines and tools",
+      "素材原图":
+        "Source tilesets",
+      "把素材图一起拷进包里，换台机器也能用":
+        "Copy the tileset images in too, so the package works on another machine",
+      "产出不止一个文件时自动打成一个 ZIP；只有一个文件时就直接给你那个文件。":
+        "More than one file is packed into a single ZIP; a single file is handed to you as it is.",
+      "至少勾一项要导出的内容。":
+        "Choose at least one thing to export.",
+      "最近一次导出：{n0} 个文件":
+        "Last export: {n0} files",
+      "下载 {n0}":
+        "Download {n0}",
+      "打包，含全部内容":
+        "Bundle with everything",
+      "另存为…":
+        "Save as…",
+      "下载走浏览器（默认进它的下载目录）；想自己挑位置就点「另存为…」。":
+        "Downloads go through the browser (its download folder by default); use \"Save as…\" to pick the location yourself.",
+      "下载走浏览器：文件会进它的下载目录（想每次都自己挑位置，在浏览器里打开「下载前询问保存位置」）。":
+        "Downloads go through the browser: files land in its download folder (turn on \"Ask where to save each file\" in the browser to choose every time).",
+      "这个浏览器不支持「另存为」，请用下载（位置由浏览器的下载设置决定）。":
+        "This browser does not support \"Save as\" - use the download link instead (the browser decides the location).",
+      "已保存到 {n0}":
+        "Saved to {n0}",
+      "另存为失败：{n0}":
+        "Save as failed: {n0}",
+      "还没有导出过，先点「导出」。现在打开的是项目目录。":
+        "Nothing has been exported yet - press \"Export\" first. The project folder is open for now.",
+      "已打开 {n0}":
+        "Opened {n0}",
+      "文件都在 {n0}":
+        "All files are in {n0}",
       "倍率":
         "Scale",
       "只影响 PNG 的尺寸，不影响存档数据":
@@ -2246,7 +2284,10 @@
 .SPR_mapEdRadios{display:flex;gap:12px;flex-wrap:wrap}
 .SPR_mapEdRadio{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#e6e1d8;cursor:pointer}
 .SPR_mapEdFiles{margin:0;padding-left:18px;font-size:12px;line-height:1.9;color:#c9c4bb}
+.SPR_mapEdFiles li{display:flex;align-items:center;gap:6px}
 .SPR_mapEdFiles a{color:var(--dsw-alias-state-business-primary, #8ab4f8)}
+/* 导出结果区：把「导完了、文件在哪、怎么拿走」圈在一起，与上面的选择区分开 */
+.SPR_mapEdExportResult{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid #4a4a4a;border-radius:8px;background:#383838}
 .SPR_mapEdMark{color:var(--dsw-alias-state-success-primary, #7ee08a);font-weight:700}
 .SPR_mapEdWarnings{margin:0;padding-left:18px;font-size:11px;line-height:1.7;color:#d8d2c8}
 .SPR_mapEdFoot{display:flex;align-items:center;gap:10px;padding:5px 10px;background:#383838;border-top:1px solid #232323;flex:none;flex-wrap:wrap}
@@ -6138,6 +6179,14 @@
       const [genKind, setGenKind] = React.useState("random");
       const [genSeed, setGenSeed] = React.useState(20261005);
       const [exportScale, setExportScale] = React.useState(1);
+      /**
+       * 导出内容（三个复选框），与宿主的 `formats` 一一对应。
+       *
+       * ⚠️ 这里刻意**只存选择、不执行**：以前是「点哪个按钮就导哪一份」，于是
+       * 「导出图片 PNG」看起来像个被选中的页签、「导出存档 JSON」却是立即执行的动作 ——
+       * 同一行里两个按钮一半是选择一半是提交。现在选择归复选框、执行归唯一的「导出」。
+       */
+      const [exportFormats, setExportFormats] = React.useState({ png: true, json: true, tilesets: false });
 
       const imageRefs = React.useRef({});
       const canvasRef = React.useRef(null);
@@ -6351,11 +6400,22 @@
        * `keep` = 保留画布上的选择（图层 / 面板 / 缩放）：验收打勾、导出回读这类
        * 「只是刷新一下状态」的调用不该把用户正在画的层顶掉。
        */
+      const loadSeq = React.useRef(0);
       const loadProject = React.useCallback(
         async (id, keep) => {
           if (api === undefined || id === null || id === undefined || id === "") return;
+          /**
+           * ⚠️ 并发读盘要**按最后一次发起的请求收口**（丢弃迟到的旧响应）。
+           *
+           * 同一个项目可能同时在读好几次（挂载时那次、点导出后那次、`busy` 期间的 1.5s 轮询、
+           * 打勾后的回读）。它们各自 await 一次读盘，**回来的顺序不保证与发出的一致** ——
+           * 迟到的旧响应会把新状态顶回去。真机上的表现是「导出完了、文件也在盘上，
+           * 但导出卡片一直写着『还没有导出过』」，而且重新点一次才好 —— 查起来像随机。
+           */
+          const seq = ++loadSeq.current;
           try {
             const next = await api.getMapProject({ projectId: id, lang: activeLang() });
+            if (seq !== loadSeq.current) return;
             if (keep !== true) {
               clearPlan();
               setLayerIndex(0);
@@ -7521,11 +7581,25 @@
         }
       };
 
-      const runExport = async (formats) => {
+      /**
+       * 导出：**按当前勾选导一次**。
+       *
+       * 打不打 zip 由宿主决定（产物超过一个就自动打），界面不自己判断 ——
+       * 「几个文件算多」只有一处口径，免得界面显示的和盘上的对不上。
+       */
+      const runExport = async () => {
         if (view === null || api === undefined) return;
+        if (exportFormats.png !== true && exportFormats.json !== true && exportFormats.tilesets !== true) {
+          setNotice({ kind: "error", text: T("至少勾一项要导出的内容。") });
+          return;
+        }
         setBusyKey("export");
         try {
-          const started = await api.runMapExport({ projectId: view.id, scale: exportScale, formats });
+          const started = await api.runMapExport({
+            projectId: view.id,
+            scale: exportScale,
+            formats: { png: exportFormats.png === true, json: exportFormats.json === true, tilesets: exportFormats.tilesets === true }
+          });
           if (started !== undefined && started.started !== true && typeof started.reason === "string") {
             setNotice({ kind: "info", text: started.reason });
           }
@@ -7535,6 +7609,57 @@
         } finally {
           setBusyKey(null);
         }
+      };
+
+      /** 导出产物的可点 URL（同源静态路由；zip 与单文件走同一条）。 */
+      const exportUrlOf = (file) => `${assetBase}${view.exportBase}${file}`;
+      /** `download` 属性要的是文件名，不是路径（`tilesets/x.png` 直接写上去浏览器会当非法文件名）。 */
+      const baseNameOf = (file) => String(file).split("/").pop() ?? file;
+      const isZip = (file) => /\.zip$/i.test(String(file));
+
+      /**
+       * 「另存为…」：浏览器原生的保存位置选择框（File System Access API）。
+       *
+       * ⚠️ 顺序不能反：`showSaveFilePicker` 必须在**用户手势**里调用，先 `await fetch`
+       * 下载大文件会把手势耗掉，Chromium 直接抛「Must be handling a user gesture」。
+       * 所以是「先弹框拿句柄 → 再取字节 → 再写盘」；用户取消（AbortError）什么都不提示。
+       */
+      const saveAsExport = async (file) => {
+        /**
+         * ⚠️ 用 `any` 取这个 API：它是 File System Access 的较新成员，
+         * TS 自带的 `Window` 类型里不一定有；而它**存在与否必须运行时判**（Electron 壳、
+         * 老浏览器、跨源 iframe 里都没有），写进类型当成一定有会在真机上直接抛。
+         */
+        const picker = typeof window === "undefined" ? undefined : (window as any).showSaveFilePicker;
+        if (typeof picker !== "function") {
+          setNotice({ kind: "info", text: T("这个浏览器不支持「另存为」，请用下载（位置由浏览器的下载设置决定）。") });
+          return;
+        }
+        try {
+          const handle: any = await picker({ suggestedName: baseNameOf(file) });
+          const response = await fetch(exportUrlOf(file));
+          if (response.ok !== true) throw new Error(`HTTP ${response.status}`);
+          const writable = await handle.createWritable();
+          await writable.write(await response.blob());
+          await writable.close();
+          setNotice({ kind: "ok", text: T("已保存到 {n0}", { n0: String(handle.name ?? baseNameOf(file)) }) });
+        } catch (error) {
+          // 用户在保存框里按了取消：不是错误，不要弹红字
+          if (error !== null && typeof error === "object" && (error as any).name === "AbortError") return;
+          setNotice({ kind: "error", text: T("另存为失败：{n0}", { n0: msg(error) }) });
+        }
+      };
+
+      /** 「打开导出目录」：打开**导出目录本身**（宿主按与导出同一处口径算路径，没导出过就退回项目目录）。 */
+      const openExportFolder = async () => {
+        if (view === null || api === undefined) return;
+        const result = await withApi(() => api.revealMapProject({ projectId: view.id, target: "export" }));
+        if (result === undefined) return;
+        if (result.fallback === true) {
+          setNotice({ kind: "info", text: T("还没有导出过，先点「导出」。现在打开的是项目目录。") });
+          return;
+        }
+        setNotice({ kind: "ok", text: T("已打开 {n0}", { n0: String(result.dir ?? "") }) });
       };
 
       /** 打勾 / 取消勾。`stage` 省略＝「整个模块看过了」（宿主按四步全打处理）。 */
@@ -7996,41 +8121,138 @@
         )
       );
 
+      /**
+       * 导出卡片 = **一次选完 → 一次导出 → 一次下载**。
+       *
+       * 老版本的坏处（用户原话：「导出功能窗口意味不明」）：两个按钮并排，一个看着像
+       * 页签、另一个点下去却是立即执行；导完给一堆文件链接却没有「存到哪」这件事；
+       * 三个文件还得一个一个点。现在：
+       *
+       * 1. 内容用复选框选（勾几项都行），倍率只在勾了 PNG 时出现；
+       * 2. 唯一的「导出」按钮执行；多份产物由宿主打成一个 zip，一次下载；
+       * 3. 结果区写清「文件在哪」（本机绝对路径）+ 下载 / 另存为 / 打开导出目录。
+       */
+      const exportRows = [
+        ["png", T("地图图片 PNG"), T("地图长什么样，直接能放进游戏")],
+        ["json", T("存档数据 JSON"), T("每一格是什么，给引擎和工具读")],
+        ["tilesets", T("素材原图"), T("把素材图一起拷进包里，换台机器也能用")]
+      ];
+      const exportNothingChosen = exportFormats.png !== true && exportFormats.json !== true && exportFormats.tilesets !== true;
+      const zipFile = exportFiles.find((file) => isZip(file));
+      const mainFile = zipFile ?? exportFiles.find((file) => file === "map.png") ?? exportFiles[0];
+      // 排一下序：zip 在最前（它是「一次拿走全部」那一个），其余按产出顺序
+      const listedFiles = exportFiles.slice().sort((a, b) => (isZip(a) === isZip(b) ? 0 : isZip(a) ? -1 : 1));
+      const canSaveAs = typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function";
+
       const exportCard = h(
         "div",
-        { className: "SPR_mapEdCard" },
+        { className: "SPR_mapEdCard", "data-testid": "map-export-card" },
         cardHead(T("导出")),
+        h("span", { className: "SPR_mapEdLabel" }, T("导出内容")),
+        h(
+          "div",
+          { className: "SPR_mapEdRows" },
+          exportRows.map(([key, label, hint]) =>
+            h(
+              "label",
+              { key, className: "SPR_mapEdCheck", "data-testid": `map-export-row-${key}` },
+              h("input", {
+                type: "checkbox",
+                "data-testid": `map-export-${key}`,
+                checked: exportFormats[key] === true,
+                onChange: (event) => setExportFormats((current) => ({ ...current, [key]: event.target.checked }))
+              }),
+              label,
+              h("span", { className: "SPR_mapEdTsMeta" }, hint)
+            )
+          )
+        ),
+        exportFormats.png === true
+          ? row(
+              T("倍率"),
+              h(
+                "select",
+                {
+                  className: "SPR_mapEdSelect",
+                  "data-testid": "map-export-scale",
+                  value: String(exportScale),
+                  onChange: (event) => setExportScale(Number(event.target.value))
+                },
+                [1, 2, 3, 4].map((value) => h("option", { key: value, value: String(value) }, `${value}×`))
+              ),
+              T("只影响 PNG 的尺寸，不影响存档数据")
+            )
+          : null,
+        h("p", { className: "SPR_mapEdHint" }, T("产出不止一个文件时自动打成一个 ZIP；只有一个文件时就直接给你那个文件。")),
         h(
           "div",
           { className: "SPR_mapEdCardRow" },
-          h(Btn, { primary: true, busy: busyKey === "export", onClick: () => void runExport({ png: true, json: false }) }, T("导出图片 PNG")),
-          h(Btn, { busy: busyKey === "export", onClick: () => void runExport({ png: false, json: true }) }, T("导出存档 JSON"))
-        ),
-        row(
-          T("倍率"),
           h(
-            "select",
+            Btn,
             {
-              className: "SPR_mapEdSelect",
-              value: String(exportScale),
-              onChange: (event) => setExportScale(Number(event.target.value))
+              primary: true,
+              busy: busyKey === "export",
+              disabled: exportNothingChosen,
+              "data-testid": "map-export-run",
+              onClick: () => void runExport()
             },
-            [1, 2, 3, 4].map((value) => h("option", { key: value, value: String(value) }, `${value}×`))
+            T("导出")
           ),
-          T("只影响 PNG 的尺寸，不影响存档数据")
-        ),
-        h(
-          "div",
-          { className: "SPR_mapEdCardRow" },
-          h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("打开导出目录")),
+          h(Btn, { onClick: () => void openExportFolder() }, T("打开导出目录")),
           confirmButton("export")
         ),
         exportFiles.length === 0
-          ? h("p", { className: "SPR_mapEdHint" }, T("还没有导出过。"))
+          ? h("p", { className: "SPR_mapEdHint", "data-testid": "map-export-empty" }, T("还没有导出过。"))
           : h(
-              "ul",
-              { className: "SPR_mapEdFiles" },
-              exportFiles.map((file) => h("li", { key: file }, h("a", { href: `${assetBase}${view.exportBase}${file}`, target: "_blank", rel: "noreferrer" }, file)))
+              "div",
+              { className: "SPR_mapEdExportResult", "data-testid": "map-export-result" },
+              h("span", { className: "SPR_mapEdLabel" }, T("最近一次导出：{n0} 个文件", { n0: String(exportFiles.length) })),
+              mainFile === undefined
+                ? null
+                : h(
+                    "div",
+                    { className: "SPR_mapEdCardRow" },
+                    h(
+                      "a",
+                      {
+                        className: "SPR_btn",
+                        "data-primary": "true",
+                        "data-testid": "map-export-download",
+                        href: exportUrlOf(mainFile),
+                        download: baseNameOf(mainFile),
+                        // 与别处的「下载」按钮同款：`<a>` 当按钮用，去掉下划线
+                        style: { textDecoration: "none" }
+                      },
+                      T("下载 {n0}", { n0: baseNameOf(mainFile) })
+                    ),
+                    canSaveAs
+                      ? h(
+                          Btn,
+                          { "data-testid": "map-export-save-as", onClick: () => void saveAsExport(mainFile) },
+                          T("另存为…")
+                        )
+                      : null
+                  ),
+              h(
+                "p",
+                { className: "SPR_mapEdHint" },
+                canSaveAs
+                  ? T("下载走浏览器（默认进它的下载目录）；想自己挑位置就点「另存为…」。")
+                  : T("下载走浏览器：文件会进它的下载目录（想每次都自己挑位置，在浏览器里打开「下载前询问保存位置」）。")
+              ),
+              h(
+                "ul",
+                { className: "SPR_mapEdFiles", "data-testid": "map-export-files" },
+                listedFiles.map((file) =>
+                  h(
+                    "li",
+                    { key: file },
+                    h("a", { href: exportUrlOf(file), download: baseNameOf(file), "data-testid": `map-export-file-${baseNameOf(file)}` }, file),
+                    isZip(file) ? h("span", { className: "SPR_mapEdTsBadge", "data-anim": "true" }, T("打包，含全部内容")) : null
+                  )
+                )
+              ),
+              h("p", { className: "SPR_mapEdHint", "data-testid": "map-export-path" }, T("文件都在 {n0}", { n0: view.exportPath === "" ? "—" : String(view.exportPath) }))
             )
       );
 

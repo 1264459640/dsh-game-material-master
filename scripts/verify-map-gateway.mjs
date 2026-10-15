@@ -436,11 +436,18 @@ try {
   const docNow = await mapgen.readTheDoc(projectId);
   const expectedDir = EXPORT.safeFileName(docNow.name, docNow.id);
   check("视图的 exportBase 按地图名取目录", exported.exportBase === `export/${expectedDir}/`, exported.exportBase);
-  check("导出清单只列三个文件", exported.exportFiles.slice().sort().join(",") === "manifest.json,map.json,map.png", exported.exportFiles.join(" "));
+  const expectedZip = `${expectedDir}.zip`;
+  check(
+    "导出清单 = map.png / map.json / zip / manifest.json（多产物自动打包，走网关也一样）",
+    exported.exportFiles.slice().sort().join(",") === ["manifest.json", "map.json", "map.png", expectedZip].sort().join(","),
+    exported.exportFiles.join(" ")
+  );
+  check("视图带上导出目录的本机绝对路径", exported.exportPath.endsWith(join("export", expectedDir)) && exported.exportPath.includes(mapgen.mapProjectDir(projectId)), exported.exportPath);
   const listing = await mapgen.readExportListing(projectId, "http://127.0.0.1:9999");
   check("readExportListing 给绝对 URL", listing.base.startsWith("http://127.0.0.1:9999/dsh-game-material-master/map-assets/") && listing.files.every((url) => url.startsWith("http")));
+  check("zip 在清单里也是可点的绝对 URL（界面点一下就能下载）", listing.files.some((url) => url.endsWith(`/${expectedZip}`)), listing.files.join(" "));
   const snapshot = await mapgen.mapSnapshot(await mapgen.readMapProject(projectId), "http://127.0.0.1:9999");
-  check("快照把预览图与导出产物换成绝对 URL", snapshot.previewUrls.every((url) => url.includes("/preview/")) && snapshot.exportFiles.length === 3, snapshot.previewUrls.join(" "));
+  check("快照把预览图与导出产物换成绝对 URL", snapshot.previewUrls.every((url) => url.includes("/preview/")) && snapshot.exportFiles.length === exported.exportFiles.length, snapshot.previewUrls.join(" "));
   check("快照带 busy 与 nextActions", typeof snapshot.busy === "boolean" && Array.isArray(snapshot.nextActions));
 
   // ══ 10. 工具面（call / status / review / intake / approve / upload）══════
@@ -462,7 +469,7 @@ try {
 
   const reviewed = await run("game_material_review", { module: "map", id: projectId });
   check("review：map 分支给出四个阶段", Array.isArray(reviewed.stages) && reviewed.stages.length === 4 && reviewed.stages.every((stage) => links.MAP_STAGES.includes(stage.stage)), JSON.stringify(reviewed.stages?.map((s) => s.stage)));
-  check("review：含 tilesets（绝对 URL）/ layers / preview / exportBaseUrl / exportFiles", Array.isArray(reviewed.tilesets) && reviewed.tilesets.every((t) => String(t.url).startsWith("http")) && Array.isArray(reviewed.layers) && reviewed.previewUrls.length > 0 && reviewed.exportBaseUrl.startsWith("http") && reviewed.exportFiles.length === 3);
+  check("review：含 tilesets（绝对 URL）/ layers / preview / exportBaseUrl / exportFiles / exportPath", Array.isArray(reviewed.tilesets) && reviewed.tilesets.every((t) => String(t.url).startsWith("http")) && Array.isArray(reviewed.layers) && reviewed.previewUrls.length > 0 && reviewed.exportBaseUrl.startsWith("http") && reviewed.exportFiles.length === exported.exportFiles.length && typeof reviewed.exportPath === "string" && reviewed.exportPath !== "");
   check("review：不再有 families / coverage（旧体系的残留）", reviewed.families === undefined && reviewed.coverage === undefined);
   check("review：nextActions 是文字（模型能直接念）", Array.isArray(reviewed.nextActions) && reviewed.nextActions.every((text) => typeof text === "string"));
   check("review：带 openUrl，名称用项目名（地图名在 exportBase 里）", String(reviewed.openUrl).includes("module=map") && reviewed.name === (await mapgen.readMapProject(projectId)).name, reviewed.name);
@@ -512,6 +519,7 @@ try {
    */
   const request = async (path, method = "GET") => {
     const chunks = [];
+    const headers = {};
     let status = 0;
     const req = new Readable({ read() {} });
     req.url = path;
@@ -524,15 +532,18 @@ try {
         callback();
       }
     });
-    res.setHeader = () => {};
-    res.writeHead = (code) => {
+    res.setHeader = (name, value) => {
+      headers[String(name).toLowerCase()] = value;
+    };
+    res.writeHead = (code, more) => {
       status = code;
+      for (const [name, value] of Object.entries(more ?? {})) headers[String(name).toLowerCase()] = value;
       return res;
     };
     res.statusCode = 200;
     await route.handler(req, res);
     await Promise.race([once(res, "finish").catch(() => undefined), sleep(500)]);
-    return { status: status === 0 ? res.statusCode : status, body: Buffer.concat(chunks) };
+    return { status: status === 0 ? res.statusCode : status, body: Buffer.concat(chunks), headers };
   };
   const assetBase = `/dsh-game-material-master/map-assets/${projectId}`;
   const tilesetFile = (await gw("getMapProject", { projectId })).tilesets[0].file;
@@ -543,6 +554,13 @@ try {
   const exportDir = (await gw("getMapProject", { projectId })).exportBase.replace(/^export\//, "").replace(/\/$/, "");
   const okExport = await request(`${assetBase}/export/${exportDir}/map.png`);
   check("导出产物能取到（export 在白名单里）", okExport.status === 200, `status=${okExport.status}`);
+  /**
+   * zip 走**同一条**路由（白名单只比对第一段 `export`），所以这里要一起钉住：
+   * 下载按钮指向的就是这个 URL，它 403/404 的话界面表现只是「点了没反应」。
+   */
+  const zipName = (await gw("getMapProject", { projectId })).exportFiles.find((file) => file.endsWith(".zip"));
+  const okZip = await request(`${assetBase}/export/${exportDir}/${encodeURIComponent(zipName)}`);
+  check("导出的 zip 能取到（200，且 MIME 是 application/zip）", okZip.status === 200 && okZip.body.length > 0 && String(okZip.headers["content-type"]).includes("application/zip"), `status=${okZip.status} type=${okZip.headers["content-type"]}`);
   const okHead = await request(`${assetBase}/${tilesetFile}`, "HEAD");
   check("HEAD 也是 200（空体）", okHead.status === 200, `status=${okHead.status}`);
   const traversalEncoded = await request(`/dsh-game-material-master/map-assets/${projectId}/%2e%2e%2f%2e%2e%2fetc/passwd`);

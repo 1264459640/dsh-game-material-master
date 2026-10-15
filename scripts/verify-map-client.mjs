@@ -25,6 +25,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 // 整个脚本跑在一个 mkdtemp 出来的临时 DSH_HOME 里，结束连同项目一起删掉。
@@ -185,9 +186,37 @@ try {
     timers.clear();
     for (const fn of due) fn();
   }
+  /**
+   * 面板的轮询定时器（`view.busy === true` 时每 1.5s 重读一次项目）。
+   *
+   * ⚠️ 必须有真的实现：导出 / 预览是**宿主后台作业**，提交那次读到的还是「进行中」，
+   * 界面靠这个轮询才把新产物读回来（ENGINEERING.md 里记过这条：真机导出约 2s 后
+   * 文件列表自己冒出来）。以前这里返回 0 什么都不做，于是「提交完界面不刷新」这条
+   * 路径在自检里**根本走不到**。这里只登记、由测试显式 `tickTimers()` 放出来。
+   */
+  const intervals = new Map();
+  let intervalSeq = 0;
+  /** 放一次轮询（与真机的「又过了 1.5s」等价），再等宿主调用落地。 */
+  async function tickIntervals() {
+    const due = [...intervals.values()];
+    if (due.length === 0) return false;
+    for (const fn of due) fn();
+    let quiet = 0;
+    for (let tick = 0; tick < 240; tick++) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await Promise.resolve();
+      if (inFlight > 0) quiet = 0;
+      else if (++quiet >= 3) break;
+    }
+    return true;
+  }
   /** 把队列里还活着的定时器放出来，再等宿主调用落地（模拟「又过了 40ms」）。 */
   async function tickTimers() {
-    if (timers.size === 0) return;
+    const polled = await tickIntervals();
+    if (timers.size === 0) {
+      if (!polled) return;
+      return;
+    }
     pumpTimers();
     let quiet = 0;
     for (let tick = 0; tick < 240; tick++) {
@@ -434,8 +463,14 @@ try {
     clearTimeout: (id) => {
       timers.delete(id);
     },
-    setInterval: () => 0,
-    clearInterval() {},
+    setInterval: (fn) => {
+      const id = ++intervalSeq;
+      intervals.set(id, fn);
+      return id;
+    },
+    clearInterval: (id) => {
+      intervals.delete(id);
+    },
     addEventListener() {},
     removeEventListener() {},
     document: undefined
@@ -684,6 +719,8 @@ try {
     imports: 0,
     generates: [],
     exports: 0,
+    exportPayloads: [],
+    reveals: [],
     approvals: []
   };
   const apiRaw = {
@@ -751,6 +788,7 @@ try {
     runMapPreview: async (payload) => G.runPreviewStage(payload.projectId),
     runMapExport: async (payload) => {
       apiLog.exports++;
+      apiLog.exportPayloads.push({ scale: payload.scale, formats: { ...(payload.formats ?? {}) } });
       return G.runExportStage(payload.projectId, { scale: payload.scale, formats: payload.formats });
     },
     cancelMapJob: async () => ({ ok: true }),
@@ -758,7 +796,11 @@ try {
       apiLog.approvals.push(payload);
       return { ok: true };
     },
-    revealMapProject: async () => ({ ok: true })
+    revealMapProject: async (payload) => {
+      const { dir, fallback } = await G.mapRevealDir(payload.projectId, payload.target ?? "");
+      apiLog.reveals.push({ ...payload, dir, fallback });
+      return { ok: true, dir, fallback };
+    }
   };
   /** 每个宿主调用都计一次「在飞」，供 renderTree 判断真的静下来了。 */
   const api = Object.fromEntries(
@@ -798,6 +840,22 @@ try {
     return out;
   }
   const byClass = (tree, className) => collect(tree, (node) => typeof node.props?.className === "string" && node.props.className.split(" ").includes(className));
+  /**
+   * 重新挂载面板，直到**视图真的加载出来**为止（最多 3 次）。
+   *
+   * ⚠️ 挂载时要「读项目列表 → 读视图 → 问计划」，全是真的文件系统往返；本 harness
+   * 偶尔会在那一串异步还没落地时就判定「已经稳定」，于是这个全新面板停在空态。
+   * 那不是界面坏了（真机上刷新一次就好），但会让**后面每条断言连环崩**
+   * （`byTool(freshTree, "eraser")[0]` 直接 undefined，整个脚本挂掉、后半个文件的
+   * 覆盖全丢 —— 本机实测三次跑，分别死在第 10 / 15 / 16 节）。重挂一次即可。
+   */
+  async function freshPanel(apiImpl = api, tries = 3) {
+    let mounted = await renderTree(() => MapModule({ api: apiImpl }), { fresh: true });
+    for (let i = 1; i < tries && textOf(mounted).includes("还没有地图项目"); i++) {
+      mounted = await renderTree(() => MapModule({ api: apiImpl }), { fresh: true });
+    }
+    return mounted;
+  }
   const byTool = (tree, key) => collect(tree, (node) => node.props?.["data-tool"] === key);
   /**
    * 地图格 → 客户端坐标。
@@ -1061,11 +1119,153 @@ try {
     textOf(assetsCard).match(/会动 \d+ 帧/)?.[0] ?? ""
   );
   check("列表里没有「改格子 / 改形态」这类入口（属性只能在新增时定）", !/改格子|改形态|这块素材怎么用/.test(textOf(assetsCard)));
+  /**
+   * ── 导出卡片：**选择 / 执行 / 拿文件**三件事分开 ──────────────────────────
+   *
+   * 用户对这一版的原始抱怨：「导出 PNG 是选项卡，导出 JSON 怎么就点击直接操作了？
+   * 而且还不能选择导出位置。而且多个文件应该打 zip」。所以这里逐条钉住：
+   * ① 内容是三只复选框（不是像页签的按钮），执行只有一个「导出」；
+   * ② 倍率只在勾了 PNG 时出现；
+   * ③ 导完给的是**一个 zip 的下载链接**（多产物自动打包），并写清文件落在哪；
+   * ④ 「另存为…」走原生保存框（有才显示），拿到的就是那个 zip。
+   */
   byClass(tree, "SPR_mapEdTopBtn")[1].props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   const exportCard = byClass(tree, "SPR_mapEdCard")[0];
-  check("点「导出」拉出导出卡片（PNG / 存档 JSON / 倍率 / 打开导出目录）", exportCard !== undefined && /导出图片 PNG/.test(textOf(exportCard)) && /导出存档 JSON/.test(textOf(exportCard)) && /倍率/.test(textOf(exportCard)), textOf(exportCard).slice(0, 80));
-  check("导出卡片给定倍率档位 1×–4×", collect(exportCard, (node) => node.type === "option").length === 4);
+  const exportBox = (key) => collect(exportCard, (node) => node.props?.["data-testid"] === `map-export-${key}`)[0];
+  check(
+    "点「导出」拉出导出卡片（三只复选框 + 一个「导出」按钮）",
+    exportCard !== undefined && ["png", "json", "tilesets"].every((key) => exportBox(key) !== undefined) && /导出内容/.test(textOf(exportCard)),
+    textOf(exportCard).slice(0, 80)
+  );
+  check(
+    "★ 不再有「导出图片 PNG / 导出存档 JSON」这种点一下就执行的按钮（选择与执行分开）",
+    !/导出图片 PNG|导出存档 JSON/.test(textOf(exportCard)) && byClass(exportCard, "SPR_btn").filter((node) => textOf(node) === "导出").length === 1,
+    textOf(exportCard).slice(0, 120)
+  );
+  check("默认勾上 PNG 与存档 JSON、不勾素材原图", exportBox("png").props.checked === true && exportBox("json").props.checked === true && exportBox("tilesets").props.checked !== true);
+  check("导出卡片给定倍率档位 1×–4×（只在勾了 PNG 时出现）", collect(exportCard, (node) => node.type === "option").length === 4 && /倍率/.test(textOf(exportCard)));
+  check("卡片上写清「多产物自动打包」这条规则", /自动打成一个 ZIP/.test(textOf(exportCard)), textOf(exportCard).match(/产出[^。]*。/)?.[0] ?? "");
+  check("还没导出过时给空态文案（不是一份假清单）", /还没有导出过/.test(textOf(exportCard)));
+
+  // 取消勾选 PNG：倍率跟着消失（倍率只对 PNG 有意义）
+  exportBox("png").props.onChange({ target: { checked: false } });
+  tree = await renderTree(() => MapModule({ api }));
+  const cardNoPng = byClass(tree, "SPR_mapEdCard")[0];
+  check("取消勾选 PNG 后倍率那一行消失", !/倍率/.test(textOf(cardNoPng)), textOf(cardNoPng).slice(0, 100));
+  // 三只都取消：导出按钮变灰（点了也没东西可导）
+  collect(cardNoPng, (node) => node.props?.["data-testid"] === "map-export-json")[0].props.onChange({ target: { checked: false } });
+  tree = await renderTree(() => MapModule({ api }));
+  const cardNone = byClass(tree, "SPR_mapEdCard")[0];
+  const runButton = collect(cardNone, (node) => node.props?.["data-testid"] === "map-export-run")[0];
+  check("一个都不勾时「导出」是禁用的", runButton !== undefined && runButton.props.disabled === true);
+
+  // 勾回 PNG + JSON，真导一次
+  collect(cardNone, (node) => node.props?.["data-testid"] === "map-export-png")[0].props.onChange({ target: { checked: true } });
+  tree = await renderTree(() => MapModule({ api }));
+  collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.props?.["data-testid"] === "map-export-json")[0].props.onChange({ target: { checked: true } });
+  tree = await renderTree(() => MapModule({ api }));
+  const exportsBefore = apiLog.exports;
+  collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.props?.["data-testid"] === "map-export-run")[0].props.onClick();
+  tree = await renderTree(() => MapModule({ api }));
+  check("点「导出」真的调了一次 runMapExport", apiLog.exports === exportsBefore + 1);
+  check(
+    "提交的 formats 就是勾选的那三项（png/json/tilesets），界面不自作主张",
+    JSON.stringify(apiLog.exportPayloads[apiLog.exportPayloads.length - 1]?.formats) === JSON.stringify({ png: true, json: true, tilesets: false }),
+    JSON.stringify(apiLog.exportPayloads[apiLog.exportPayloads.length - 1])
+  );
+
+  /**
+   * ⚠️ 导出是**宿主后台作业**：`runMapExport` 立刻回 `{started:true}`，文件是几轮之后才落盘的。
+   * 所以先等宿主 `mapBusy` 落下去（不然断言读到的是上一帧的清单，会以「随机失败」的形式报出来）。
+   *
+   * 不能只 `setImmediate` 空转：那是**真写盘**（PNG + zip），要给它真实的挂钟时间，
+   * 而本 harness 把 `setTimeout` 换成了可取消定时器队列 —— 所以用 `node:timers/promises`。
+   *
+   * 落盘之后靠**面板自己的刷新路径**把新清单读回来：`view.busy === true` 期间的
+   * 1.5s 轮询（`tickTimers` 会把它放出来）。这条路径以前在自检里是空的
+   * （`setInterval` 是空实现），也就是「提交完界面不刷新」根本测不到。
+   */
+  for (let tick = 0; tick < 200 && G.mapBusy(projectId); tick++) await delay(25);
+  check("宿主导出作业跑完（自检层面确认真落盘了）", G.mapBusy(projectId) === false);
+  /**
+   * 界面是**异步**看到这件事的：提交那一刻读到的还是「进行中」，得靠 busy 期间的
+   * 1.5s 轮询再读一次才拿到新清单（真机实测：导出约 2s 后文件列表自己冒出来）。
+   * 所以这里按真机的节奏一轮轮放轮询，最多放几轮 —— 一轮就到位反而不正常。
+   */
+  let resultCard = null;
+  let result = null;
+  for (let round = 0; round < 6; round++) {
+    tree = await renderTree(() => MapModule({ api }));
+    resultCard = byClass(tree, "SPR_mapEdCard")[0];
+    result = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-result")[0];
+    if (result !== undefined) break;
+    await tickTimers();
+  }
+  check("导出跑完后界面自己刷新出结果区（busy 期间的轮询真的在跑）", result !== undefined && /最近一次导出：\d+ 个文件/.test(textOf(result)), textOf(resultCard).slice(0, 140));
+  const download = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-download")[0];
+  const viewForExport = await G.mapView(await G.readMapProject(projectId));
+  const zipFile = viewForExport.exportFiles.find((file) => file.endsWith(".zip"));
+  check("★ 主下载按钮指向那个 zip（多产物一次拿走）", download !== undefined && zipFile !== undefined && String(download.props.href).endsWith(zipFile), `${download?.props.href} vs ${zipFile}`);
+  check("下载按钮带 download 属性（点了是存盘，不是开着看）", download !== undefined && download.props.download === zipFile);
+  check("结果区把每个产物都列出来（zip 上标着「打包，含全部内容」）", ["map.png", "map.json"].every((name) => textOf(resultCard).includes(name)) && /打包，含全部内容/.test(textOf(resultCard)), textOf(resultCard).slice(0, 160));
+  const pathLine = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-path")[0];
+  check("★ 写清文件落在哪（导出目录的本机绝对路径，不再「意味不明」）", pathLine !== undefined && textOf(pathLine).includes(viewForExport.exportPath) && textOf(pathLine).includes("export"), textOf(pathLine));
+  const saveAsButton = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-save-as")[0];
+  check("没有原生保存框时不给「另存为…」按钮，改说明位置由浏览器决定", saveAsButton === undefined && /下载目录/.test(textOf(resultCard)));
+
+  // 「打开导出目录」必须带 target:"export"（不带就打开的是项目根目录 —— 老版本的坏法）
+  apiLog.reveals.length = 0;
+  collect(resultCard, (node) => node.type === "a" || node.type === "button")
+    .find((node) => textOf(node) === "打开导出目录")
+    ?.props.onClick();
+  tree = await renderTree(() => MapModule({ api }));
+  check('点「打开导出目录」带上 target:"export"', apiLog.reveals.length === 1 && apiLog.reveals[0].target === "export", JSON.stringify(apiLog.reveals));
+  /**
+   * 打开的必须是**导出目录本身**（老版本打开的是项目根目录 —— 那里并没有他要的文件）。
+   * 断言宿主解析出来的路径，而不是底部那条提示：提示是瞬时状态，本来就会被下一次
+   * setNotice 顶掉，拿它当断言会随机红。
+   */
+  check("打开的是导出目录本身（不是项目根目录）", apiLog.reveals[0]?.dir === viewForExport.exportPath && apiLog.reveals[0]?.fallback === false, `${apiLog.reveals[0]?.dir} vs ${viewForExport.exportPath}`);
+
+  /**
+   * 「另存为…」：装一个原生保存框的桩。断言的是**先弹框再取字节**这个顺序 ——
+   * 先 await fetch 会把手势耗掉，Chromium 直接抛「Must be handling a user gesture」。
+   */
+  const saved = [];
+  const order = [];
+  windowStub.showSaveFilePicker = async (options) => {
+    order.push("pick");
+    return {
+      name: options.suggestedName,
+      async createWritable() {
+        return {
+          async write(blob) {
+            order.push("write");
+            saved.push({ name: options.suggestedName, size: blob.size });
+          },
+          async close() {
+            order.push("close");
+          }
+        };
+      }
+    };
+  };
+  globalThis.fetch = async (url) => {
+    order.push("fetch");
+    return { ok: true, status: 200, async blob() { return { size: 42, url: String(url) }; } };
+  };
+  tree = await renderTree(() => MapModule({ api }));
+  const saveAsNow = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.props?.["data-testid"] === "map-export-save-as")[0];
+  check("有原生保存框时出现「另存为…」", saveAsNow !== undefined && textOf(saveAsNow).includes("另存为"));
+  saveAsNow?.props.onClick();
+  tree = await renderTree(() => MapModule({ api }));
+  check("「另存为…」先弹保存框、再取字节、最后写盘", order.join(">") === "pick>fetch>write>close", order.join(">"));
+  check("保存框建议的文件名就是那个 zip，写进去的字节数来自下载内容", saved.length === 1 && saved[0].name === zipFile && saved[0].size === 42, JSON.stringify(saved));
+  check("存完给一句「已保存到 …」", /已保存到/.test(textOf(tree)), textOf(tree).slice(0, 120));
+  delete windowStub.showSaveFilePicker;
+  delete globalThis.fetch;
+
   byClass(tree, "SPR_mapEdTopBtn")[1].props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   check("再点一次卡片收起", byClass(tree, "SPR_mapEdCard").length === 0);
@@ -1202,7 +1402,15 @@ try {
   rafQueue.clear();
   check("画面在动时确实注册了动画回调（不是死帧）", pendingTicks.length > 0, `${pendingTicks.length} 个`);
   try {
-    Date.now = () => realNow() + 1500;
+    /**
+     * ⚠️ 拨**恰好一个帧间隔**（`fps = 1` → 1000ms），不能拨 1500ms。
+     *
+     * 面板算的是 `floor(elapsed * fps) % frameCount`：拨 1.5s 时落到哪一帧取决于
+     * `elapsed` 的奇偶 —— 也就是说这条断言隐含依赖「跑到这里时一共花了多少挂钟时间」。
+     * 前面的用例多花半秒（例如新增的导出段要真写盘）就会翻成 frame 0，表现为
+     * 「莫名其妙挂一条与本次改动无关的动画断言」。拨整数个间隔则恒 +1 帧。
+     */
+    Date.now = () => realNow() + 1000;
     for (const tick of pendingTicks) tick();
   } finally {
     Date.now = realNow;
@@ -1502,8 +1710,8 @@ try {
   // ══ 10. 橡皮不依赖笔刷（新面板重来一次，笔刷恒为 null）════════════════════
   section("10) 橡皮的可用性不依赖笔刷（新挂载的面板，笔刷为 null）");
   {
-    const freshTree = await renderTree(() => MapModule({ api }), { fresh: true });
-    check("新挂载的面板有机会画（视图已加载）", !textOf(freshTree).includes("还没有地图项目"));
+    const freshTree = await freshPanel();
+    check("新挂载的面板有机会画（视图已加载）", !textOf(freshTree).includes("还没有地图项目"), textOf(freshTree).slice(0, 160));
     byTool(freshTree, "eraser")[0].props.onClick();
     let erased = await renderTree(() => MapModule({ api }));
     const before = apiLog.applies.length;
@@ -1704,7 +1912,7 @@ try {
      * 首帧就会缺一块 —— 这条断言就是「预览 = 导出」在挂载那一刻的形态。
      */
     await G.applyMapOps(projectId, [{ kind: "paint", layerId: "l0", cells: [{ r: 25, c: 25, tile: propBrush }] }]);
-    const freshTree = await renderTree(() => MapModule({ api }), { fresh: true });
+    const freshTree = await freshPanel();
     const freshQuery = apiLog.plans[apiLog.plans.length - 1];
     const mountFrame = frameOf();
     const needPlan = await G.mapPlan(projectId, { view: freshQuery.view, have: [] });
@@ -1730,7 +1938,7 @@ try {
   {
     // 前面的用例把 `tree` 留在了别的快照上（第 15 段还单独挂过一次），这里重新挂一份
     // 自洽的面板再点，免得点到过期闭包上（菜单开关会因此「点了没反应」）。
-    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    tree = await freshPanel();
     // ── 新建 / 重命名：自带对话框，不依赖原生 window.prompt ───────────────
     windowStub.__promptCalls.length = 0;
     const projButton = byClass(tree, "SPR_mapEdProj")[0];
@@ -1834,7 +2042,7 @@ try {
   section("17) 地图外不落笔（不折回另一边）+ 图内快速拖动补满");
   {
     // 夹具准备：上一段建过自己的项目（没有素材），这里重挂并切回主夹具，选一支笔
-    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    tree = await freshPanel();
     const mainName17 = (await G.readMapProject(projectId)).name;
     if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
       byClass(tree, "SPR_mapEdProj")[0].props.onClick();
@@ -1918,7 +2126,7 @@ try {
   // ══ 18) 自由尺寸 / 用法说明 / 通过按钮文案 ═══════════════════════════════
   section("18) 地图尺寸与素材格子都可自由填；用法四项悬停有解释；通过按钮叫「确定」");
   {
-    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    tree = await freshPanel();
     // 上一段建过自己的项目（没有素材），切回主夹具再测尺寸与素材设置
     const mainName18 = (await G.readMapProject(projectId)).name;
     if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
@@ -2033,3 +2241,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.log(`  ✗ ${failure}`);
   process.exit(1);
 }
+

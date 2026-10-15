@@ -33,7 +33,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 | **② Image generation** | Prompt (optionally with reference images) → images → green-screen keying | Clean transparent PNG character art / props |
 | **③ Sequence frames** | First/last frame or a reference video → generate video → extract frames → key | A horizontally laid out, loopable sequence |
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
-| **⑥ Map editor** (experimental, **fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon) | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles) |
+| **⑥ Map editor** (experimental, **fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon) | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles); tick what to export and multiple files come as one ZIP download |
 | ~~④ Rigged animation~~ | Part extraction → assembly → skeletal animation → Spine / DragonBones atlas | **Experimental, not covered in this document** |
 
 > 💡 **Module ⑤ "Map tile generation" is built on one idea: geometry by code, content by AI.**

@@ -684,8 +684,8 @@ const CALL_DESCRIPTION = [
   "  applyMapOps({projectId,ops,stroke?,have?})【★ agent 也能画：ops = [{kind:'paint',layerId,cells:[{r,c,tile}]}, {kind:'fill',layerId,r,c,tile}, {kind:'rect',layerId,r0,c0,r1,c1,tile,filled}, {kind:'replace',layerId,from,to}]；tile 取 getMapProject 的 view.tilesets[].palette[].index（1 起，0 = 空）。have = 界面已有的 chunk key，宿主只回真正失效的 dropKeys】/",
   "  mapUndo({projectId,have?}) / mapRedo({projectId,have?})【宿主持撤销栈，界面不用管】/ mapPlan({projectId,view:{x,y,width,height},have?,layerIds?})【绘制计划：每项 = {l 层, r,c 格号, t 图块序号, x,y 目标像素, a 不透明度, cycle? 动画帧序}，界面画布与导出 PNG 执行同一份】/",
   "  runMapGenerate({projectId,kind:'random'|'maze'|'continent',tiles?,seed?,layerId?})【一键铺满：整层一次提交、一次撤销；同种子逐字节可复现】/",
-  "  runMapPreview({projectId})【验收预览图 preview/map.png】/ runMapExport({projectId,scale?,formats?})【map.png + map.json（存档）+ manifest.json，目录自包含】/",
-  "  cancelMapJob({projectId}) / setMapApproved({projectId,stage?,approved})【stage 空 = 四阶段全打】/ revealMapProject({projectId})",
+  "  runMapPreview({projectId})【验收预览图 preview/map.png】/ runMapExport({projectId,scale?,formats?})【formats = {png?,json?,tilesets?,zip?}：默认 png+json，**产物超过一个自动打一个 zip**（zip:false 关掉）；tilesets:true 会把素材原图一起拷进 tilesets/，整包自包含；manifest.json 是我们自己的账本】/",
+  "  cancelMapJob({projectId}) / setMapApproved({projectId,stage?,approved})【stage 空 = 四阶段全打】/ revealMapProject({projectId,target?})【target:'export' 打开导出目录，省略 = 项目目录】",
   "  ★ 四个阶段：素材（assets）→ 自动连接（rules，宿主自动完成、界面不显示）→ 地图（paint）→ 导出（export）。**没有任何一步需要 API Key**。",
   "  ★ 地图四周**环绕**：视口范围可以越出边界，宿主会把这些格子映射回图内；一张地图就一个 `map.json`，没有多地图。",
   "    生成的几何报告看 game_material_review 返回的 variants[].geomMode —— measured 是量测成功，template 是回退模板几何。",
@@ -1078,6 +1078,8 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
           packet.previewUrls = snapshot.previewUrls;
           packet.exportBaseUrl = snapshot.exportBaseUrl;
           packet.exportFiles = snapshot.exportFiles;
+          /** 导出目录的**绝对路径**（还没导出过 = 空串）：产物埋在 DSH_HOME 底下，模型直接报路径比让用户找方便。 */
+          packet.exportPath = snapshot.exportPath;
           packet.warnings = [...(snapshot.warnings ?? []), ...(snapshot.exportWarnings ?? [])];
           packet.nextActions = (snapshot.nextActions ?? []).map((action: any) => `${action.step}：${action.why}`);
         } else if (module === "tile") {
@@ -1747,6 +1749,7 @@ function renderMapSummary(value: any): string[] {
   }
   for (const url of value.previewUrls ?? value.preview ?? []) lines.push(`  验收预览图：${url}`);
   if (typeof value.exportBaseUrl === "string" && value.exportBaseUrl !== "") lines.push(`  导出目录：${value.exportBaseUrl}`);
+  if (typeof value.exportPath === "string" && value.exportPath !== "") lines.push(`  导出目录（本机路径）：${value.exportPath}`);
   for (const file of value.exportFiles ?? []) lines.push(`      ${file}`);
   for (const warning of value.warnings ?? []) lines.push(`  ⚠ ${warning}`);
   return lines;

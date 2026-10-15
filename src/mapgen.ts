@@ -1481,6 +1481,14 @@ export interface MapProjectView {
   /** `export/<安全名>/`。 */
   exportBase: string;
   exportFiles: string[];
+  /**
+   * 导出目录的**绝对路径**（还没导出过就是空串）。
+   *
+   * 界面上要把它原样写出来：导出产物埋在 `<DSH_HOME>/game-material-master/map-jobs/…` 底下，
+   * 只给一个「打开导出目录」按钮的话，用户永远不知道文件到底落在哪 ——
+   * 「导出窗口意味不明」的一半就是它。
+   */
+  exportPath: string;
 }
 
 /**
@@ -1531,7 +1539,8 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
     logs: p.logs.slice(-40),
     preview: (await readPreviewFiles(p.id)).map((name) => `preview/${name}`),
     exportBase: listing?.base ?? "",
-    exportFiles: listing?.files ?? []
+    exportFiles: listing?.files ?? [],
+    exportPath: listing === undefined ? "" : join(mapProjectDir(p.id), "export", listing.dirName)
   };
 }
 
@@ -1695,7 +1704,37 @@ export async function runPreviewStage(projectId: string): Promise<{ started: boo
   return { started: true };
 }
 
-/** 导出（本地免费）：`map.png` + `map.json` + `manifest.json`，目录自包含。 */
+/**
+ * 导出目录名：跟着**地图名**走（改名地图 = 换一个自包含目录，旧目录原样留着）。
+ *
+ * ⚠️ `runExportStage` / `readExportListingRelative` / `mapRevealDir` 三处必须同口径 ——
+ * 分别算一次的话，会出现「界面列的清单在 A 目录、点开的是 B 目录」这种只看得到空文件夹的坏法。
+ */
+export function mapExportDirName(doc: MapDoc | undefined, project: { id: string; name: string }): string {
+  return safeFileName(doc?.name ?? project.name, doc?.id ?? project.id);
+}
+
+/** 导出目录的绝对路径。 */
+export function mapExportDir(projectId: string, doc: MapDoc | undefined, project: { id: string; name: string }): string {
+  return join(mapProjectDir(projectId), "export", mapExportDirName(doc, project));
+}
+
+/**
+ * 「在文件夹中显示」要打开的绝对路径。
+ *
+ * `target: "export"` 时打开**导出目录**（用户点的是「打开导出目录」，以前却打开项目根 ——
+ * 那里并没有他要的文件）；还没导出过就退回项目目录，并由 `fallback` 告诉调用方，
+ * 免得 explorer 收到一个不存在的路径（macOS 的 open 会直接报错）。
+ */
+export async function mapRevealDir(projectId: string, target: string): Promise<{ dir: string; fallback: boolean }> {
+  const project = await readProjectOrThrow(projectId);
+  if (target !== "export") return { dir: mapProjectDir(projectId), fallback: false };
+  const dir = mapExportDir(projectId, await readTheDoc(projectId), project);
+  if (existsSync(dir)) return { dir, fallback: false };
+  return { dir: mapProjectDir(projectId), fallback: true };
+}
+
+/** 导出（本地免费）：`map.png` + `map.json`(+ 素材原图 / zip) + `manifest.json`。 */
 export async function runExportStage(projectId: string, options: { scale?: number; formats?: ExportFormatOptions } = {}): Promise<{ started: boolean; reason?: string }> {
   const reason = reserve(projectId);
   if (reason !== undefined) return { started: false, reason };
@@ -1718,7 +1757,7 @@ export async function runExportStage(projectId: string, options: { scale?: numbe
     await flushMapDoc(projectId);
     if (cancelled.has(projectId)) return;
     // 导出目录按**地图名**取（改名地图 = 换一个自包含目录，旧目录原样留着）。
-    const dirName = safeFileName(doc.name, doc.id);
+    const dirName = mapExportDirName(doc, fresh);
     const manifest = await exportMap({
       project: { id: fresh.id, name: fresh.name },
       doc,
@@ -1738,13 +1777,13 @@ export async function runExportStage(projectId: string, options: { scale?: numbe
 }
 
 /** 相对路径版的导出清单（界面用；绝对 URL 版见 `readExportListing`）。 */
-async function readExportListingRelative(project: MapProject): Promise<{ base: string; files: string[]; warnings: string[] } | undefined> {
+async function readExportListingRelative(project: MapProject): Promise<{ base: string; files: string[]; warnings: string[]; dirName: string } | undefined> {
   // 目录名跟着**地图名**走（与 runExportStage 同一处口径）。
   const doc = await readTheDoc(project.id);
-  const dirName = safeFileName(doc?.name ?? project.name, doc?.id ?? project.id);
+  const dirName = mapExportDirName(doc, project);
   const manifest = await readJson<ExportManifest>(join(mapProjectDir(project.id), "export", dirName, "manifest.json"));
   if (manifest === undefined) return undefined;
-  return { base: `export/${dirName}/`, files: (manifest.files ?? []).map((file) => file.path), warnings: manifest.warnings ?? [] };
+  return { base: `export/${dirName}/`, files: (manifest.files ?? []).map((file) => file.path), warnings: manifest.warnings ?? [], dirName };
 }
 
 /** 最近的导出清单（验收包用）：`base` 与每个文件都是**绝对 URL**。 */

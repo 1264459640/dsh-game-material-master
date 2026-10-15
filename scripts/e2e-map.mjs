@@ -286,8 +286,12 @@ console.log(`  产物：${existsSync(exportDir) ? (await readdir(exportDir)).joi
 console.log(`  阶段：assets=${finalProject.stages.assets.status} rules=${finalProject.stages.rules.status} paint=${finalProject.stages.paint.status} export=${finalProject.stages.export.status}`);
 console.log(`  日志尾部：${finalProject.logs.slice(-3).map((entry) => entry.message).join(" | ")}`);
 expect("导出目录里有 map.png 与 map.json", existsSync(join(exportDir, "map.png")) && existsSync(join(exportDir, "map.json")));
+// 多个产物要打成一个 zip（界面上点一下「导出」拿到一个文件，而不是一串）
+const produced = existsSync(exportDir) ? await readdir(exportDir) : [];
+const zipName = produced.find((name) => name.endsWith(".zip"));
+expect("多个产物自动打了一个 zip", zipName !== undefined && existsSync(join(exportDir, zipName)), produced.join("、"));
 
-step(12, "识别与切片的旁证（纯函数，顺手打印出来人对一眼）");
+step(12, "识别与切片的旁证（纯函数，顺手打印出来对人一眼）");
 for (const [width, height] of [[64, 160], [256, 160], [128, 96], [256, 192], [37, 41]]) {
   const guess = maptiles.detectLayout(width, height);
   console.log(`  ${String(width).padStart(4)}×${String(height).padEnd(4)} → ${guess.shape.padEnd(7)} 格子 ${String(guess.cell.width).padStart(3)} ${guess.cols}×${guess.rows}  「${guess.reason}」`);
@@ -295,6 +299,7 @@ for (const [width, height] of [[64, 160], [256, 160], [128, 96], [256, 192], [37
 
 console.log(`\n验收建议：`);
 console.log(`  · 用「在访达中打开项目目录」看 ${mapgen.mapProjectDir(projectId)}`);
+console.log(`  · 界面上「导出」卡片勾好内容点一下，主下载按钮给的就是 ${zipName ?? "那个 zip"}（一次拿走全部）`);
 console.log(`  · export/${exportNames[0] ?? "<地图名>"}/map.png 是成品；map.json 是存档（带 legend，引擎可读）`);
 console.log(`  · preview/ 里的渲染图用来肉眼看自动连接的接缝与环绕是否自然`);
 console.log(`  · 界面上：侧栏「游戏素材大师」→ 地图编辑器 → 选这个项目`);

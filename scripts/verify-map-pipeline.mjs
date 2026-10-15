@@ -20,6 +20,7 @@
  * 用法：node scripts/verify-map-pipeline.mjs
  */
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { inflateRawSync } from "node:zlib";
 import * as geom from "../lib/mapgeom.js";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -55,6 +56,58 @@ const { decodeFile } = await import("../lib/bitmap.js");
 const { encodePng } = await import("../lib/png.js");
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────
+
+/**
+ * 极简 ZIP 读取器（**只给自检用**）。
+ *
+ * ⚠️ 为什么不直接断言「zip 文件存在、字节数不小」：那种断言在写出一个坏 zip
+ * （中央目录偏移错、CRC 错、deflate 流截断）时**照样通过**。这里走的是真解包：
+ * 中央目录 → 本地头 → inflateRaw → 校验长度与 CRC，并断言条目路径与内容。
+ */
+function readZip(buffer) {
+  const EOCD = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (EOCD < 0) throw new Error("不是 zip：找不到 EOCD");
+  const count = buffer.readUInt16LE(EOCD + 10);
+  let offset = buffer.readUInt32LE(EOCD + 16);
+  const out = new Map();
+  for (let i = 0; i < count; i++) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error("中央目录签名不对");
+    const method = buffer.readUInt16LE(offset + 10);
+    const crc = buffer.readUInt32LE(offset + 16);
+    const compSize = buffer.readUInt32LE(offset + 20);
+    const rawSize = buffer.readUInt32LE(offset + 24);
+    const nameLen = buffer.readUInt16LE(offset + 28);
+    const extraLen = buffer.readUInt16LE(offset + 30);
+    const commentLen = buffer.readUInt16LE(offset + 32);
+    const localAt = buffer.readUInt32LE(offset + 42);
+    const name = buffer.toString("utf8", offset + 46, offset + 46 + nameLen);
+    if (buffer.readUInt32LE(localAt) !== 0x04034b50) throw new Error(`本地头签名不对：${name}`);
+    const start = localAt + 30 + buffer.readUInt16LE(localAt + 26) + buffer.readUInt16LE(localAt + 28);
+    const payload = buffer.subarray(start, start + compSize);
+    const data = method === 0 ? Buffer.from(payload) : inflateRawSync(payload);
+    if (data.length !== rawSize) throw new Error(`解出来的长度不对：${name}`);
+    if (zipCrc32(data) !== crc) throw new Error(`CRC 不对：${name}`);
+    out.set(name, data);
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
+
+const ZIP_CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+
+function zipCrc32(buffer) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buffer.length; i++) c = ZIP_CRC_TABLE[(c ^ buffer[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
 
 /** 第 (col,row) 块的「可辨颜色」：一块一个色，块内纯色。 */
 function blockColor(col, row) {
@@ -803,7 +856,7 @@ try {
   await waitIdle(p6.id);
   check("cancelMapJob 能收尾（不忙、阶段不是 error）", G.mapBusy(p6.id) === false && (await G.readMapProject(p6.id)).stages.paint.status !== "error");
 
-  section("15) 导出：目录名 / 三个文件 / 逐字段 / 逐字节 / 逐像素");
+  section("15) 导出：目录名 / 产物 / 自动打 zip / 逐字段 / 逐字节 / 逐像素");
   const p5 = await newProject("导出", { cols: 8, rows: 8 });
   const fiveSheet = (await G.importMapTileset(p5.id, "四色", sheetPng(128, 128, 32).toString("base64"))).tilesets[0];
   const renamed = await G.saveMapDocStructure(p5.id, { name: "地图 A/B" });
@@ -814,13 +867,29 @@ try {
   const afterExport = await waitIdle(p5.id);
   check("导出作业没有报错", afterExport.stages.export.status === "done", JSON.stringify(afterExport.stages.export));
   const expectedDir = EXPORT.safeFileName("地图 A/B", "x");
+  const expectedZip = `${expectedDir}.zip`;
   const exportDirs = await readdir(join(G.mapProjectDir(p5.id), "export"));
   check("导出目录名 = safeFileName(地图名, 地图 id)（不是项目名）", exportDirs.length === 1 && exportDirs[0] === expectedDir, `${exportDirs.join(" ")} vs ${expectedDir}`);
   check("反向验证：导出目录名不是项目名", exportDirs[0] !== EXPORT.safeFileName("导出", "x"));
   const exportDir = join(G.mapProjectDir(p5.id), "export", exportDirs[0]);
   const files = await readdir(exportDir);
-  check("导出只有三个文件：map.png / map.json / manifest.json", files.slice().sort().join(",") === "manifest.json,map.json,map.png", files.join(" "));
-  check("没有分层 PNG / Tiled .tmj / .tsj / 图集拷贝", !files.some((name) => name.startsWith("layer-") || name.endsWith(".tmj") || name.endsWith(".tsj")), files.join(" "));
+  check(
+    "默认导出（png+json）给三个文件 + 一个 zip（多个产物自动打包）",
+    files.slice().sort().join(",") === ["manifest.json", "map.json", "map.png", expectedZip].sort().join(","),
+    files.join(" ")
+  );
+  check("没有分层 PNG / Tiled .tmj / .tsj", !files.some((name) => name.startsWith("layer-") || name.endsWith(".tmj") || name.endsWith(".tsj")), files.join(" "));
+
+  /**
+   * zip 要**真解一遍**：条目、内容、CRC 全部对得上才算数。
+   * 反向验证在下面单独一节（只勾一项时不许有 zip）。
+   */
+  const zipBytes = await readFile(join(exportDir, expectedZip));
+  const zipEntries = readZip(zipBytes);
+  check("zip 里只有用户勾的产物（map.png + map.json），不含 manifest.json", [...zipEntries.keys()].sort().join(",") === "map.json,map.png", [...zipEntries.keys()].join(" "));
+  check("zip 里的 map.png 与盘上那份逐字节一致", zipEntries.get("map.png")?.equals(await readFile(join(exportDir, "map.png"))) === true);
+  check("zip 里的 map.json 与盘上那份逐字节一致", zipEntries.get("map.json")?.equals(await readFile(join(exportDir, "map.json"))) === true);
+
 
   const mapPng = await decodeFile(join(exportDir, "map.png"));
   check("map.png 尺寸 = 网格脚印（8×32 = 256）", mapPng.width === 256 && mapPng.height === 256, `${mapPng.width}×${mapPng.height}`);
@@ -852,19 +921,52 @@ try {
   check("map.json：data 里的每个非零值都能在 legend 里找到", ownJson.layers[0].data.filter((value) => value > 0).every((value) => ownJson.legend.some((entry) => entry.index === value)));
   check("map.json：tilesets[].image 是相对项目目录的路径（导出目录里没有拷图集）", ownJson.tilesets[0].image === fiveSheet.file && !existsSync(join(exportDir, fiveSheet.file.replace(/^tilesets\//, ""))));
   const manifest = JSON.parse(await readFile(join(exportDir, "manifest.json"), "utf8"));
-  check("manifest.json：列出产物、mapPng/mapJson 命名对得上", manifest.mapPng === "map.png" && manifest.mapJson === "map.json" && ["map.png", "map.json", "manifest.json"].every((name) => manifest.files.some((file) => file.path === name)), manifest.files.map((f) => f.path).join(" "));
+  check("manifest.json：列出产物、mapPng/mapJson 命名对得上", manifest.mapPng === "map.png" && manifest.mapJson === "map.json" && manifest.mapZip === expectedZip && ["map.png", "map.json", "manifest.json"].every((name) => manifest.files.some((file) => file.path === name)), manifest.files.map((f) => f.path).join(" "));
   check("manifest.json：bounds 与网格脚印一致", manifest.bounds.width === 256 && manifest.bounds.height === 256, JSON.stringify(manifest.bounds));
   const pngA = await readFile(join(exportDir, "map.png"));
   await G.runExportStage(p5.id, { scale: 1 });
   await waitIdle(p5.id);
   const pngB = await readFile(join(exportDir, "map.png"));
   check("同一份文档两次导出：map.png 逐字节一致", pngA.length > 0 && pngA.equals(pngB), `${pngA.length} vs ${pngB.length}`);
+  /**
+   * zip 的确定性靠**写死时间戳**（见 `zip.ts` 文件头）：用真实时间的话这条会挂，
+   * 而「导出可复现」正是它能进版本库 / 能对比回归的前提。
+   */
+  check("同一份文档两次导出：zip 逐字节一致（时间戳写死）", (await readFile(join(exportDir, expectedZip))).equals(zipBytes), `${zipBytes.length} 字节`);
+
+  /**
+   * 反向验证：**只勾一项**不许打包（一个文件再套一层 zip 纯属添乱），
+   * 而且这次导出会把上一轮的产物清掉 —— 目录内容永远等于「这次选的东西」。
+   */
+  await G.runExportStage(p5.id, { scale: 1, formats: { png: true, json: false } });
+  await waitIdle(p5.id);
+  const pngOnly = await readdir(exportDir);
+  check("只勾 PNG：目录里只剩 map.png + manifest.json（没有 zip、上一轮的 map.json 被清掉）", pngOnly.slice().sort().join(",") === "manifest.json,map.png", pngOnly.join(" "));
+  const pngOnlyView = await G.mapView(await G.readMapProject(p5.id));
+  check("只勾 PNG 的视图：exportFiles 只有两个、exportPath 是本机绝对路径", pngOnlyView.exportFiles.slice().sort().join(",") === "manifest.json,map.png" && pngOnlyView.exportPath === exportDir, `${pngOnlyView.exportFiles.join(" ")} / ${pngOnlyView.exportPath}`);
+
+  // 素材原图：勾了才拷，拷进去的相对路径与 map.json 里的引用同形（整包自包含）
+  await G.runExportStage(p5.id, { scale: 1, formats: { png: true, json: true, tilesets: true } });
+  await waitIdle(p5.id);
+  const withAssets = await readdir(exportDir);
+  check("勾「素材原图」：素材图拷进 tilesets/（zip 里也有）", withAssets.includes("tilesets") && (await readdir(join(exportDir, "tilesets"))).length === 1, withAssets.join(" "));
+  const assetsZip = readZip(await readFile(join(exportDir, expectedZip)));
+  check(
+    "带素材的 zip：条目路径与 map.json 的 tilesets[].image 同形（搬到别处也能用）",
+    [...assetsZip.keys()].sort().join(",") === ["map.json", "map.png", `tilesets/${fiveSheet.file.split("/").pop()}`].sort().join(","),
+    [...assetsZip.keys()].join(" ")
+  );
+  check(
+    "带素材的 zip：拷进去的素材图与项目里那张逐字节一致",
+    assetsZip.get(`tilesets/${fiveSheet.file.split("/").pop()}`)?.equals(await readFile(G.mapAssetPath(p5.id, fiveSheet.file))) === true
+  );
+
   const view5 = await G.mapView(await G.readMapProject(p5.id));
   const view6b = await G.mapView(await G.readMapProject(p6.id));
   check("视图：preview 给的是相对路径（界面自己拼 assetBase）", view6b.preview.join(",") === "preview/map.png", view6b.preview.join(" "));
   check("视图：还没跑过预览的项目 preview 是空数组（不是伪造一条路径）", view5.preview.length === 0, view5.preview.join(" "));
   check("视图：exportBase 指向按地图名取的目录", view5.exportBase === `export/${expectedDir}/`, view5.exportBase);
-  check("视图：exportFiles 只列三个文件", view5.exportFiles.slice().sort().join(",") === "manifest.json,map.json,map.png", view5.exportFiles.join(" "));
+  check("视图：exportFiles 列出这一轮的全部产物（含 zip 与拷进来的素材）", view5.exportFiles.slice().sort().join(",") === ["manifest.json", "map.json", "map.png", expectedZip, `tilesets/${fiveSheet.file.split("/").pop()}`].sort().join(","), view5.exportFiles.join(" "));
   check("视图：legend 覆盖全部块，layers 带 filled 计数", view5.legend.length === 16 && view5.layers[0].filled === 2 && view5.filled === 2, JSON.stringify(view5.layers));
   check("视图：stages 四阶段 + busy/canUndo/maxChunks 字段齐", Object.keys(view5.stages).join(",") === "assets,rules,paint,export" && typeof view5.busy === "boolean" && typeof view5.canUndo === "boolean" && view5.maxChunks > 0);
   check("视图：素材带识别说明与调色板", view5.tilesets[0].reason.includes("正方形网格") && view5.tilesets[0].palette.length === 16, view5.tilesets[0].reason);
@@ -872,7 +974,9 @@ try {
   const listing = await G.readExportListing(p5.id, "http://127.0.0.1:9999");
   check("readExportListing：base 与 files 都是可点的绝对 URL", listing.base === `http://127.0.0.1:9999/dsh-game-material-master/map-assets/${p5.id}/export/${expectedDir}/` && listing.files.every((url) => url.startsWith("http://127.0.0.1:9999/")), listing.base);
   const listingRelative = await G.mapSnapshot(await G.readMapProject(p5.id), "http://127.0.0.1:9999");
-  check("mapSnapshot：绝对 URL 与预览/导出清单齐", listingRelative.previewUrls.every((url) => url.includes("/preview/")) && listingRelative.exportBaseUrl.includes("/export/") && listingRelative.exportFiles.length === 3, listingRelative.exportFiles.join(" "));
+  check("mapSnapshot：绝对 URL 与预览/导出清单齐", listingRelative.previewUrls.every((url) => url.includes("/preview/")) && listingRelative.exportBaseUrl.includes("/export/") && listingRelative.exportFiles.length === view5.exportFiles.length, listingRelative.exportFiles.join(" "));
+  check("mapSnapshot：带上导出目录的本机绝对路径（模型要能直接报给用户）", listingRelative.exportPath === exportDir, listingRelative.exportPath);
+  check("readExportListing 里 zip 也是可点的绝对 URL", listing.files.some((url) => url.endsWith(expectedZip)), listing.files.join(" "));
   check("mapSnapshot：给出下一步动作", listingRelative.nextActions.length > 0, listingRelative.nextActions[0].step);
 
   // ══ 16. 删除 ════════════════════════════════════════════════════════════
