@@ -239,6 +239,13 @@ try {
   const fillRects = [];
   let clears = 0;
   let lastFillStyle = "";
+  /** 标记层相关的画布调用：圆弧（`arc`）、圆圈里的数字（`fillText`）、以及**调用顺序**。 */
+  const arcs = [];
+  const texts = [];
+  const callOrder = [];
+  let lastFont = "";
+  let lastStrokeStyle = "";
+  let lastLineWidth = 1;
   /** 动画帧号：面板用 rAF + Date.now 推时钟，这里把 rAF 排队、由测试推进。 */
   const rafQueue = new Map();
   /** 「等待稳定超时」的记号每次 renderTree 最多说一次（它每轮都会触发，不然刷屏）。 */
@@ -286,6 +293,9 @@ try {
           clears++;
           currentFrame = [];
           drawFrames.push(currentFrame);
+          arcs.length = 0;
+          texts.length = 0;
+          callOrder.length = 0;
         },
         fillRect(x, y, w, h) {
           fillRects.push({ fillStyle: lastFillStyle, x, y, w, h });
@@ -295,7 +305,22 @@ try {
         lineTo() {},
         closePath() {},
         fill() {},
+        stroke() {
+          if (arcs.length > 0) arcs[arcs.length - 1].stroked = true;
+        },
+        arc(x, y, radius) {
+          arcs.push({ x, y, radius, fillStyle: lastFillStyle, strokeStyle: lastStrokeStyle, lineWidth: lastLineWidth, stroked: false });
+          callOrder.push("arc");
+        },
+        measureText(text) {
+          return { width: String(text).length * 7 };
+        },
+        fillText(text, x, y) {
+          texts.push({ text: String(text), x, y, font: lastFont, fillStyle: lastFillStyle });
+          callOrder.push("fillText");
+        },
         drawImage(...args) {
+          callOrder.push("drawImage");
           if (currentFrame === null) {
             currentFrame = [];
             drawFrames.push(currentFrame);
@@ -308,6 +333,25 @@ try {
         get: () => lastFillStyle,
         set: (value) => {
           lastFillStyle = String(value);
+        }
+      });
+      // 标记的圆圈与数字靠 font / strokeStyle / lineWidth 定位与上色，同样按普通属性记。
+      Object.defineProperty(ctx, "font", {
+        get: () => lastFont,
+        set: (value) => {
+          lastFont = String(value);
+        }
+      });
+      Object.defineProperty(ctx, "strokeStyle", {
+        get: () => lastStrokeStyle,
+        set: (value) => {
+          lastStrokeStyle = String(value);
+        }
+      });
+      Object.defineProperty(ctx, "lineWidth", {
+        get: () => lastLineWidth,
+        set: (value) => {
+          lastLineWidth = Number(value);
         }
       });
       node.getContext = () => ctx;
@@ -1019,7 +1063,7 @@ try {
   const toolNodes = collect(tree, (node) => typeof node.props?.className === "string" && node.props.className.split(" ").includes("SPR_mapEdTool"));
   check("左列正好 12 个工具格（6 列 × 2 行）", toolNodes.length === 12, `${toolNodes.length} 个`);
   const toolKeys = [...collect(tree, (node) => typeof node.props?.["data-tool"] === "string")].map((node) => node.props["data-tool"]);
-  const wantKeys = ["undo", "redo", "pen", "eraser", "bucket", "pipette", "hand", "single", "grid", "gen", "settings"];
+  const wantKeys = ["undo", "redo", "pen", "eraser", "bucket", "pipette", "hand", "marker", "grid", "gen", "settings"];
   check(`11 个具名图标按钮都在（${wantKeys.join(" / ")}）`, wantKeys.every((key) => toolKeys.includes(key)) && toolKeys.filter((key) => wantKeys.includes(key)).length === 11, toolKeys.join(","));
   const layerBtn = byClass(tree, "SPR_mapEdLayerBtn")[0];
   const layerNum = byClass(tree, "SPR_mapEdLayerNum")[0];
@@ -1073,7 +1117,7 @@ try {
     // 图层按钮是复合控件（上下两个半块 + 层号），它的说明也走同一张标签
     byClass(tree, "SPR_mapEdLayerBtn")[0].props.onMouseEnter({ currentTarget: { getBoundingClientRect: rect } });
     tree = await renderTree(() => MapModule({ api }));
-    check("图层按钮也有小标签（讲清上下半块与层号）", textOf(tipOf(tree) ?? null).includes("上一层") && textOf(tipOf(tree) ?? null).includes("层号"), textOf(tipOf(tree) ?? null));
+    check("图层按钮也有小标签（讲清上下半块与打开图层列表）", textOf(tipOf(tree) ?? null).includes("上一层") && textOf(tipOf(tree) ?? null).includes("图层列表"), textOf(tipOf(tree) ?? null));
     byClass(tree, "SPR_mapEdLayerBtn")[0].props.onMouseLeave();
     tree = await renderTree(() => MapModule({ api }));
     check("图层按钮移开后也收起", tipOf(tree) === undefined);
@@ -1085,9 +1129,9 @@ try {
   byClass(tree, "SPR_mapEdLayerHalf").find((node) => node.props["data-dir"] === "down").props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   check("点「下一层」换回第 1 层", textOf(byClass(tree, "SPR_mapEdLayerNum")[0] ?? null) === "1");
-  check("底部显示当前层 / 总层数", textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null).includes("第 1 层 / 共 2 层"), textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null));
-  // 网格线 / 单层预览 / 一键生成 / 设置：点一下要能切 data-on（按钮是开关）
-  for (const [key, label] of [["grid", "网格线"], ["single", "单层预览"], ["gen", "一键生成"], ["settings", "设置"]]) {
+  check("底部显示当前层 / 总层数", textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null).includes("第 1 层 / 共 3 层"), textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null));
+  // 网格线 / 标记 / 一键生成 / 设置：点一下要能切 data-on（按钮是开关）
+  for (const [key, label] of [["grid", "网格线"], ["marker", "标记"], ["gen", "一键生成"], ["settings", "设置"]]) {
     const button = byTool(tree, key)[0];
     button.props.onClick();
     tree = await renderTree(() => MapModule({ api }));
@@ -1301,8 +1345,15 @@ try {
    * （增量缓存按视口失效）。
    */
   async function forceFullPlanReload(current) {
-    for (const key of ["single", "single"]) {
-      byTool(current, key)[0].props.onClick();
+    // 单层预览的开关现在在图层卡里（工具格腾给了「标记」），所以先开卡再连点两次。
+    // 卡片是开 / 关同一个按钮：已经开着就别再点，否则会把它关掉。
+    if (collect(current, (node) => node.props?.["data-testid"] === "map-single-layer").length === 0) {
+      collect(current, (node) => node.props?.["data-testid"] === "map-open-layers")[0].props.onClick();
+      current = await renderTree(() => MapModule({ api }));
+    }
+    for (let i = 0; i < 2; i++) {
+      const box = collect(current, (node) => node.props?.["data-testid"] === "map-single-layer")[0];
+      box.props.onChange({ target: { checked: box.props.checked !== true } });
       current = await renderTree(() => MapModule({ api }));
     }
     return current;
@@ -1680,7 +1731,13 @@ try {
   section("9) 单层预览（layerIds 交给宿主过滤，界面不筛 op）");
   {
     const queriesBefore = apiLog.plans.length;
-    byTool(tree, "single")[0].props.onClick();
+    // 图层卡是开 / 关同一个按钮：已经开着就别再点（不然会关掉）。
+    if (collect(tree, (node) => node.props?.["data-testid"] === "map-single-layer").length === 0) {
+      collect(tree, (node) => node.props?.["data-testid"] === "map-open-layers")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    const singleBox = () => collect(tree, (node) => node.props?.["data-testid"] === "map-single-layer")[0];
+    singleBox().props.onChange({ target: { checked: true } });
     tree = await renderTree(() => MapModule({ api }));
     const singleQueries = apiLog.plans.slice(queriesBefore).filter((query) => Array.isArray(query.layerIds));
     check("打开单层预览后请求计划时带了 layerIds", singleQueries.length > 0, `${singleQueries.length} 次查询带 layerIds`);
@@ -1701,7 +1758,7 @@ try {
       fillRects.some((rect) => rect.fillStyle === "rgb(56,170,68)"),
       [...new Set(fillRects.map((rect) => rect.fillStyle))].slice(0, 4).join(" / ")
     );
-    byTool(tree, "single")[0].props.onClick();
+    singleBox().props.onChange({ target: { checked: false } });
     tree = await renderTree(() => MapModule({ api }));
     const allAgain = apiLog.plans[apiLog.plans.length - 1];
     check("关掉单层预览后 layerIds 不再传（回到全部层）", allAgain.layerIds === undefined, JSON.stringify(allAgain.layerIds));
@@ -2243,6 +2300,145 @@ try {
       apiLog.approvals.length === approvalsBefore + 1 && sentApproval?.approved === true && sentApproval?.stage === undefined,
       JSON.stringify(sentApproval)
     );
+  }
+
+  // ══ 19. 图层命名 + 标记层 ════════════════════════════════════════════════
+  section("19) 图层改名 / 换顺序 + 标记层（数字由宿主给，界面只画圆圈）");
+  {
+    tree = await freshPanel();
+    // 前面的用例可能停在自建项目上：按名字切回主夹具（和 18 节同一套走法）。
+    const mainName19 = (await G.readMapProject(projectId)).name;
+    if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
+      byClass(tree, "SPR_mapEdProj")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    const mainItem19 = byClass(tree, "SPR_mapEdMenuItem").find((node) => textOf(node) === mainName19);
+    if (mainItem19 !== undefined) {
+      mainItem19.props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    /** 图层卡是开 / 关同一个按钮：已经开着就别再点。 */
+    const ensureLayers = async () => {
+      if (collect(tree, (node) => node.props?.["data-testid"] === "map-single-layer").length === 0) {
+        collect(tree, (node) => node.props?.["data-testid"] === "map-open-layers")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+      }
+    };
+    await ensureLayers();
+    const testid = (id) => collect(tree, (node) => node.props?.["data-testid"] === id)[0];
+
+    // ── 图层改名：点名字 → 就地输入 → 失焦提交一条结构补丁 ─────────────────
+    const layerPick = testid("map-layer-pick-0");
+    check("图层卡里列出每一层（点名字就地改）", layerPick !== undefined && textOf(layerPick).length > 0, textOf(layerPick ?? null));
+    const savesBeforeRename = apiLog.saves.length;
+    layerPick.props.onDoubleClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const nameInput = testid("map-layer-name-0");
+    check("双击名字变成输入框（就地改名）", nameInput !== undefined && nameInput.props.autoFocus === true);
+    nameInput.props.onChange({ target: { value: "主地面" } });
+    tree = await renderTree(() => MapModule({ api }));
+    testid("map-layer-name-0").props.onBlur();
+    tree = await renderTree(() => MapModule({ api }));
+    const renamePatch = apiLog.saves[apiLog.saves.length - 1];
+    check("改名提交的是 `layers: [{id,name}]`（宿主的字段，不是界面自己存）", apiLog.saves.length === savesBeforeRename + 1 && Array.isArray(renamePatch?.layers) && renamePatch.layers[0].name === "主地面", JSON.stringify(renamePatch));
+
+    // ── 空名字本地就拦住（不发请求，也不静默成功）────────────────────────
+    const savesBeforeEmpty = apiLog.saves.length;
+    testid("map-layer-pick-0").props.onDoubleClick();
+    tree = await renderTree(() => MapModule({ api }));
+    testid("map-layer-name-0").props.onChange({ target: { value: "   " } });
+    tree = await renderTree(() => MapModule({ api }));
+    testid("map-layer-name-0").props.onBlur();
+    tree = await renderTree(() => MapModule({ api }));
+    check("空名字不发请求，并给出提示（宿主对空名字是静默 no-op）", apiLog.saves.length === savesBeforeEmpty && textOf(tree).includes("图层名字不能为空"), textOf(tree).slice(-60));
+
+    // ── 换顺序 / 删图层：都走 saveMapDoc 的结构键 ────────────────────────
+    const savesBeforeMove = apiLog.saves.length;
+    const upBtn = byClass(tree, "SPR_mapEdMiniBtn").find((node) => node.props.title === "上移一层" && node.props.disabled !== true);
+    upBtn.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const movePatch = apiLog.saves[apiLog.saves.length - 1];
+    check("「上移一层」提交 moveLayer（宿主换顺序）", apiLog.saves.length === savesBeforeMove + 1 && movePatch?.moveLayer !== undefined, JSON.stringify(movePatch));
+
+    // ── 标记：宿主侧先摆两个（一个有名、一个空名），再整份重挂 ─────────────
+    await G.applyMapOps(projectId, [
+      { kind: "marker", op: "add", r: 3, c: 3, name: "宝箱" },
+      { kind: "marker", op: "add", r: 5, c: 6 }
+    ]);
+    tree = await freshPanel();
+    await ensureLayers();
+    const markerRows = [1, 2].map((n) => testid(`map-marker-${n}`));
+    check("标记列表按编号列出（第 1 / 第 2 个）", markerRows.every((row) => row !== undefined));
+    check("标记行上是编号圆点 + 坐标", markerRows[0] !== undefined && textOf(byClass(markerRows[0], "SPR_mapEdMarkerDot")[0] ?? null) === "1" && textOf(markerRows[0]).includes("(3,3)"), textOf(markerRows[0] ?? null));
+    const markerInputs = markerRows.map((row) => collect(row, (node) => node.props?.className === "SPR_mapEdMarkerName")[0]);
+    check("名字进输入框（有名字的显示名字，没名字的用「标记 N」占位）", markerInputs[0]?.props.value === "宝箱" && markerInputs[1]?.props.value === "" && markerInputs[1]?.props.placeholder === "标记 2", JSON.stringify(markerInputs.map((node) => node?.props?.value)));
+
+    // ── 改名字：一条 rename op（不占格、不脏图）──────────────────────────
+    const appliesBeforeRename = apiLog.applies.length;
+    markerInputs[1].props.onFocus();
+    tree = await renderTree(() => MapModule({ api }));
+    const secondInput = collect(testid("map-marker-2"), (node) => node.props?.className === "SPR_mapEdMarkerName")[0];
+    secondInput.props.onChange({ target: { value: "出口" } });
+    tree = await renderTree(() => MapModule({ api }));
+    collect(testid("map-marker-2"), (node) => node.props?.className === "SPR_mapEdMarkerName")[0].props.onBlur();
+    tree = await renderTree(() => MapModule({ api }));
+    const renameOp = apiLog.applies.slice(appliesBeforeRename).flatMap((entry) => entry.ops ?? []).find((op) => op.kind === "marker" && op.op === "rename");
+    check("标记改名提交 `{kind:'marker', op:'rename'}`（宿主负责落盘）", renameOp !== undefined && renameOp.name === "出口", JSON.stringify(renameOp ?? null));
+
+    // ── 画布：圆圈与数字来自宿主的计划 ───────────────────────────────────
+    tree = await freshPanel();
+    const lastPlanQuery = apiLog.plans[apiLog.plans.length - 1];
+    const hostMarkPlan = await G.mapPlan(projectId, { view: lastPlanQuery.view, have: [], layerIds: lastPlanQuery.layerIds });
+    const hostMarkers = hostMarkPlan.markers.slice().sort((a, b) => a.n - b.n);
+    check("宿主计划里带着两个标记（圆心 / 半径 / 字号 / 数字）", hostMarkers.length === 2 && hostMarkers.every((marker) => marker.radius > 0 && marker.font > 0), JSON.stringify(hostMarkers));
+    check("画布画了两个圆圈，圆心与半径逐项等于宿主给的那份", arcs.length === 2 && arcs.every((arc, index) => arc.x === hostMarkers[index].x && arc.y === hostMarkers[index].y && arc.radius === hostMarkers[index].radius), JSON.stringify(arcs));
+    check("圆圈里的数字是宿主给的编号（界面不自己数）", texts.map((entry) => entry.text).join(",") === hostMarkers.map((marker) => String(marker.n)).join(","), JSON.stringify(texts.map((entry) => entry.text)));
+    check("数字的字号来自计划（字体串里带那个字号）", texts.every((entry, index) => entry.font.includes(` ${hostMarkers[index].font}px`) && entry.font.startsWith("700 ")), JSON.stringify(texts.map((entry) => entry.font)));
+    check("圆圈有描边（不是一坨纯色）", arcs.every((arc) => arc.stroked === true && arc.strokeStyle === "#f0c040"), JSON.stringify(arcs.map((arc) => [arc.stroked, arc.strokeStyle])));
+    check("标记画在地块**之后**（压在地图上，不会被后画的块盖住）", callOrder.lastIndexOf("drawImage") < callOrder.indexOf("arc"), `最后一个 drawImage @${callOrder.lastIndexOf("drawImage")}，第一个 arc @${callOrder.indexOf("arc")}`);
+
+    // ── 标记工具：点空格放下、右键删掉、点已有的是选中 ────────────────────
+    byTool(tree, "marker")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    /** 每次交互后都重新取画布节点：手势闭包里的 `view` 会被上一次操作留在旧快照上。 */
+    const tap = async (button, at, pointerId) => {
+      const node = collect(tree, (item) => item.props?.["data-testid"] === "map-canvas")[0];
+      node.props.onPointerDown({ clientX: at.x, clientY: at.y, button, pointerId });
+      await tickTimers();
+      node.props.onPointerUp({ pointerId });
+      tree = await renderTree(() => MapModule({ api }));
+    };
+    const markerOpsSince = (from) => apiLog.applies.slice(from).flatMap((entry) => entry.ops ?? []).filter((op) => op.kind === "marker");
+
+    const freeCell = { r: 7, c: 2 };
+    const appliesBeforeAdd = apiLog.applies.length;
+    await tap(0, clientOf(freeCell.r, freeCell.c), 31);
+    const addOp = markerOpsSince(appliesBeforeAdd).find((op) => op.op === "add");
+    check("标记工具：左键点空格提交 `{kind:'marker', op:'add'}`（编号由宿主发）", addOp !== undefined && addOp.r === freeCell.r && addOp.c === freeCell.c, JSON.stringify(addOp ?? null));
+
+    const boxAt = clientOf(3, 3);
+    const appliesBeforePick = apiLog.applies.length;
+    await tap(0, boxAt, 32);
+    check("标记工具：点已有标记只是**选中**它（不重复放置）", markerOpsSince(appliesBeforePick).length === 0, `提交了 ${markerOpsSince(appliesBeforePick).length} 条标记 op`);
+    await ensureLayers();
+    check("选中之后图层卡里那一行高亮（data-on）", collect(tree, (item) => item.props?.["data-on"] === "true" && typeof item.props?.["data-testid"] === "string" && item.props["data-testid"].startsWith("map-marker-")).length === 1, "高亮行数");
+
+    const appliesBeforeRemove = apiLog.applies.length;
+    await tap(2, boxAt, 33);
+    const removeOp = markerOpsSince(appliesBeforeRemove).find((op) => op.op === "remove");
+    check("标记工具：右键删掉这一格的标记", removeOp !== undefined && typeof removeOp.id === "string", JSON.stringify(removeOp ?? null));
+
+    // ── 反向验证：计划里不带标记时，画布一个圈都不许画 ────────────────────
+    // （证明圆心与数字来自**宿主计划**，不是界面自己数 `view.markers` 推出来的。）
+    const apiNoMarkers = {
+      ...api,
+      mapPlan: async (payload) => {
+        const result = await api.mapPlan(payload);
+        return { ...result, markers: [] };
+      }
+    };
+    tree = await freshPanel(apiNoMarkers);
+    check("反向验证：视图里有标记但计划没带 → 画布一个圈都不画", arcs.length === 0, `${arcs.length} 个圈`);
   }
 
 } finally {

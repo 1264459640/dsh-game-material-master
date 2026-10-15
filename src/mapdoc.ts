@@ -29,6 +29,32 @@ export interface MapLayer {
   name: string;
 }
 
+/**
+ * 一个标记点（界面上图层卡里那一行「标记层」）。
+ *
+ * ## 为什么不放进 `layer.data`
+ *
+ * `data` 的每个格子只装得下**一个图块序号**，而标记要带名字；把名字另存一份表就是
+ * 「同一件事两处存」（旧模块的 `buildings` / `mapGround` / `map.pixel` 三份缓存各自
+ * 过期过）。所以标记是**自己的源数据**：位置与名字都只在这里。
+ *
+ * ## 编号不落盘
+ *
+ * 圆圈里的数字 = **它在数组里的下标 + 1**（用户选的策略：连续编号，删了自动重排）。
+ * 于是 `n` 不存字段、也不进 op —— 删掉第 2 个之后，原来的第 3 个就变成第 2 个。
+ * 代价是删除之后的每个标记都要重画（`applyOps` 会把它们的格子一并标脏），
+ * 好处是列表永远是 1..N。
+ */
+export interface MapMarker {
+  /** 稳定 id（op 靠它定位，不靠下标）：`m1`、`m2`… 删掉不回收。 */
+  id: string;
+  /** **规范**格坐标（图内，不 wrap）。 */
+  r: number;
+  c: number;
+  /** 名字；空串 = 界面按「标记 N」显示。 */
+  name: string;
+}
+
 export interface MapDoc {
   id: string;
   name: string;
@@ -37,6 +63,8 @@ export interface MapDoc {
   layers: MapLayer[];
   /** `layerId` → 图层数据（长度 `cols × rows`）。 */
   data: Record<string, number[]>;
+  /** 标记点（数组顺序 = 编号顺序）。 */
+  markers: MapMarker[];
   createdAt: string;
   updatedAt: string;
 }
@@ -54,9 +82,15 @@ export function defaultLayer(id: string, name?: string): MapLayer {
   return { id, name: typeof name === "string" && name !== "" ? name : "图层" };
 }
 
-/** 默认两层（AsLib 同款：一层地面、一层装饰）。名字**中文硬编码** —— 宿主侧没有 i18n 通道。 */
+/**
+ * 默认三层：地理层 / 装饰层 / 建筑层。
+ *
+ * 名字**中文硬编码** —— 宿主侧没有 i18n 通道（界面显示宿主给的名字，用户随时能改）。
+ * 「标记层」不在这个数组里：它装的是带名字的标记（见 `MapMarker`），不是图块序号，
+ * 在图层卡里是一行固定入口。
+ */
 function defaultLayers(): MapLayer[] {
-  return [defaultLayer("l0", "图层 1"), defaultLayer("l1", "图层 2")];
+  return [defaultLayer("l0", "地理层"), defaultLayer("l1", "装饰层"), defaultLayer("l2", "建筑层")];
 }
 
 export function createMapDoc(id: string, name: string, cols: number, rows: number): MapDoc {
@@ -65,7 +99,7 @@ export function createMapDoc(id: string, name: string, cols: number, rows: numbe
   const layers = defaultLayers();
   const data: Record<string, number[]> = {};
   for (const layer of layers) data[layer.id] = emptyData(cols, rows);
-  return { id, name, cols, rows, layers, data, createdAt: now, updatedAt: now };
+  return { id, name, cols, rows, layers, data, markers: [], createdAt: now, updatedAt: now };
 }
 
 /** 读盘 / 外部输入 → 合法文档：补缺字段、把图层数据裁齐到 `cols × rows`。 */
@@ -92,6 +126,20 @@ export function normalizeMapDoc(raw: unknown, fallbackId: string): MapDoc | unde
     layers.push({ id: unique, name });
   }
   if (layers.length === 0) layers.push(...defaultLayers());
+  /**
+   * 老文档升级：**只动从来没被改过名的出厂两层**。
+   *
+   * 判据是「正好两层，且名字就是出厂名 `图层 1` / `图层 2`」—— 用户自己改过名的文档
+   * 一个字都不动（猜错了语义比不改更坏）。幂等：升级完名字已经不是出厂名，
+   * 下次读不会再来一遍。
+   */
+  if (layers.length === 2 && layers[0].name === "图层 1" && layers[1].name === "图层 2") {
+    layers[0].name = "地理层";
+    layers[1].name = "装饰层";
+    let extra = 0;
+    while (used.has(`l${extra}`)) extra++;
+    layers.push({ id: `l${extra}`, name: "建筑层" });
+  }
   const layersData = (input.data ?? {}) as Record<string, unknown>;
   const data: Record<string, number[]> = {};
   for (const layer of layers) {
@@ -113,15 +161,53 @@ export function normalizeMapDoc(raw: unknown, fallbackId: string): MapDoc | unde
     rows,
     layers,
     data,
+    markers: normalizeMarkers(input.markers, cols, rows),
     createdAt: typeof input.createdAt === "string" ? input.createdAt : now,
     updatedAt: typeof input.updatedAt === "string" ? input.updatedAt : now
   };
 }
 
+/**
+ * 读盘 / 外部输入 → 合法标记表。
+ *
+ * - 缺字段（老文档）→ 空表，不抛；
+ * - **越界的丢掉**（地图被改小过）：留着的话标记会画在地图外面，而导出 `map.json`
+ *   里的坐标又对不上号；
+ * - id 缺失或重复一律重新分配，否则两个标记共用一个 id，op 会改错那一个。
+ */
+function normalizeMarkers(raw: unknown, cols: number, rows: number): MapMarker[] {
+  if (!Array.isArray(raw)) return [];
+  const used = new Set<string>();
+  const out: MapMarker[] = [];
+  let seq = 0;
+  const nextId = (): string => {
+    seq++;
+    while (used.has(`m${seq}`)) seq++;
+    return `m${seq}`;
+  };
+  for (const item of raw) {
+    const marker = item as Record<string, unknown> | null;
+    const r = Math.round(Number(marker?.r));
+    const c = Math.round(Number(marker?.c));
+    if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+    if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+    const given = typeof marker?.id === "string" && marker.id !== "" ? marker.id : "";
+    const id = given !== "" && !used.has(given) ? given : nextId();
+    used.add(id);
+    out.push({ id, r, c, name: typeof marker?.name === "string" ? marker.name : "" });
+  }
+  return out;
+}
+
 export function cloneDoc(doc: MapDoc): MapDoc {
   const data: Record<string, number[]> = {};
   for (const [key, value] of Object.entries(doc.data)) data[key] = [...value];
-  return { ...doc, layers: doc.layers.map((layer) => ({ ...layer })), data };
+  return {
+    ...doc,
+    layers: doc.layers.map((layer) => ({ ...layer })),
+    data,
+    markers: doc.markers.map((marker) => ({ ...marker }))
+  };
 }
 
 // ── 结构操作（图层 / 尺寸）────────────────────────────────────────────────
@@ -190,11 +276,12 @@ export function clearLayer(doc: MapDoc, layerId: string): number {
 
 /**
  * 改地图尺寸（左上角对齐）。缩小时被丢掉的格子**计数返回**，且可撤销
- * （调用方在改之前存一份快照）。
+ * （调用方在改之前存一份快照）。标记同样按新边界裁剪 —— 留在界外的标记既画不出来，
+ * 导出里的坐标也是错的，所以**必须一起丢**，并把条数报给调用方。
  */
-export function resizeDoc(doc: MapDoc, cols: number, rows: number): { dropped: number } {
+export function resizeDoc(doc: MapDoc, cols: number, rows: number): { dropped: number; droppedMarkers: number } {
   assertMapSize(cols, rows);
-  if (cols === doc.cols && rows === doc.rows) return { dropped: 0 };
+  if (cols === doc.cols && rows === doc.rows) return { dropped: 0, droppedMarkers: 0 };
   let dropped = 0;
   for (const layer of doc.layers) {
     const source = doc.data[layer.id] ?? emptyData(doc.cols, doc.rows);
@@ -214,8 +301,11 @@ export function resizeDoc(doc: MapDoc, cols: number, rows: number): { dropped: n
   }
   doc.cols = cols;
   doc.rows = rows;
+  const kept = doc.markers.filter((marker) => marker.r < rows && marker.c < cols);
+  const droppedMarkers = doc.markers.length - kept.length;
+  doc.markers = kept;
   doc.updatedAt = new Date().toISOString();
-  return { dropped };
+  return { dropped, droppedMarkers };
 }
 
 // ── 编辑操作 ──────────────────────────────────────────────────────────────
@@ -224,11 +314,27 @@ export type MapOp =
   | { kind: "paint"; layerId: string; cells: Array<{ r: number; c: number; tile: number }> }
   | { kind: "fill"; layerId: string; r: number; c: number; tile: number }
   | { kind: "rect"; layerId: string; r0: number; c0: number; r1: number; c1: number; tile: number; filled: boolean }
-  | { kind: "replace"; layerId: string; from: number; to: number };
+  | { kind: "replace"; layerId: string; from: number; to: number }
+  /**
+   * 标记（图层卡里的「标记层」）。四种都是**可撤销**的 op，和画笔走同一条路。
+   *
+   * - `add`：`id` / `name` 都可以不给（界面就不给）—— 宿主分配不冲突的 id、名字默认空串。
+   *   撤销 = `remove`，所以要靠 `at` 记住「删掉的那个原来在第几个」（编号连续，插回原位才不复位）。
+   * - `remove`：只认 `id`（不认下标：下标会因为别的删除而变）。
+   * - `move`：目标格已经有标记就跳过，不静默顶掉。
+   * - `rename`：不占格、不脏任何块（名字只出现在列表与小标签里），但它**真的改了文档**，
+   *   所以靠 `ApplyResult.touched` 让上游照样记一步撤销。
+   */
+  | { kind: "marker"; op: "add"; id?: string; r: number; c: number; name?: string; at?: number }
+  | { kind: "marker"; op: "remove"; id: string }
+  | { kind: "marker"; op: "move"; id: string; r: number; c: number }
+  | { kind: "marker"; op: "rename"; id: string; name: string };
 
 export interface ApplyResult {
   /** 被改动的格子**数**（不是列表 —— 格子列表在 `dirty` 里）。 */
   changed: number;
+  /** 文档真的变了（含**不占格**的改动，例如给标记改名）。上游据此决定要不要记撤销。 */
+  touched: boolean;
   /** 认不出来的 op 或越界条目（界面要提示，不要静默丢）。 */
   skipped: string[];
   /** 被改动的格子（**规范**坐标），上游用 `dirtyChunksFor` 换算脏 chunk。 */
@@ -287,6 +393,8 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
   const dirty = new Map<number, { r: number; c: number }>();
   const undo: MapOp[] = [];
   const skipped: string[] = [];
+  /** 有不占格的改动（标记改名）。它不进 `changed`，但文档真的变了。 */
+  let touched = false;
 
   const canonical = (r: number, c: number): { r: number; c: number } | undefined => {
     if (!Number.isInteger(r) || !Number.isInteger(c)) return undefined;
@@ -322,10 +430,27 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
     return before;
   };
 
+  /** 标记 op 用的两个小工具：标脏一格 / 从第 N 个标记起全部标脏。 */
+  const markCell = (r: number, c: number): void => {
+    const index = r * doc.cols + c;
+    changed.add(index);
+    dirty.set(index, { r, c });
+  };
+  const markNumberingFrom = (from: number): void => {
+    for (let i = Math.max(0, from); i < doc.markers.length; i++) {
+      const marker = doc.markers[i];
+      markCell(marker.r, marker.c);
+    }
+  };
+
   for (const raw of ops) {
     const op = raw as MapOp | null;
     if (op === null || typeof op !== "object" || typeof (op as { kind?: unknown }).kind !== "string") {
       skipped.push("认不出的 op");
+      continue;
+    }
+    if (op.kind === "marker") {
+      touched = applyMarkerOp(doc, op, { canonical, markCell, markNumberingFrom }, skipped, undo) || touched;
       continue;
     }
     if (typeof op.layerId !== "string" || doc.data[op.layerId] === undefined) {
@@ -402,13 +527,117 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
       skipped.push(`不支持的 op：${String((op as { kind: unknown }).kind)}`);
     }
   }
-  if (changed.size > 0) doc.updatedAt = new Date().toISOString();
+  if (changed.size > 0 || touched) doc.updatedAt = new Date().toISOString();
   return {
     changed: changed.size,
+    touched,
     skipped,
     dirty: [...dirty.values()].sort((a, b) => a.r - b.r || a.c - b.c),
     undo: undo.reverse()
   };
+}
+
+// ── 标记 op ───────────────────────────────────────────────────────────────
+
+interface MarkerEnv {
+  /** 坐标收口（与图块同一个：环绕时取模，越界返回 undefined）。 */
+  canonical: (r: number, c: number) => { r: number; c: number } | undefined;
+  /** 把一个格子记成「变了」（上游据此算脏块）。 */
+  markCell: (r: number, c: number) => void;
+  /** 从第 `from` 个标记起全部标脏 —— 编号连续，删除 / 插回会让后面每个数字都变。 */
+  markNumberingFrom: (from: number) => void;
+}
+
+/**
+ * 应用一条标记 op。返回「文档是否真的变了」。
+ *
+ * 编号 = 下标 + 1，所以**增删都要把后面那些标记的格子一起标脏**：删掉第 2 个之后，
+ * 原来的第 3 个圆圈里就写着 2 —— 不标脏的话界面上那一格永远不会重画，屏幕上留着旧号码。
+ * （宿主每次查询都会回整份标记表，所以只脏一个块也能拉到新号码；但脏哪一块是**宿主**
+ * 算的，不能指望「用户恰好看得见被删的那个」。）
+ */
+function applyMarkerOp(doc: MapDoc, op: Extract<MapOp, { kind: "marker" }>, env: MarkerEnv, skipped: string[], undo: MapOp[]): boolean {
+  const indexOf = (id: unknown): number => (typeof id === "string" ? doc.markers.findIndex((marker) => marker.id === id) : -1);
+  const occupiedAt = (r: number, c: number): number => doc.markers.findIndex((marker) => marker.r === r && marker.c === c);
+  const occupiedText = (index: number): string => `这一格已经有标记了（第 ${index + 1} 个）`;
+
+  if (op.op === "add") {
+    const target = env.canonical(op.r, op.c);
+    if (target === undefined) {
+      skipped.push(`越界格 (${op.r},${op.c})`);
+      return false;
+    }
+    const occupied = occupiedAt(target.r, target.c);
+    if (occupied >= 0) {
+      skipped.push(occupiedText(occupied));
+      return false;
+    }
+    const given = typeof op.id === "string" && op.id !== "" ? op.id : "";
+    if (given !== "" && indexOf(given) >= 0) {
+      skipped.push(`标记 id 重复：${given}`);
+      return false;
+    }
+    const id = given !== "" ? given : nextMarkerId(doc);
+    const at = Number.isInteger(op.at) ? Math.min(doc.markers.length, Math.max(0, Number(op.at))) : doc.markers.length;
+    doc.markers.splice(at, 0, { id, r: target.r, c: target.c, name: typeof op.name === "string" ? op.name : "" });
+    env.markCell(target.r, target.c);
+    env.markNumberingFrom(at);
+    undo.push({ kind: "marker", op: "remove", id });
+    return true;
+  }
+
+  const index = indexOf(op.id);
+  if (index < 0) {
+    skipped.push(`标记不存在：${String(op.id)}`);
+    return false;
+  }
+  const marker = doc.markers[index];
+
+  if (op.op === "remove") {
+    doc.markers.splice(index, 1);
+    env.markCell(marker.r, marker.c);
+    env.markNumberingFrom(index);
+    // 逆操作**插回原位置**：插到末尾的话，撤销之后编号顺序就变了。
+    undo.push({ kind: "marker", op: "add", id: marker.id, r: marker.r, c: marker.c, name: marker.name, at: index });
+    return true;
+  }
+
+  if (op.op === "move") {
+    const target = env.canonical(op.r, op.c);
+    if (target === undefined) {
+      skipped.push(`越界格 (${op.r},${op.c})`);
+      return false;
+    }
+    if (target.r === marker.r && target.c === marker.c) return false;
+    const occupied = occupiedAt(target.r, target.c);
+    if (occupied >= 0) {
+      skipped.push(occupiedText(occupied));
+      return false;
+    }
+    const from = { r: marker.r, c: marker.c };
+    marker.r = target.r;
+    marker.c = target.c;
+    env.markCell(from.r, from.c);
+    env.markCell(target.r, target.c);
+    undo.push({ kind: "marker", op: "move", id: marker.id, r: from.r, c: from.c });
+    return true;
+  }
+
+  const name = typeof op.name === "string" ? op.name : "";
+  if (marker.name === name) return false;
+  const before = marker.name;
+  marker.name = name;
+  undo.push({ kind: "marker", op: "rename", id: marker.id, name: before });
+  return true;
+}
+
+/** 下一个不冲突的标记 id（`m1`、`m2`…）。删掉的不回收，免得和撤销栈里的旧 id 撞上。 */
+export function nextMarkerId(doc: MapDoc): string {
+  let seq = doc.markers.length;
+  for (;;) {
+    seq++;
+    if (!doc.markers.some((marker) => marker.id === `m${seq}`)) return `m${seq}`;
+  }
 }
 
 /**

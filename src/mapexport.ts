@@ -42,7 +42,13 @@ import { bitmapToPng, planBounds, rasterize, type PlanBounds, type RenderContext
 import { mapAssetPath } from "./mapgen.js";
 import { zipEntries, type ZipEntry } from "./zip.js";
 
-export const OWN_JSON_FORMAT = "dsh-gem-map@2";
+/**
+ * 自有 JSON 的格式标识。
+ *
+ * - `@2`：单项目单地图（去掉 `project` 段）。
+ * - `@3`：顶层多了 `markers`（标记点：编号 + 名字 + 格坐标）。
+ */
+export const OWN_JSON_FORMAT = "dsh-gem-map@3";
 
 export interface ExportFormatOptions {
   /** 合并 PNG（默认 true）。 */
@@ -109,8 +115,12 @@ export function safeFileName(input: string, fallback = "map"): string {
  * - 没勾：导出目录里没有这些图，读 `map.json` 的人得回项目目录取 —— 这条写在这里，
  *   免得把 `image` 当成「相对导出目录」而在别处找不到文件。
  *
- * `project` 按契约留在签名上（旧版写过 `project` 段），`dsh-gem-map@2` 的形态里不带它：
+ * `project` 按契约留在签名上（旧版写过 `project` 段），`dsh-gem-map@2` 起的形态里不带它：
  * 一张地图就是一个项目，再套一层只是重复。
+ *
+ * `markers` 是**源数据**（位置 + 名字），不是画出来的圆圈：`map.png` 里没有标记，
+ * 引擎按坐标自己渲染。编号 `n` 写出来是为了让人一眼对得上界面上的数字，
+ * 它等于数组下标 + 1（删掉一个，后面自动往前顶）。
  */
 export function buildOwnJson(context: RenderContext, doc: MapDoc, project: { id: string; name: string }): object {
   void project;
@@ -129,7 +139,8 @@ export function buildOwnJson(context: RenderContext, doc: MapDoc, project: { id:
       tileCount: tileset.tiles.length
     })),
     legend: flatTiles(context.tilesets).map((flat) => ({ index: flat.index, tilesetId: flat.tilesetId, rect: flat.tile.rect })),
-    layers: doc.layers.map((layer) => ({ name: layer.name, data: [...(doc.data[layer.id] ?? [])] }))
+    layers: doc.layers.map((layer) => ({ name: layer.name, data: [...(doc.data[layer.id] ?? [])] })),
+    markers: doc.markers.map((marker, index) => ({ n: index + 1, name: marker.name, r: marker.r, c: marker.c }))
   };
 }
 

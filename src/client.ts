@@ -1219,10 +1219,6 @@
         "Pick up the tile used in this cell and make it the current brush",
       "拖动平移画布；空格拖或中键拖也行":
         "Drag to pan the canvas; space-drag or middle-drag works too",
-      "只显示当前这一层，底铺绿色":
-        "Show only the current layer on a green backdrop",
-      "上半换上一层、下半换下一层；中间的数字是当前层号":
-        "Click the upper half for the layer above, the lower half for the one below; the number in the middle is the current layer",
       "显示或隐藏格线，方便数格子":
         "Show or hide the grid lines so cells are easier to count",
       "随机铺满 / 迷宫 / 大陆：用选中的图块一键铺满整层":
@@ -1247,8 +1243,6 @@
         "Paint bucket",
       "抓手":
         "Hand",
-      "单层预览":
-        "Single layer",
       "上一层":
         "Layer up",
       "下一层":
@@ -1335,16 +1329,46 @@
         "Layer added",
       "加一层":
         "Add layer",
-      "至少要留一层":
-        "At least one layer must remain",
       "删掉当前这一层":
         "Delete the current layer",
       "已删掉这一层":
         "Layer deleted",
-      "删一层":
-        "Delete layer",
       "清空当前图层":
         "Clear current layer",
+      "标记":
+        "Marker",
+      "地图上点一格放一个标记；点已有标记可以改名、按住拖动可以挪位置；右键删掉它":
+        "Click a cell to drop a marker; click an existing marker to rename it, drag it to move it; right-click deletes it",
+      "标记层":
+        "Marker layer",
+      "还没有标记。选「标记」工具，在地图上点一格。":
+        "No markers yet. Pick the Marker tool and click a cell on the map.",
+      "{n0} 个标记":
+        "{n0} markers",
+      "标记 {n0}":
+        "Marker {n0}",
+      "定位":
+        "Go to",
+      "删掉":
+        "Delete",
+      "已重命名这一层":
+        "Layer renamed",
+      "图层名字不能为空":
+        "A layer name cannot be empty",
+      "上移一层":
+        "Move layer up",
+      "下移一层":
+        "Move layer down",
+      "只看这一层":
+        "Only this layer",
+      "点名字可以改名，右边可以换顺序或删掉":
+        "Click a name to rename it; on the right you can reorder or delete it",
+      "标记名字":
+        "Marker name",
+      "点中间的数字打开图层列表（改名 / 换顺序 / 删掉）；上半换上一层、下半换下一层":
+        "Click the number in the middle to open the layer list (rename / reorder / delete); the top half switches up a layer, the bottom half switches down",
+      "已换图层顺序":
+        "Layer order updated",
       "帮助":
         "Help",
       "左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝橡皮。":
@@ -2239,7 +2263,28 @@
 .SPR_mapEdLayerHalf{flex:1;width:100%;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;color:#4a3416;background:transparent;border:none;border-radius:3px}
 .SPR_mapEdLayerHalf:hover:not(:disabled){background:rgba(255,255,255,.28)}
 .SPR_mapEdLayerHalf:disabled{opacity:.3;cursor:default}
-.SPR_mapEdLayerNum{font-size:10px;line-height:1;font-weight:700;color:#4a3416;font-variant-numeric:tabular-nums}
+.SPR_mapEdLayerNum{width:100%;padding:0;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:10px;line-height:1;font-weight:700;color:#4a3416;font-variant-numeric:tabular-nums}
+.SPR_mapEdLayerNum:hover{background:rgba(255,255,255,.28);border-radius:3px}
+/* 图层卡：一行一层（点名字就地改名，右边换顺序 / 删掉）。
+   最上面一行固定是「标记层」，它不是图层数组里的成员 —— 标记有自己的位置与名字。 */
+.SPR_mapEdLayerList{display:flex;flex-direction:column;gap:3px;margin:6px 0}
+.SPR_mapEdLayerRow{display:flex;align-items:center;gap:5px;padding:3px 5px;border:1px solid #6b4a22;border-radius:4px;background:rgba(0,0,0,.18)}
+.SPR_mapEdLayerRow[data-on="true"]{border-color:#e6bd7d;background:rgba(230,189,125,.18)}
+.SPR_mapEdLayerIdx{width:15px;flex:none;text-align:center;font-size:11px;color:#c9bda8;font-variant-numeric:tabular-nums}
+.SPR_mapEdLayerName{flex:1;min-width:0;text-align:left;padding:2px 4px;border:1px dashed transparent;border-radius:3px;background:transparent;color:#f3e7d3;font-family:inherit;font-size:12px;cursor:text;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.SPR_mapEdLayerName:hover{border-color:#6b4a22}
+.SPR_mapEdLayerNameInput{flex:1;min-width:0;padding:2px 4px;border:1px solid #e6bd7d;border-radius:3px;background:#1f1f1f;color:#f3e7d3;font-family:inherit;font-size:12px;outline:none}
+.SPR_mapEdMiniBtn{padding:1px 5px;border:1px solid #6b4a22;border-radius:3px;background:rgba(0,0,0,.25);color:#e8d7bb;font-family:inherit;font-size:11px;line-height:16px;cursor:pointer}
+.SPR_mapEdMiniBtn:hover:not(:disabled){background:rgba(230,189,125,.25)}
+.SPR_mapEdMiniBtn:disabled{opacity:.35;cursor:default}
+.SPR_mapEdMarkerRow{display:flex;align-items:center;gap:6px;padding:3px 5px;border:1px solid #6b4a22;border-radius:4px;background:rgba(0,0,0,.18)}
+.SPR_mapEdMarkerRow[data-on="true"]{border-color:#e23b2b;background:rgba(226,59,43,.14)}
+.SPR_mapEdMarkerDot{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid #f0c040;border-radius:50%;background:#14161e;color:#fff;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.SPR_mapEdMarkerName{flex:1;min-width:0;padding:2px 4px;border:1px solid transparent;border-radius:3px;background:transparent;color:#f3e7d3;font-family:inherit;font-size:12px;outline:none}
+.SPR_mapEdMarkerName:hover{border-color:#6b4a22}
+.SPR_mapEdMarkerName:focus{border-color:#e6bd7d;background:#1f1f1f}
+.SPR_mapEdMarkerAt{flex:none;font-size:11px;color:#b9b3a8;font-variant-numeric:tabular-nums}
+.SPR_mapEdMarkerList{display:flex;flex-direction:column;gap:3px;max-height:216px;overflow:auto;margin-top:4px}
 /* 画布：铺满右列，像素画不糊 */
 .SPR_mapEdStage{position:relative;flex:1;min-width:0;min-height:360px;background:#3a3a3a;overflow:hidden}
 .SPR_mapEdCanvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none;cursor:crosshair}
@@ -6099,6 +6144,15 @@
       }
       if (name === "up") return h("svg", { viewBox: "0 0 10 6", width: 11, height: 7, "aria-hidden": "true", fill: "currentColor" }, path("M5 0 10 6H0z"));
       if (name === "down") return h("svg", { viewBox: "0 0 10 6", width: 11, height: 7, "aria-hidden": "true", fill: "currentColor" }, path("M0 0h10L5 6z"));
+      // 标记：圆圈里一个数字（画布上标记点就是长这样的，工具图标照它画，用户一眼能对上）。
+      if (name === "marker") {
+        return h(
+          "svg",
+          box,
+          h("circle", { cx: 12, cy: 12, r: 8.4, fill: "none", stroke: "currentColor", strokeWidth: 2 }),
+          h("text", { x: 12, y: 16.1, textAnchor: "middle", fontSize: 11.5, fontWeight: 700, fill: "currentColor" }, "1")
+        );
+      }
       return null;
     }
 
@@ -6131,6 +6185,14 @@
       /** 计划缓存：key → 绘制条目。`have` 直接由它派发。 */
       const planRef = React.useRef(new Map());
       const [planOps, setPlanOps] = React.useState(new Map());
+      /**
+       * 视口里的标记点（宿主每次查询整份回）。
+       *
+       * ⚠️ **故意不进 `planRef` 那份按块缓存**：编号是连续的，删掉第 2 个之后第 3 个
+       * 就变成第 2 个 —— 缓存住的号码会留在屏幕上。所以它是独立的一份状态，
+       * 每次查询覆盖（数量级是几十个）。
+       */
+      const [planMarkers, setPlanMarkers] = React.useState([]);
       const [visibleKeys, setVisibleKeys] = React.useState([]);
       const visibleRef = React.useRef([]);
       /** 自增一次＝「重新问一遍宿主缺哪些块」（补拉用）。 */
@@ -6173,6 +6235,12 @@
       const [single, setSingle] = React.useState(false);
       const [showGrid, setShowGrid] = React.useState(false);
       const [hover, setHover] = React.useState(null);
+      /** 选中 / 正在改名的标记 id（画布上那个圈描红、标记卡里高亮）。 */
+      const [markerSel, setMarkerSel] = React.useState(null);
+      /** 图层改名的就地草稿：`{ id, value }`；null = 没有在改。 */
+      const [layerDraft, setLayerDraft] = React.useState(null);
+      /** 标记改名的就地草稿：`{ id, value }`。 */
+      const [markerDraft, setMarkerDraft] = React.useState(null);
 
       // ── 保存状态 / 生成草稿 / 导出 ────────────────────────────────────────
       const [genKind, setGenKind] = React.useState("random");
@@ -6390,6 +6458,7 @@
         staleRef.current = new Set();
         visibleRef.current = [];
         setPlanOps(new Map());
+        setPlanMarkers([]);
         setVisibleKeys([]);
       }, []);
 
@@ -6483,6 +6552,8 @@
         planRef.current = next;
         visibleRef.current = keys;
         setPlanOps(next);
+        // 标记**整份覆盖**（不进那份按块缓存）：编号会随删除整体前移，缓存住的号码会留在屏幕上。
+        setPlanMarkers(Array.isArray(result?.markers) ? result.markers : []);
         setVisibleKeys(keys);
         const fps = Number(result?.fps);
         const frames = Number(result?.frameCount);
@@ -6686,6 +6757,27 @@
             count++;
           }
         }
+        /**
+         * 标记点：圆 + 圆圈里的数字。
+         *
+         * 圆心、半径、字号、数字**全在宿主给的计划里** —— 界面只负责 `arc` 与 `fillText`。
+         * 绘制放在图块与格线**之后**，所以标记永远压在地图上；环绕接缝处同一个标记会出现
+         * 多份（宿主按像素位置各发一条），这里照单全画。
+         */
+        for (const marker of planMarkers) {
+          ctx.beginPath();
+          ctx.arc(marker.x, marker.y, marker.radius, 0, Math.PI * 2);
+          ctx.fillStyle = marker.id === markerSel ? "rgba(210,59,44,0.92)" : "rgba(20,22,30,0.86)";
+          ctx.fill();
+          ctx.lineWidth = Math.max(1, marker.radius * 0.16);
+          ctx.strokeStyle = "#f0c040";
+          ctx.stroke();
+          ctx.fillStyle = "#ffffff";
+          ctx.font = `700 ${marker.font}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(marker.n), marker.x, marker.y);
+        }
         // 悬停格：2px 红框（四条细矩形，不用 stroke，免得被 DPR 影响粗细）
         // ⚠️ 用**未取模**的坐标定位：环绕时同一格在屏幕上有多份，红框必须画在指针
         // 所在的那一份上。拿取模后的 r/c 去算，指针在地图外那一份时红框会跳一整张地图。
@@ -6702,6 +6794,41 @@
           ctx.fillRect(topLeft.x, topLeft.y + thickness, thickness, hh - thickness * 2);
           ctx.fillRect(topLeft.x + w - thickness, topLeft.y + thickness, thickness, hh - thickness * 2);
         }
+        /**
+         * 悬停到标记上：把**名字**写在圆圈旁边。
+         *
+         * 名字不常驻画布（几十个名字会糊成一片），只有指针停上去才出现。
+         * 「停到了哪个」按**指针到圆心的距离**判：环绕时同一个标记在屏幕上有好几份，
+         * 只看格号会挑到地图另一头那一份（红框当年就是这个坑）。圆心与半径都是宿主给的。
+         */
+        if (hover !== null && hover !== undefined) {
+          let found: any = undefined;
+          let best = Infinity;
+          for (const marker of planMarkers) {
+            const distance = Math.hypot(marker.x - hover.x, marker.y - hover.y);
+            if (distance <= marker.radius * 2.5 && distance < best) {
+              best = distance;
+              found = marker;
+            }
+          }
+          if (found !== undefined) {
+            const label = found.name === "" ? T("标记 {n0}", { n0: String(found.n) }) : `${found.n} · ${found.name}`;
+            // 缩得很小时文字会跟着变小到看不清，所以字号有个下限（只影响这个浮层，不影响圆）。
+            const font = Math.max(12 / zoom, found.font * 0.85);
+            ctx.font = `600 ${font}px sans-serif`;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            const padding = 4 / zoom;
+            const boxWidth = ctx.measureText(label).width + padding * 2;
+            const boxHeight = font + padding * 2;
+            const left = found.x + found.radius + 3 / zoom;
+            const top = found.y - boxHeight / 2;
+            ctx.fillStyle = "rgba(20,22,30,0.9)";
+            ctx.fillRect(left, top, boxWidth, boxHeight);
+            ctx.fillStyle = "#f3e7d3";
+            ctx.fillText(label, left + padding, found.y);
+          }
+        }
         if (stats !== null && typeof window !== "undefined") {
           stats.frame = frame;
           (window as any).__mapDrawStats = stats;
@@ -6714,7 +6841,7 @@
            */
           (window as any).__mapCamera = { pan: { x: pan.x, y: pan.y }, zoom, viewport: { w: viewport.w, h: viewport.h } };
         }
-      }, [layout, viewport, zoom, pan, planOps, legend, legendMap, single, showGrid, hover, frame]);
+      }, [layout, viewport, zoom, pan, planOps, planMarkers, markerSel, legend, legendMap, single, showGrid, hover, frame]);
 
       React.useEffect(() => {
         draw();
@@ -7008,6 +7135,21 @@
           strokeRef.current = { mode: "pan", clientX: event.clientX, clientY: event.clientY, pan: { ...pan } };
           return;
         }
+        if (tool === "marker") {
+          const existing = markerAtCell(hit.r, hit.c);
+          if (event.button === 2) {
+            if (existing !== undefined) void markerOp({ kind: "marker", op: "remove", id: existing.id }, true);
+            return;
+          }
+          if (existing !== undefined) {
+            // 点已有标记 = 选中它（图层卡里就能改名）；按住拖到别的格就是挪位置。
+            setMarkerSel(existing.id);
+            strokeRef.current = { mode: "marker", id: existing.id, from: { r: hit.r, c: hit.c } };
+            return;
+          }
+          void markerOp({ kind: "marker", op: "add", r: hit.r, c: hit.c }, true);
+          return;
+        }
         if (event.button === 2 || tool === "eraser") {
           currentStroke.current = null;
           strokeRef.current = { mode: "paint", from: hit, tile: 0 };
@@ -7063,6 +7205,14 @@
          * 红框是按格对齐的，格号没变画面就没变，返回同一个对象让 React 直接跳过这次渲染。
          */
         setHover((prev) => (prev !== null && prev.r === hit.r && prev.c === hit.c ? prev : hit));
+        if (stroke !== null && stroke !== undefined && stroke.mode === "marker") {
+          // 每跨一格提交一次（挪位置不改编号，所以**不重读视图**；松手时补一次）。
+          if (stroke.from.r !== hit.r || stroke.from.c !== hit.c) {
+            stroke.from = { r: hit.r, c: hit.c };
+            void markerOp({ kind: "marker", op: "move", id: stroke.id, r: hit.r, c: hit.c }, false);
+          }
+          return;
+        }
         if (stroke !== null && stroke !== undefined && stroke.mode === "paint") {
           if (stroke.from.r !== hit.r || stroke.from.c !== hit.c) {
             paintCells(stroke.from, hit, stroke.tile);
@@ -7075,9 +7225,14 @@
         const pointerId = event.pointerId === undefined ? 1 : event.pointerId;
         pointersRef.current.delete(pointerId);
         if (pointersRef.current.size < 2) delete pointersRef.current.pinch;
+        const stroke = strokeRef.current;
         strokeRef.current = null;
         currentStroke.current = null;
         void flushOps();
+        // 拖完标记补读一次视图：拖动期间刻意没读（每格读一次太吵），列表里的坐标要跟上。
+        if (stroke !== null && stroke !== undefined && stroke.mode === "marker" && api !== undefined && viewId !== null) {
+          void loadProject(viewId, true);
+        }
       };
 
       // 快捷键：B/E/G/I/H/V 与撤销重做；焦点在输入框里时全部失效
@@ -7111,6 +7266,7 @@
           else if (key === "g") setTool("bucket");
           else if (key === "i") setTool("pipette");
           else if (key === "h") setTool("hand");
+          else if (key === "m") setTool("marker");
           else if (key === "v") setSingle((value) => value !== true);
         };
         const onKeyUp = (event) => {
@@ -7548,6 +7704,58 @@
         await saveDoc({ clearLayerId: activeLayer.id }, T("已清空这一层"));
       };
 
+      // ── 标记点：放 / 改名 / 挪走 / 删掉 ──────────────────────────────────
+      /**
+       * 标记改动走的是**和画笔同一条 op 通道**：撤销栈、脏块（`dropKeys`）全是现成的，
+       * 界面不需要自己算「这一下让哪几块失效」。
+       *
+       * `refresh`：增删会改变编号（删掉第 2 个，第 3 个就变成第 2 个），所以要把视图
+       * 重读一遍让列表跟上；拖动挪位置不影响编号，拖完再读一次就够。
+       */
+      const markerOp = async (op, refresh) => {
+        if (api === undefined || viewId === null) return;
+        try {
+          applyResult(await api.applyMapOps({ projectId: viewId, ops: [op], have: [...planRef.current.keys()] }));
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+          return;
+        }
+        if (refresh === true) await loadProject(viewId, true);
+      };
+
+      /** 这一格的标记（没有就 undefined）。格号是**规范坐标**，与命中测试同一套。 */
+      const markerAtCell = (r, c) => {
+        const list = view === null || view.markers === undefined ? [] : view.markers;
+        return list.find((marker) => marker.r === r && marker.c === c);
+      };
+
+      /** 把视图挪到某一格（标记列表里的「定位」）。用允许复刻的那份坐标函数，不新算几何。 */
+      const centerOnCell = (r, c) => {
+        if (layout === null) return;
+        const topLeft = MAP_cellTopLeft(layout, r, c, layout.grid.tileWidth, layout.grid.tileHeight);
+        const center = { x: topLeft.x + layout.grid.tileWidth / 2, y: topLeft.y + layout.grid.tileHeight / 2 };
+        setPan(clampPan({ x: center.x - viewport.w / (2 * zoom), y: center.y - viewport.h / (2 * zoom) }));
+      };
+
+      /** 图层改名：空名字**本地就拦住**（宿主对空名字是静默 no-op，会让人以为改成功了）。 */
+      const commitLayerName = async (id, value) => {
+        setLayerDraft(null);
+        const name = String(value ?? "").trim();
+        if (name === "") {
+          setNotice({ kind: "error", text: T("图层名字不能为空") });
+          return;
+        }
+        const current = layers.find((layer) => layer.id === id);
+        if (current !== undefined && current.name === name) return;
+        await saveDoc({ layers: [{ id, name }] }, T("已重命名这一层"));
+      };
+
+      /** 标记改名：空名字是合法的（界面按「标记 N」显示）。 */
+      const commitMarkerName = async (id, value) => {
+        setMarkerDraft(null);
+        await markerOp({ kind: "marker", op: "rename", id, name: String(value ?? "") }, true);
+      };
+
       const runGenerate = async () => {
         if (view === null || api === undefined) return;
         const tiles = multi.length > 0 ? multi : brush === null ? [] : [brush.index];
@@ -7962,13 +8170,13 @@
         toolButton("bucket", T("油漆桶"), T("同色的连通区一次填满"), { icon: "bucket", shortcut: "G", on: tool === "bucket", onClick: () => setTool("bucket") }),
         toolButton("pipette", T("吸管"), T("吸取这一格用的图块，变成当前笔刷"), { icon: "pipette", shortcut: "I", on: tool === "pipette", onClick: () => setTool("pipette") }),
         toolButton("hand", T("抓手"), T("拖动平移画布；空格拖或中键拖也行"), { icon: "hand", shortcut: "H", on: tool === "hand", onClick: () => setTool("hand") }),
-        toolButton("single", T("单层预览"), T("只显示当前这一层，底铺绿色"), { icon: "single", shortcut: "V", on: single === true, onClick: () => setSingle(single !== true) }),
+        toolButton("marker", T("标记"), T("地图上点一格放一个标记；点已有标记可以改名、按住拖动可以挪位置；右键删掉它"), { icon: "marker", shortcut: "M", on: tool === "marker", onClick: () => setTool("marker") }),
         h(
           "div",
           {
             key: "layer",
             className: "SPR_mapEdTool SPR_mapEdLayerBtn",
-            onMouseEnter: showToolTip(T("图层"), T("上半换上一层、下半换下一层；中间的数字是当前层号"), null),
+            onMouseEnter: showToolTip(T("图层"), T("点中间的数字打开图层列表（改名 / 换顺序 / 删掉）；上半换上一层、下半换下一层"), null),
             onMouseLeave: hideToolTip
           },
           h(
@@ -7983,7 +8191,17 @@
             },
             h(MapToolIcon, { name: "up" })
           ),
-          h("span", { className: "SPR_mapEdLayerNum" }, String(safeLayerIndex + 1)),
+          h(
+            "button",
+            {
+              type: "button",
+              className: "SPR_mapEdLayerNum",
+              "aria-label": T("图层"),
+              "data-testid": "map-open-layers",
+              onClick: () => setOpenCard(openCard === "layers" ? null : "layers")
+            },
+            String(safeLayerIndex + 1)
+          ),
           h(
             "button",
             {
@@ -8243,6 +8461,129 @@
             )
       );
 
+      /**
+       * 图层卡：一张列表管三件事 —— 改名字、换顺序、删掉；最上面一行固定是「标记层」。
+       *
+       * 名字是宿主的字段（`saveMapDoc({ layers: [{ id, name }] })`），所以改名走一次结构补丁、
+       * 回来重读视图。标记列表放在同一张卡里：点一行就能改名 / 定位 / 删掉。
+       *
+       * 列表**从上往下列**（最后添加的层在最上）：画布上就是这个叠放顺序，反向列会让人点错。
+       */
+      const layerRows = [...layers].map((layer, index) => ({ layer, index })).reverse();
+      const markers = view === null || view.markers === undefined ? [] : view.markers;
+      const smallBtn = (key, label, title, onClick, disabled) =>
+        h(
+          "button",
+          { key, type: "button", className: "SPR_mapEdMiniBtn", title, "aria-label": title, disabled: disabled === true, onClick },
+          label
+        );
+      const layersCard = h(
+        "div",
+        { className: "SPR_mapEdCard", "data-testid": "map-layers-card" },
+        cardHead(T("图层")),
+        h("p", { className: "SPR_mapEdHint" }, T("点名字可以改名，右边可以换顺序或删掉")),
+        h(
+          "div",
+          { className: "SPR_mapEdLayerList" },
+          h(
+            "div",
+            { className: "SPR_mapEdLayerRow", "data-testid": "map-marker-layer-row" },
+            h("span", { className: "SPR_mapEdLayerIdx" }, "●"),
+            h("span", { className: "SPR_mapEdLayerName", style: { cursor: "default" } }, T("标记层")),
+            h("span", { className: "SPR_mapEdMarkerAt" }, T("{n0} 个标记", { n0: String(markers.length) })),
+            smallBtn("marker", T("标记"), T("标记"), () => setTool("marker"), false)
+          ),
+          layerRows.map(({ layer, index }) => {
+            const editing = layerDraft !== null && layerDraft.id === layer.id;
+            return h(
+              "div",
+              { key: layer.id, className: "SPR_mapEdLayerRow", "data-on": index === safeLayerIndex ? "true" : undefined },
+              h("span", { className: "SPR_mapEdLayerIdx" }, String(index + 1)),
+              editing
+                ? h("input", {
+                    className: "SPR_mapEdLayerNameInput",
+                    autoFocus: true,
+                    value: layerDraft.value,
+                    "data-testid": `map-layer-name-${index}`,
+                    onChange: (event) => setLayerDraft({ id: layer.id, value: event.target.value }),
+                    onBlur: () => void commitLayerName(layer.id, layerDraft.value),
+                    onKeyDown: (event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      } else if (event.key === "Escape") {
+                        setLayerDraft(null);
+                      }
+                    }
+                  })
+                : h(
+                    "button",
+                    {
+                      type: "button",
+                      className: "SPR_mapEdLayerName",
+                      "data-testid": `map-layer-pick-${index}`,
+                      title: T("点名字可以改名，右边可以换顺序或删掉"),
+                      onClick: () => setLayerIndex(index),
+                      onDoubleClick: () => setLayerDraft({ id: layer.id, value: layer.name })
+                    },
+                    layer.name
+                  ),
+              smallBtn("up", "↑", T("上移一层"), () => void saveDoc({ moveLayer: { id: layer.id, toIndex: index + 1 } }, T("已换图层顺序")), index >= layers.length - 1),
+              smallBtn("down", "↓", T("下移一层"), () => void saveDoc({ moveLayer: { id: layer.id, toIndex: index - 1 } }, T("已换图层顺序")), index <= 0),
+              smallBtn("remove", "×", T("删掉当前这一层"), () => void saveDoc({ removeLayerId: layer.id }, T("已删掉这一层")), layers.length <= 1)
+            );
+          })
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { onClick: () => void saveDoc({ addLayer: { name: T("图层 {n0}", { n0: String(layers.length + 1) }) } }, T("已加一层")) }, T("加一层")),
+          h(Btn, { onClick: () => void clearLayer() }, T("清空当前图层")),
+          h(
+            "label",
+            { className: "SPR_mapEdCheck" },
+            h("input", { type: "checkbox", "data-testid": "map-single-layer", checked: single === true, onChange: (event) => setSingle(event.target.checked) }),
+            T("只看这一层")
+          )
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdMarkerList", "data-testid": "map-marker-list" },
+          markers.length === 0
+            ? h("p", { className: "SPR_mapEdHint" }, T("还没有标记。选「标记」工具，在地图上点一格。"))
+            : markers.map((marker) =>
+                h(
+                  "div",
+                  { key: marker.id, className: "SPR_mapEdMarkerRow", "data-on": marker.id === markerSel ? "true" : undefined, "data-testid": `map-marker-${marker.n}` },
+                  h("span", { className: "SPR_mapEdMarkerDot" }, String(marker.n)),
+                  h("input", {
+                    className: "SPR_mapEdMarkerName",
+                    "aria-label": T("标记名字"),
+                    placeholder: T("标记 {n0}", { n0: String(marker.n) }),
+                    value: markerDraft !== null && markerDraft.id === marker.id ? markerDraft.value : marker.name,
+                    onFocus: () => setMarkerSel(marker.id),
+                    onChange: (event) => setMarkerDraft({ id: marker.id, value: event.target.value }),
+                    onBlur: () => {
+                      if (markerDraft !== null && markerDraft.id === marker.id) void commitMarkerName(marker.id, markerDraft.value);
+                    },
+                    onKeyDown: (event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      }
+                    }
+                  }),
+                  h("span", { className: "SPR_mapEdMarkerAt" }, `(${marker.r},${marker.c})`),
+                  smallBtn("go", T("定位"), T("定位"), () => {
+                    setMarkerSel(marker.id);
+                    centerOnCell(marker.r, marker.c);
+                  }, false),
+                  smallBtn("drop", T("删掉"), T("删掉"), () => void markerOp({ kind: "marker", op: "remove", id: marker.id }, true), false)
+                )
+              )
+        )
+      );
+
       const settingsCard = h(
         "div",
         { className: "SPR_mapEdCard" },
@@ -8271,21 +8612,6 @@
             speedOptions.map(([value, label]) => h("option", { key: value, value }, `${label} · ${value} 帧/秒`))
           ),
           T("只影响会动的素材（水、翻页图这类）")
-        ),
-        h(
-          "div",
-          { className: "SPR_mapEdCardRow" },
-          h(Btn, { onClick: () => void saveDoc({ addLayer: { name: T("图层 {n0}", { n0: String(layers.length + 1) }) } }, T("已加一层")) }, T("加一层")),
-          h(
-            Btn,
-            {
-              disabled: layers.length <= 1,
-              title: layers.length <= 1 ? T("至少要留一层") : T("删掉当前这一层"),
-              onClick: () => void saveDoc({ removeLayerId: activeLayer.id }, T("已删掉这一层"))
-            },
-            T("删一层")
-          ),
-          h(Btn, { onClick: () => void clearLayer() }, T("清空当前图层"))
         ),
         h(
           "label",
@@ -8356,7 +8682,17 @@
       );
 
       const openCardNode =
-        openCard === "assets" ? assetsCard : openCard === "export" ? exportCard : openCard === "settings" ? settingsCard : openCard === "gen" ? genCard : null;
+        openCard === "assets"
+          ? assetsCard
+          : openCard === "export"
+            ? exportCard
+            : openCard === "layers"
+              ? layersCard
+              : openCard === "settings"
+                ? settingsCard
+                : openCard === "gen"
+                  ? genCard
+                  : null;
 
       const canvas = h("canvas", {
         ref: bindCanvas,

@@ -21,6 +21,8 @@ import { readFileSync } from "node:fs";
 const geom = await import("../lib/mapgeom.js");
 const auto = await import("../lib/mapauto.js");
 const tiles = await import("../lib/maptiles.js");
+const render = await import("../lib/maprender.js");
+const doc = await import("../lib/mapdoc.js");
 
 let passed = 0;
 const failures = [];
@@ -273,6 +275,20 @@ section("6) 视口范围（viewCellRange / clampRangeToMap）");
     `${huge.r1 - huge.r0}×${huge.c1 - huge.c0}`
   );
 
+  /**
+   * ⚠️ 真机踩过：视口比地图还大（画布大、地图只占左上角一片，相机被夹在 0）时，
+   * 收口如果「从视口左上角起算一整轮」，padding 会把起点推到 -1，于是范围变成
+   * `[-1, cols-1)` —— 地图自己的最后一列只以画布外的那份环绕副本出现。
+   * 表现：地图右边缘少一列、底边少一行（摆在那里的标记点直接看不见）。
+   */
+  const wide = geom.viewCellRange(l, { x: 0, y: 0, width: 8 * 32 * 3, height: 6 * 32 * 3 }, 1);
+  check("视口比地图大：给整张地图（含最右一列 / 最下一行）", wide.c0 === 0 && wide.c1 === 8 && wide.r0 === 0 && wide.r1 === 6, JSON.stringify(wide));
+  check(
+    "反向验证：从视口左上角起算一整轮会丢掉最后一列（-1 + 8 = 7，格 7 被挤出窗口）",
+    wide.c1 > 7 && -1 + 8 <= 7,
+    `新取法 c1=${wide.c1}；旧取法 c1=${-1 + 8}`
+  );
+
   const flat = geom.layoutOf(FLAT, 8, 6);
   const clamped = geom.viewCellRange(flat, { x: -4000, y: -4000, width: 8000, height: 8000 }, 0);
   check("非环绕：范围被裁到地图内", clamped.r0 === 0 && clamped.c0 === 0 && clamped.r1 === 6 && clamped.c1 === 8, JSON.stringify(clamped));
@@ -458,7 +474,45 @@ section("9) 素材形态识别（detectLayout / layoutFor / buildTiles）");
 // 客户端复刻的坐标函数与宿主实现的**黄金对照**放在 `verify-map-client.mjs`
 // （那边才有真渲染环境）。这里钉两条静态约束：客户端不许自己发明几何，
 // 也不许把旧术语（用户抱怨「门槛高」的根因）带回来。
-section("10) 客户端静态约束（文本检查）");
+// ══ 10. 标记点几何（buildMarkers）═════════════════════════════════════════
+section("10) 标记点几何（圆心 / 半径 / 字号 / 编号都由宿主算）");
+{
+  const grid = { tileWidth: 32, tileHeight: 32, wrap: true };
+  const map = doc.createMapDoc("vm", "夹具", 8, 8);
+  map.markers = [
+    { id: "m1", r: 2, c: 3, name: "宝箱" },
+    { id: "m2", r: 5, c: 0, name: "" }
+  ];
+  const context = { grid, layout: geom.layoutOf(grid, map.cols, map.rows), tilesets: [], lookup: new Map() };
+  const plan = render.buildMarkers(context, map, { r0: 0, c0: 0, r1: 8, c1: 8 });
+  const first = plan.find((marker) => marker.id === "m1");
+  check("圆心 = 格子中心（宿主算，界面只 arc 到这里）", first.x === 3 * 32 + 16 && first.y === 2 * 32 + 16, JSON.stringify(first));
+  check("半径 / 字号跟着格子尺寸推导（32px 网格 → 13 / 16）", first.radius === Math.max(5, Math.round(32 * 0.42)) && first.font === Math.max(8, Math.round(first.radius * 1.2)), `${first.radius} / ${first.font}`);
+  check("编号 = 数组下标 + 1（连续编号，删了自动重排）", plan.map((marker) => marker.n).join(",") === "1,2", plan.map((marker) => marker.n).join(","));
+  check("名字只作数据带着（名字不上画布，界面自己决定怎么显示）", first.name === "宝箱" && plan[1].name === "");
+
+  // 反向验证①：半径必须随网格变 —— 写死 13 的错写法在 64px 网格上会被抓住。
+  const bigGrid = { tileWidth: 64, tileHeight: 64, wrap: true };
+  const bigContext = { grid: bigGrid, layout: geom.layoutOf(bigGrid, 8, 8), tilesets: [], lookup: new Map() };
+  const bigPlan = render.buildMarkers(bigContext, map, { r0: 0, c0: 0, r1: 8, c1: 8 });
+  check("反向验证：64px 网格上半径翻倍（不是写死的常数）", bigPlan[0].radius === Math.round(64 * 0.42) && bigPlan[0].radius !== first.radius, `${first.radius} → ${bigPlan[0].radius}`);
+
+  // 反向验证②：环绕视口里同一个标记会出现多份，非环绕时一份都不多。
+  const wrapPlan = render.buildMarkers(context, map, { r0: 0, c0: 0, r1: 8, c1: 9 });
+  const dupes = wrapPlan.filter((marker) => marker.id === "m2");
+  check("环绕：视口越界时同一个标记以多个像素位置各出一条（多份、同一个 id）", dupes.length === 2 && dupes[1].x - dupes[0].x === 8 * 32, JSON.stringify(dupes.map((marker) => [marker.c, marker.x])));
+  const flatGrid = { tileWidth: 32, tileHeight: 32, wrap: false };
+  const flatPlan = render.buildMarkers({ grid: flatGrid, layout: geom.layoutOf(flatGrid, 8, 8), tilesets: [], lookup: new Map() }, map, { r0: 0, c0: 0, r1: 8, c1: 9 });
+  check("反向验证：关掉环绕后越界那一份不再出现", flatPlan.filter((marker) => marker.id === "m2").length === 1, `${flatPlan.length} 条`);
+
+  // 一格最多一个标记：同格塞两个（绕过 op 校验直接造数据）也只出一条。
+  const stacked = doc.createMapDoc("vm2", "同格", 4, 4);
+  stacked.markers = [{ id: "m1", r: 1, c: 1, name: "先" }, { id: "m2", r: 1, c: 1, name: "后" }];
+  const stackedPlan = render.buildMarkers({ grid, layout: geom.layoutOf(grid, 4, 4), tilesets: [], lookup: new Map() }, stacked, { r0: 0, c0: 0, r1: 4, c1: 4 });
+  check("一格最多一个标记（同格重复时只出一条，不会叠两个圈）", stackedPlan.length === 1 && stackedPlan[0].id === "m2", `${stackedPlan.length} 条`);
+}
+
+section("11) 客户端静态约束（文本检查）");
 {
   const clientText = readFileSync(new URL("../src/client.ts", import.meta.url), "utf8");
   check(

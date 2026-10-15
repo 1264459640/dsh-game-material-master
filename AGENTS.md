@@ -21,7 +21,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 序列帧生成 | `sequence` | 正式 |
 | 骨骼动画生成 | `rig` | **实验性**（页签带角标、进入弹窗、模块内常驻提示条） |
 | 45°地图地块生成 | `tile` | **实验性**（45° 等距地块 → 拼成地图；AI 生成地块） |
-| 地图编辑器 | `map` | **实验性**（参照 AsLib 的 RPG Map Maker：一屏、纯图标、零术语；素材列表 + 新增（属性一次定死）、内置素材默认在列表且可删可恢复、地图环绕、自动连接、动画地块（翻页图）、一键生成；导出是「内容多选 → 一个「导出」按钮 → 一个 zip 下载 / 另存为」；**全本地零计费**） |
+| 地图编辑器 | `map` | **实验性**（参照 AsLib 的 RPG Map Maker：一屏、纯图标、零术语；素材列表 + 新增（属性一次定死）、内置素材默认在列表且可删可恢复、地图环绕、自动连接、动画地块（翻页图）、一键生成；默认三层「地理层 / 装饰层 / 建筑层」且图层可改名换序；**标记层**（每格一个标记、可命名、地图上画成圆圈里的数字、编号连续删了重排）；导出是「内容多选 → 一个「导出」按钮 → 一个 zip 下载 / 另存为」；**全本地零计费**） |
 
 ---
 
@@ -70,10 +70,10 @@ node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115
 node scripts/verify-tile-gateway.mjs   # 地图地块走真实网关（81 项：payload / 验收 / 作废边界 / 建筑 / 布局冻住 / 保存往返）
 node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项，拦「遮罩没出现」「地图不显示」这类静默问题）
 
-node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接内核（113 项，含反向验证与术语黑名单）
-node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（246 项，含 A2 每格 4 条 op、动画循环、dropKeys、导出逐字段与真解包的 ZIP）
-node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（156 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（241 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段）
+node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点内核（123 项，含反向验证与术语黑名单）
+node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（274 项，含 A2 每格 4 条 op、动画循环、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
+node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（160 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（261 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字）
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的

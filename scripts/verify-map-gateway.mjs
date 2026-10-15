@@ -223,6 +223,14 @@ try {
     })()
   );
   check(
+    "applyMapOps：标记 op 的键也要原样穿过 schema（少一个键就会被静默丢掉）",
+    (() => {
+      const parsed = parseOf("applyMapOps", { projectId: "m1", ops: [{ kind: "marker", op: "add", r: 1, c: 2, name: "宝箱" }, { kind: "marker", op: "rename", id: "m1", name: "x" }, { kind: "marker", op: "move", id: "m1", r: 3, c: 3 }, { kind: "marker", op: "remove", id: "m1" }] });
+      const ops = parsed.ops ?? [];
+      return ops.length === 4 && ops[0].name === "宝箱" && ops[0].r === 1 && ops[1].id === "m1" && ops[2].c === 3 && ops[3].op === "remove";
+    })(),
+  );
+  check(
     "applyMapOps：ops / have / stroke 都进 schema，旧字段 mapId 已被移除",
     (() => {
       const parsed = parseOf("applyMapOps", { projectId: "m1", ops: [{ kind: "paint", layerId: "l0", cells: [] }], have: ["0,0"], stroke: "s1", mapId: "old" });
@@ -293,7 +301,8 @@ try {
   projectId = created.id;
   check("createMapProject 返回 m 前缀 id", typeof projectId === "string" && projectId.startsWith("m"), projectId);
   check("返回的是视图：带 assetBase 与 busy=false", String(created.assetBase).endsWith(`/map-assets/${projectId}/`) && created.busy === false, String(created.assetBase));
-  check("视图：默认两层、画布尺寸跟着文档", created.layers.length === 2 && created.cols === 40 && created.rows === 40, JSON.stringify(created.layers));
+  check("视图：默认三层（地理 / 装饰 / 建筑）、画布尺寸跟着文档", created.layers.length === 3 && created.layers.map((l) => l.name).join("、") === "地理层、装饰层、建筑层" && created.cols === 40 && created.rows === 40, JSON.stringify(created.layers));
+  check("视图：带标记表（新项目是空的）", Array.isArray(created.markers) && created.markers.length === 0, JSON.stringify(created.markers));
   check("视图：没有旧字段（maps / activeMapId / coverage / families）", !("maps" in created) && !("activeMapId" in created) && !("coverage" in created) && !("families" in created), Object.keys(created).join(","));
   check("视图：stages 四阶段、rules 已 done", Object.keys(created.stages).join(",") === "assets,rules,paint,export" && created.stages.rules.status === "done");
   check("视图：还带 maxChunks（界面提示「缩得太小」用）", typeof created.maxChunks === "number" && created.maxChunks > 0);
@@ -333,6 +342,12 @@ try {
   const applied = await gw("applyMapOps", { projectId, ops: [{ kind: "paint", layerId: layer0, cells: [{ r: 4, c: 4, tile: base }, { r: 1, c: 1, tile: base }] }] });
   check("applyMapOps 返回 changed / dirtyChunks / canUndo", applied.changed === 2 && Array.isArray(applied.dirtyChunks) && applied.canUndo === true && applied.canRedo === false, JSON.stringify(applied));
   check("applyMapOps 对空 have 回空 dropKeys", applied.dropKeys.length === 0);
+  const gwMark = await gw("applyMapOps", { projectId, ops: [{ kind: "marker", op: "add", r: 6, c: 6, name: "网关标记" }] });
+  const gwView = await gw("getMapProject", { projectId });
+  check("applyMapOps：标记 op 走网关真的落进文档（编号从 1 开始）", gwMark.changed === 1 && gwView.markers.some((marker) => marker.name === "网关标记" && marker.r === 6 && marker.c === 6 && marker.n === 1), JSON.stringify(gwView.markers));
+  const gwPlan = await gw("mapPlan", { projectId, view: { x: 0, y: 0, width: 40 * 32, height: 40 * 32 } });
+  const gwPlanMark = (gwPlan.markers ?? [])[0];
+  check("mapPlan：标记带圆心 / 半径 / 字号 / 数字（界面只 arc + fillText）", gwPlanMark !== undefined && gwPlanMark.x === 6 * 32 + 16 && gwPlanMark.y === 6 * 32 + 16 && gwPlanMark.radius > 0 && gwPlanMark.font > 0 && gwPlanMark.n === 1, JSON.stringify(gwPlanMark ?? null));
   const dropped = await gw("applyMapOps", { projectId, ops: [{ kind: "paint", layerId: layer0, cells: [{ r: 3, c: 3, tile: base }] }], have: ["0,0", "9,9"] });
   check("applyMapOps.have 生效（真的算出该丢哪个 chunk）", dropped.dropKeys.includes("0,0") && !dropped.dropKeys.includes("9,9"), JSON.stringify({ dirty: dropped.dirtyChunks, drop: dropped.dropKeys }));
   const depth0 = mapgen.historyState(projectId).depth;
@@ -366,11 +381,11 @@ try {
   const docRename = await gw("saveMapDoc", { projectId, name: "改过名的地图" });
   check("saveMapDoc.name 生效", docRename.doc.name === "改过名的地图", docRename.doc.name);
   const docAdd = await gw("saveMapDoc", { projectId, addLayer: { name: "装饰" }, layers: [{ id: layer0, name: "地面" }] });
-  check("saveMapDoc.addLayer + layers 改名生效", docAdd.doc.layers.length === 3 && docAdd.doc.layers[0].name === "地面" && docAdd.doc.layers[2].name === "装饰", JSON.stringify(docAdd.doc.layers));
-  const docMove = await gw("saveMapDoc", { projectId, moveLayer: { id: "l2", toIndex: 0 } });
-  check("saveMapDoc.moveLayer 生效", docMove.doc.layers[0].id === "l2", docMove.doc.layers.map((l) => l.id).join(","));
-  const docRemove = await gw("saveMapDoc", { projectId, removeLayerId: "l2" });
-  check("saveMapDoc.removeLayerId 生效", docRemove.doc.layers.length === 2 && !docRemove.doc.layers.some((l) => l.id === "l2"));
+  check("saveMapDoc.addLayer + layers 改名生效", docAdd.doc.layers.length === 4 && docAdd.doc.layers[0].name === "地面" && docAdd.doc.layers[3].name === "装饰", JSON.stringify(docAdd.doc.layers));
+  const docMove = await gw("saveMapDoc", { projectId, moveLayer: { id: "l3", toIndex: 0 } });
+  check("saveMapDoc.moveLayer 生效", docMove.doc.layers[0].id === "l3", docMove.doc.layers.map((l) => l.id).join(","));
+  const docRemove = await gw("saveMapDoc", { projectId, removeLayerId: "l3" });
+  check("saveMapDoc.removeLayerId 生效", docRemove.doc.layers.length === 3 && !docRemove.doc.layers.some((l) => l.id === "l3"));
   const docClear = await gw("saveMapDoc", { projectId, clearLayerId: layer0 });
   check("saveMapDoc.clearLayerId 生效", (await mapgen.readTheDoc(projectId)).data[layer0].every((value) => value === 0));
   check("saveMapDoc 返回体带最新视图（界面要重算画布）", docClear.view !== undefined && docClear.view.cols === docClear.doc.cols && docClear.view.layers.length === docClear.doc.layers.length, JSON.stringify({ viewCols: docClear.view?.cols, docCols: docClear.doc.cols }));

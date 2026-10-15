@@ -67,7 +67,16 @@ import {
   MAX_PLAN_CHUNKS,
   type MapGrid
 } from "./mapgeom.js";
-import { bitmapToPng, buildPlan, rasterize, type PlanBounds, type PlanChunk, type PlanLegendEntry, type RenderContext } from "./maprender.js";
+import {
+  bitmapToPng,
+  buildPlan,
+  rasterize,
+  type PlanBounds,
+  type PlanChunk,
+  type PlanLegendEntry,
+  type PlanMarker,
+  type RenderContext
+} from "./maprender.js";
 import {
   COMMON_TILE_SIZES,
   buildTiles,
@@ -529,6 +538,8 @@ function restoreDoc(target: MapDoc, snapshot: MapDoc): void {
   target.rows = snapshot.rows;
   target.layers = snapshot.layers.map((layer) => ({ ...layer }));
   target.data = Object.fromEntries(Object.entries(snapshot.data).map(([key, value]) => [key, [...value]]));
+  // ⚠️ 标记也要一起还原：漏了这一句就会「撤销之后标记回不来」——而且不报错。
+  target.markers = snapshot.markers.map((marker) => ({ ...marker }));
   target.updatedAt = new Date().toISOString();
 }
 
@@ -613,7 +624,9 @@ export async function applyMapOps(projectId: string, ops: readonly unknown[], op
   const doc = await theDocOrFresh(projectId);
   const layout = layoutOf(project.grid, doc.cols, doc.rows);
   const result = applyOps(doc, ops, layout);
-  if (result.changed > 0) {
+  // `touched`（标记改名这类不占格的改动）也要记一步撤销 —— 只看 `changed > 0` 的话，
+  // 改名会「生效了但撤不回来」。
+  if (result.changed > 0 || result.touched === true) {
     pushHistory(projectId, { undo: result.undo, redo: ops as MapOp[], stroke: opts.stroke }, doc);
     scheduleDocWrite(projectId, doc);
   }
@@ -704,8 +717,13 @@ export async function saveMapDocStructure(projectId: string, patch: DocStructure
   }
   for (const layerPatch of patch.layers ?? []) {
     if (typeof layerPatch?.name !== "string" || layerPatch.name.trim() === "") continue;
+    // ⚠️ `renameLayer` 对「图层不存在」和「名字没变」都返回 false：
+    // 不先判存在性的话，用户把名字原样提交一次就会看到一句「图层不存在」。
+    if (!doc.layers.some((layer) => layer.id === layerPatch.id)) {
+      warnings.push(`图层不存在：${layerPatch?.id}`);
+      continue;
+    }
     if (renameLayer(doc, layerPatch.id, layerPatch.name.trim())) structural = true;
-    else warnings.push(`图层不存在：${layerPatch?.id}`);
   }
   if (patch.addLayer !== undefined) {
     addLayer(doc, patch.addLayer?.name);
@@ -739,6 +757,7 @@ export async function saveMapDocStructure(projectId: string, patch: DocStructure
       dropped = result.dropped;
       structural = true;
       if (dropped > 0) warnings.push(`缩小地图丢掉了 ${dropped} 个已画的格子（可以撤销）。`);
+      if (result.droppedMarkers > 0) warnings.push(`缩小地图丢掉了 ${result.droppedMarkers} 个落在界外的标记（可以撤销）。`);
     }
   }
   if (structural) {
@@ -1351,6 +1370,13 @@ export interface PlanQueryResult {
   /** 只含 `visibleKeys - have`（客户端要重画的那些）。 */
   chunks: PlanChunk[];
   legend: PlanLegendEntry[];
+  /**
+   * 视口里的标记（**整份回，不进客户端那份按块缓存**）。
+   *
+   * 编号连续意味着「删掉第 2 个，第 3 个就变成第 2 个」：缓存住的号码会留在屏幕上，
+   * 所以这里每次查询都重发一遍。数量级是「几十个」，重发的代价可以忽略。
+   */
+  markers: PlanMarker[];
   fps: number;
   frameCount: number;
   truncated: boolean;
@@ -1416,6 +1442,7 @@ export async function mapPlan(
     visibleKeys,
     chunks: plan.chunks.filter((chunk) => wanted.has(chunk.key) && (!have.has(chunk.key) || forced.has(chunk.key))),
     legend: plan.legend,
+    markers: plan.markers,
     fps: plan.fps,
     frameCount: plan.frameCount,
     truncated,
@@ -1466,6 +1493,13 @@ export interface MapProjectView {
   tilesets: MapViewTileset[];
   legend: PlanLegendEntry[];
   layers: Array<{ id: string; name: string; filled: number }>;
+  /**
+   * 标记表（编号 = 下标 + 1，由界面按顺序显示）。
+   *
+   * 与 `mapPlan` 回的那份**用途不同**：这里给列表 / 悬停小标签 / 命中判断用，
+   * 画布上的圆圈数字一律用 `mapPlan` 那份（圆心与字号是宿主算的，界面不许自己推）。
+   */
+  markers: Array<{ id: string; n: number; r: number; c: number; name: string }>;
   filled: number;
   stages: MapProject["stages"];
   reviewMode?: "auto" | "manual";
@@ -1528,6 +1562,7 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
     })),
     legend: flat.map((tile) => ({ index: tile.index, tilesetId: tile.tilesetId, rect: tile.tile.rect })),
     layers,
+    markers: doc.markers.map((marker, index) => ({ id: marker.id, n: index + 1, r: marker.r, c: marker.c, name: marker.name })),
     filled: layers.reduce((sum, layer) => sum + layer.filled, 0),
     stages: p.stages,
     reviewMode: p.reviewMode,
