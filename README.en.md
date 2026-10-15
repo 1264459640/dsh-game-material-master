@@ -4,9 +4,10 @@ English | [中文](https://github.com/universe-st/dsh-game-material-master/blob/
 
 **Start from a single character sheet and batch-produce the assets your game actually needs.**
 
-Volcengine Ark **Seedream** handles image generation, **MiniMax** handles image-to-video, and keying,
-frame extraction, pixel quantization and spritesheet composition all happen locally through `ffmpeg` —
-no system image libraries required, and your assets are never uploaded to a third-party service.
+Volcengine Ark **Seedream** handles image generation, **MiniMax** (or a local **ComfyUI**) handles
+image-to-video, and keying, frame extraction, pixel quantization and spritesheet composition all happen
+locally through `ffmpeg` — no system image libraries required, and your assets are never uploaded to a
+third-party service.
 
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -270,11 +271,39 @@ point `FFMPEG_PATH` / `FFPROBE_PATH` at absolute paths. The package has **no run
 | Video model | Defaults to `MiniMax-H3` (v2 protocol); Hailuo / I2V use v1; the UCloud version of H3 is selected explicitly |
 | Base URL | Host root, without `/v1` or `/v2`. `api.minimax.cn` in mainland China, `api.minimaxi.com` internationally |
 | Default parameters | Cell width and height, frame count, pixel block size, keying threshold, and so on |
+| Local ComfyUI (image-to-video) | Routes image-to-video through a local **ComfyUI** instead of MiniMax; "Test connection" is read-only and free |
 | Feature management | Per-module switches: a disabled module disappears from the UI **and the agent cannot call it either** (see below) |
 
 Keys are written only to `<DSH_HOME>/game-material-master/config.json` on your machine, and the UI always
 masks them when displaying them back. **The model is a plugin-level setting shared by all three modules**;
 after you switch models, tasks align to the new tier automatically.
+
+### Local ComfyUI (image-to-video)
+
+If you would rather not use MiniMax, or you want to run your own model, **image-to-video** can be
+routed to a local [ComfyUI](https://github.com/comfyanonymous/ComfyUI): tick "Local ComfyUI
+(image-to-video)" in the settings, set the address (default `http://127.0.0.1:8188`) and paste an
+**API-format** workflow JSON. Image generation, keying, frame extraction and composition are
+unaffected — the same downstream pipeline as MiniMax.
+
+- **API format is required**: the file exported by `Workflow → Export (API)`. The UI format (the one
+  the editor saves directly) stores nodes as an array with `links` / `last_node_id`; the plugin
+  rejects it with an explanation instead of silently submitting an empty job.
+- **Injection points are detected automatically**: which node input receives the prompt, where the
+  first frame goes, and which inputs override width / height / duration / seed. The detected
+  bindings are shown under "Test connection". If a guess is wrong, override it by hand with
+  `nodeId.inputName` (for example `1.text`).
+- **First frame**: an existing `LoadImage` node is used when present. Otherwise the plugin reads the
+  node definitions from ComfyUI and inserts a `LoadImage` at any declared-but-unwired `IMAGE` input
+  (for example `FreeVideoMedia.first`).
+- **The built-in template is the FreeVideo chain** (`FreeVideoGenerate` + `FreeVideoMedia` plus an
+  empty `LoadImage`). Broke it? Click "Restore built-in template".
+- The output is unchanged: ComfyUI only produces the green-screen clip — **frame extraction, keying
+  and composition still run locally through `ffmpeg`**.
+- "Test connection" only reads the ComfyUI version, device and queue length: **no queueing, no
+  generation, no cost**.
+- The local backend does **not** support multimodal reference mode (reference images / videos) —
+  that is a MiniMax v2 capability; use first/last-frame mode with ComfyUI.
 
 ### Feature management (hiding modules you do not use)
 
@@ -398,6 +427,10 @@ The screenshots in this document were taken by Playwright against the real UI; t
   manual dragging (neither of those steps costs anything).
 - MiniMax occasionally rejects content on moderation (about 10% in practice); just reword to a more neutral
   prompt and retry.
+- **Local ComfyUI timing is unpredictable**: a job may sit in your local queue for a long time, or fail
+  halfway through because of VRAM. The plugin only submits and polls; the failure reason (which node,
+  which exception) is reported back verbatim, but model and VRAM issues have to be diagnosed in the
+  ComfyUI console itself.
 
 ## Credits
 

@@ -4,8 +4,8 @@
 
 **从一张角色设定图出发，批量做出游戏里真正要用的素材。**
 
-火山方舟 **Seedream** 负责生图，**MiniMax** 负责图生视频，抠像、抽帧、像素量化、合图全部在
-本机用 `ffmpeg` 完成——不需要任何系统图像库，素材也不会被传到第三方服务。
+火山方舟 **Seedream** 负责生图，**MiniMax**（或本机 **ComfyUI**）负责图生视频，抠像、抽帧、
+像素量化、合图全部在本机用 `ffmpeg` 完成——不需要任何系统图像库，素材也不会被传到第三方服务。
 
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -233,10 +233,34 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 | 视频模型 | 默认 `MiniMax-H3`（v2 协议）；Hailuo / I2V 走 v1；优云智算版 H3 显式选择 |
 | Base URL | 主机根，不含 `/v1` `/v2`。国内 `api.minimax.cn`，国际 `api.minimaxi.com` |
 | 默认参数 | 单格宽高、抽帧张数、像素块边长、抠像阈值等 |
+| 本地 ComfyUI（图生视频） | 勾选后图生视频改走**本机 ComfyUI**，替代 MiniMax；「测试连接」只读状态、免费 |
 | 功能管理 | 逐个开关六个模块：关掉的模块界面上不再出现，**对话里的 AI 也调不到**（见下） |
 
 Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，界面回显始终脱敏。
 **模型是插件级设置，三个模块共用**，切换模型后任务自动对齐新档位。
+
+### 本地 ComfyUI（图生视频）
+
+不想用 MiniMax、或想跑自己的模型时，可以把**图生视频**这一步接到本机的
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI)：设置页勾选「本地 ComfyUI（图生视频）」，
+填上地址（默认 `http://127.0.0.1:8188`），把 **API 格式**的工作流 JSON 贴进去即可。
+生图、抠像、抽帧、合图完全不受影响，与 MiniMax 走同一套下游流程。
+
+- **必须是 API 格式**：ComfyUI 里 `Workflow → Export (API)` 导出的那份。界面格式（编辑器里直接
+  保存的那个）节点是数组、带 `links` / `last_node_id`，插件会明确拒绝并说明原因，不会静默跑出
+  一个空任务。
+- **注入点自动探测**：提示词写进哪个节点的哪个输入、首帧图从哪进、宽高 / 时长 / 种子覆盖哪几个
+  输入，插件会自己认一遍，认到的结果就显示在「测试连接」下面。认错了就手工填 `节点ID.输入名`
+  （例如 `1.text`）覆盖。
+- **首帧图**：工作流里已经有 `LoadImage` 就直接用它；没有时插件会读 ComfyUI 的节点定义，在
+  「声明了 `IMAGE` 输入却没接线」的位置（例如 `FreeVideoMedia.first`）自动补一个 `LoadImage`
+  接过去。
+- **内置模板就是 FreeVideo 那条链路**（`FreeVideoGenerate` + `FreeVideoMedia` + 一个空
+  `LoadImage`）。改坏了点「恢复内置模板」还原。
+- 产物照旧：ComfyUI 只负责吐出那段绿幕视频，**抽帧、抠像、合图仍然是本机 `ffmpeg` 干的**。
+- 「测试连接」只读 ComfyUI 的版本、显卡与队列长度，**不排队、不生成、不产生费用**。
+- 本地后端**不支持「多模态参考模式」**（参考图 / 参考视频）——那是 MiniMax v2 的能力，
+  走 ComfyUI 请用首尾帧模式。
 
 ### 功能管理（隐藏不用的模块）
 
@@ -341,6 +365,9 @@ T("第 {n0} 帧", { n0: index + 1 })                        // 带插值，英�
 - **自动装配只对「部件就是参考图上整块肢体」的素材可靠**；真实立绘走生图拆件时，
   建议用 agent 视觉先验或手工拖放校正（这些步骤都不花钱）。
 - MiniMax 偶发内容审核拒绝（实测约 10%），换一版更中性的提示词重试即可。
+- **本地 ComfyUI 的耗时不可预期**：任务在本机队列里可能排很久，也可能中途显存不足失败。
+  插件只负责提交与轮询，失败原因（执行到哪个节点、抛了什么异常）会原样带回界面，
+  模型 / 显存层面的问题要回到 ComfyUI 自己的控制台看。
 
 ## 交流与反馈
 
