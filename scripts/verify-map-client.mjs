@@ -2124,7 +2124,7 @@ try {
     );
   }
   // ══ 18) 自由尺寸 / 用法说明 / 通过按钮文案 ═══════════════════════════════
-  section("18) 地图尺寸与素材格子都可自由填；用法四项悬停有解释；通过按钮叫「确定」");
+  section("18) 地图尺寸与素材格子都可自由填；用法四项悬停有解释；卡片里没有「确定」按钮（关卡片只有右上角的 ×）");
   {
     tree = await freshPanel();
     // 上一段建过自己的项目（没有素材），切回主夹具再测尺寸与素材设置
@@ -2211,24 +2211,38 @@ try {
     tree = await renderTree(() => MapModule({ api }));
     check("「恢复默认素材」把它拿回来（同名不会变成两份）", rowCount() === beforeRows && textOf(byClass(tree, "SPR_mapEdCard")[0]).includes(builtinName), `${rowCount()} 张`);
 
-    // ── 通过按钮：普通按钮「确定」，按下即标记 + **收起卡片**，没有「取消确认」这一说
-    const cardBeforeConfirm = byClass(tree, "SPR_mapEdCard")[0];
-    const confirmBtn = collect(cardBeforeConfirm, (node) => node.type === "button" && textOf(node) === "确定")[0];
+    /**
+     * ── 卡片里**不再有「确定」按钮** ────────────────────────────────────────
+     *
+     * 用户原话：「确定键可以删了，和右上角的 x 没区别」。确实 —— 阶段标记在界面上
+     * 不可见（上一版为了去掉「取消确认」把它做成了普通按钮），那颗按钮对用户就只剩
+     * 「关掉卡片」一个作用。现在关卡片只有右上角的 ×；阶段标记仍可由验收流程 /
+     * 对话面（`setMapApproved`）改，界面上唯一还暴露它的是设置卡里那颗**有状态**的
+     * 「整个模块看过了」。
+     */
+    const cardBeforeClose = byClass(tree, "SPR_mapEdCard")[0];
     check(
-      "素材卡的通过按钮叫「确定」（不再是「这步看过了」）",
-      confirmBtn !== undefined && confirmBtn.props["data-on"] === undefined && confirmBtn.props["data-approved"] === undefined,
-      collect(cardBeforeConfirm, (node) => node.type === "button").map((node) => textOf(node)).join(" / ")
+      "卡片里没有「确定」按钮（和右上角的 × 重复的那一颗）",
+      collect(cardBeforeClose, (node) => node.type === "button" && textOf(node) === "确定").length === 0 && !/看过了|已确定|取消确认/.test(textOf(cardBeforeClose)),
+      collect(cardBeforeClose, (node) => node.type === "button").map((node) => textOf(node)).join(" / ")
     );
-    check(
-      "它不是勾选式、也没有「取消确认」（用户：素材根本没有取消确认这一说）",
-      !/✓|已确定|取消确定/.test(textOf(cardBeforeConfirm)),
-      textOf(cardBeforeConfirm).match(/[^\s]*(?:已确定|取消确定|✓)[^\s]*/)?.[0] ?? "（没有这类文案）"
-    );
-    confirmBtn.props.onClick();
+    collect(cardBeforeClose, (node) => node.props?.className === "SPR_mapEdCardClose")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
-    const stages = (await G.readMapProject(projectId)).stages;
-    check("点「确定」标记素材阶段已通过", stages?.assets?.status === "done", JSON.stringify(stages));
-    check("点「确定」之后卡片收起来（回到画布，不是留着一个已确定的按钮）", byClass(tree, "SPR_mapEdCard").length === 0, `还剩 ${byClass(tree, "SPR_mapEdCard").length} 张卡片`);
+    check("右上角的 × 就是关卡片的那条路（按一下收起）", byClass(tree, "SPR_mapEdCard").length === 0, `还剩 ${byClass(tree, "SPR_mapEdCard").length} 张卡片`);
+    // ── 阶段标记：界面上只剩设置卡里那颗有状态的按钮（点了四阶段一起打）
+    byTool(tree, "settings")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const approvalsBefore = apiLog.approvals.length;
+    const seenButton = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "整个模块看过了")[0];
+    check("阶段标记只剩设置卡的「整个模块看过了」这一颗", seenButton !== undefined);
+    seenButton?.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const sentApproval = apiLog.approvals[apiLog.approvals.length - 1];
+    check(
+      "点它一次把四个阶段一起打过（不带 stage）",
+      apiLog.approvals.length === approvalsBefore + 1 && sentApproval?.approved === true && sentApproval?.stage === undefined,
+      JSON.stringify(sentApproval)
+    );
   }
 
 } finally {

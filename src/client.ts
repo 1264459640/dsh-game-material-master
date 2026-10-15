@@ -2266,7 +2266,6 @@
 .SPR_mapEdTsMeta{flex:none;font-size:11px;color:#9a9a9a}
 .SPR_mapEdTsBadge{flex:none;padding:0 4px;border-radius:3px;background:#4a4a4a;font-size:10px;color:#e8d7bb}
 .SPR_mapEdTsBadge[data-anim="true"]{background:#2f4a2f;color:#bfe6bf}
-.SPR_mapEdCard .SPR_btn[data-approved="true"]{border-color:#4d7a4d;color:#bfe6bf}
 .SPR_mapEdPair{display:flex;align-items:center;gap:6px}
 .SPR_mapEdTimes{color:#9a9a9a;font-size:12px}
 .SPR_mapEdSeg{display:flex;gap:4px;flex-wrap:wrap}
@@ -7662,14 +7661,16 @@
         setNotice({ kind: "ok", text: T("已打开 {n0}", { n0: String(result.dir ?? "") }) });
       };
 
-      /** 打勾 / 取消勾。`stage` 省略＝「整个模块看过了」（宿主按四步全打处理）。 */
-      const toggleApproved = async (stage) => {
+      /**
+       * 「整个模块看过了」：一次把四步全打（宿主按「`stage` 省略 = 四阶段全打」处理）。
+       *
+       * 界面上**只剩这一条**改阶段标记的路 —— 卡片里那颗「确定」已经删掉了（用户：
+       * 「和右上角的 x 没区别」），单阶段的标记仍可由验收流程 / 对话面 `setMapApproved` 改。
+       * 已经打过再点一次是幂等的（宿主那边只是把 approved 再写成 true）。
+       */
+      const markWholeModuleSeen = async () => {
         if (view === null || api === undefined) return;
-        const node = stage === undefined ? undefined : (view.stages || {})[stage];
-        const next = !(node !== undefined && node.approved === true);
-        const done = await withApi(() =>
-          stage === undefined ? api.setMapApproved({ projectId: view.id, approved: next }) : api.setMapApproved({ projectId: view.id, stage, approved: next })
-        );
+        const done = await withApi(() => api.setMapApproved({ projectId: view.id, approved: true }));
         if (done === undefined) return;
         await loadProject(view.id, true);
       };
@@ -8029,24 +8030,16 @@
         );
 
       /**
-       * 阶段的「确定」：标记这一步看过了，**并把这个卡片关掉**。
+       * ⚠️ 卡片里**不再有「确定」按钮**（它曾经是「标记这一步看过了 + 收起卡片」）。
        *
-       * ⚠️ 用户的原话：「确认后应该关闭窗口，目前就素材来说根本没有『取消确认』这一说」。
-       * 所以它既不做成勾选式（曾经是 `data-on` + `✓`），也不提供反向操作 ——
-       * 按一下就是「看完了，收工」，卡片收起、回到画布。（阶段标记本身仍可由验收流程改，
-       * 界面上不暴露。）
+       * 用户的判断很直接：「确定键可以删了，和右上角的 x 没区别」。这是对的 ——
+       * 阶段标记在界面上**完全不可见**（上一版为了去掉「取消确认」把它做成了普通按钮，
+       * 于是按与不按看起来一模一样），那么这颗按钮对用户就只剩「关掉卡片」这一个作用，
+       * 和右上角那个 × 重复。
+       *
+       * 所以：关卡片只剩 ×；阶段标记仍可由验收流程 / 对话面（`setMapApproved`）改；
+       * 界面上唯一还暴露它的地方是设置卡片里的「整个模块看过了」（那是一颗有状态按钮）。
        */
-      const confirmStage = async (stage) => {
-        if (view === null || api === undefined) return;
-        setOpenCard(null); // 先收起卡片：这是「看完了」的动作，反馈要立刻
-        if (approvedOf(stage) === true) return; // 已经标过就不用再发一次
-        const done = await withApi(() => api.setMapApproved({ projectId: view.id, stage, approved: true }));
-        if (done === undefined) return;
-        await loadProject(view.id, true);
-      };
-
-      const confirmButton = (stage) =>
-        h(Btn, { primary: true, "data-testid": `map-confirm-${stage}`, onClick: () => void confirmStage(stage) }, T("确定"));
 
       const speedOptions = [
         ["0.5", T("慢")],
@@ -8113,12 +8106,7 @@
                 )
               )
             ),
-        h("p", { className: "SPR_mapEdHint" }, T("素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。")),
-        h(
-          "div",
-          { className: "SPR_mapEdCardRow" },
-          confirmButton("assets")
-        )
+        h("p", { className: "SPR_mapEdHint" }, T("素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。"))
       );
 
       /**
@@ -8198,8 +8186,7 @@
             },
             T("导出")
           ),
-          h(Btn, { onClick: () => void openExportFolder() }, T("打开导出目录")),
-          confirmButton("export")
+          h(Btn, { onClick: () => void openExportFolder() }, T("打开导出目录"))
         ),
         exportFiles.length === 0
           ? h("p", { className: "SPR_mapEdHint", "data-testid": "map-export-empty" }, T("还没有导出过。"))
@@ -8318,7 +8305,7 @@
           "div",
           { className: "SPR_mapEdCardRow" },
           h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("在访达中打开项目目录")),
-          h(Btn, { primary: true, on: approvedAll === true, onClick: () => void toggleApproved(undefined) }, T("整个模块看过了"))
+          h(Btn, { primary: true, on: approvedAll === true, onClick: () => void markWholeModuleSeen() }, T("整个模块看过了"))
         )
       );
 

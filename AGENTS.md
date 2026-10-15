@@ -156,6 +156,9 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 > 卡片会写出导出目录的**本机绝对路径**，「打开导出目录」打开的终于是导出目录本身（以前打开的是项目根）。
 > wire 的 `runMapExport.formats` 从 `record(unknown)` 改成**逐项声明**（png / json / tilesets / zip / scale），
 > `revealMapProject` 新增 `target: "project" | "export"`（漏进 schema 就会被静默丢掉）。
+> 卡片里的「确定」按钮也删了（用户：「确定键可以删了，和右上角的 x 没区别」）—— 阶段标记在界面上
+> 不可见，那颗按钮对用户就只剩「关掉卡片」；现在关卡片只有右上角的 ×，标记仍可由对话面 /
+> 设置卡里那颗**有状态**的「整个模块看过了」改。
 > 自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。
 > ⚠️ **改完必须重启 DSH**（宿主半区），且对话面方法枚举会在重启后更新。
 
