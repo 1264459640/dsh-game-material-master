@@ -30,6 +30,14 @@ import {
 import { checkFfmpeg } from "./media.js";
 import { testArk } from "./ark.js";
 import {
+  detectComfyBindings,
+  fetchComfyObjectInfo,
+  formatBinding,
+  normalizeComfyBaseUrl,
+  parseComfyWorkflow,
+  testComfy
+} from "./comfy.js";
+import {
   COMP_SHARE_BASE_URL,
   COMP_SHARE_MODEL_ID,
   capabilityOf,
@@ -322,6 +330,17 @@ export class GameStudioGateway extends TypertRemoteService {
       "minimaxResolution",
       "minimaxPromptOptimizer",
       "minimaxTimeoutMs",
+      // 本地 ComfyUI 后端（videogen.ts 按 comfyVideo 分派）。
+      "comfyVideo",
+      "comfyBaseUrl",
+      "comfyWorkflow",
+      "comfyPromptTarget",
+      "comfyFirstFrameTarget",
+      "comfyWidth",
+      "comfyHeight",
+      "comfySeconds",
+      "comfySeed",
+      "comfyTimeoutMs",
       "cellWidth",
       "cellHeight",
       "frameCount",
@@ -378,6 +397,62 @@ export class GameStudioGateway extends TypertRemoteService {
       model: config.minimaxModel,
       timeoutMs: config.minimaxTimeoutMs
     });
+  }
+  /**
+   * 【本地 ComfyUI】连接自检：读 `/system_stats` 与 `/queue`，不排队生图，不产生费用。
+   *
+   * 顺带报一次「工作流里探测到的注入点」——设置页只填 URL 和工作流，绑定对不对
+   * 全靠这一步看得见；后面生成时用的就是同一套探测。
+   */
+  async testComfy() {
+    const config = await loadConfig();
+    const status = await testComfy({
+      baseUrl: config.comfyBaseUrl,
+      timeoutMs: config.comfyTimeoutMs
+    });
+    let nodes = 0;
+    let bindings: Record<string, string> | undefined;
+    let notes: string[] = [];
+    const parsed = parseComfyWorkflow(config.comfyWorkflow);
+    if (parsed.ok === true) {
+      nodes = parsed.nodes;
+      // 连节点定义一起查：这样预览里能看到「工作流里没连、但接得下 IMAGE」的首帧注入点，
+      // 与真正提交时的探测口径完全一致。
+      const info = await fetchComfyObjectInfo(
+        { baseUrl: config.comfyBaseUrl, timeoutMs: config.comfyTimeoutMs },
+        Object.keys(parsed.workflow).map((id) => parsed.workflow[id]?.class_type ?? "")
+      ).catch(() => undefined);
+      const detected = detectComfyBindings(
+        parsed.workflow,
+        {
+          prompt: config.comfyPromptTarget,
+          first: config.comfyFirstFrameTarget
+        },
+        info
+      );
+      bindings = {
+        prompt: formatBinding(detected.bindings.prompt),
+        first: formatBinding(detected.bindings.first),
+        last: formatBinding(detected.bindings.last),
+        width: formatBinding(detected.bindings.width),
+        height: formatBinding(detected.bindings.height),
+        seconds: formatBinding(detected.bindings.seconds),
+        seed: formatBinding(detected.bindings.seed)
+      };
+      notes = detected.notes;
+    } else {
+      notes = [`工作流无法解析：${parsed.error}`];
+    }
+    return {
+      baseUrl: normalizeComfyBaseUrl(config.comfyBaseUrl),
+      version: status.version,
+      device: status.device ?? "",
+      queueRunning: status.queueRunning,
+      queuePending: status.queuePending,
+      nodes,
+      bindings,
+      notes
+    };
   }
   /**
    * 浏览器半区上报自己的 `location.origin`。

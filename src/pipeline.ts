@@ -33,8 +33,14 @@ import {
   type TurnDirection
 } from "./directions.js";
 import { generateImage } from "./ark.js";
-import { downloadVideo, queryVideo, retrieveFile, submitVideo } from "./minimax.js";
 import { extractFrames, mimeOf, toDataUri, toJpegDataUri } from "./media.js";
+import {
+  assertVideoBackendReady,
+  downloadVideoTask,
+  queryVideoTask,
+  submitVideoTask,
+  videoFailureReason
+} from "./videogen.js";
 import { composeSheet, keyGreen, type SheetRow } from "./chroma.js";
 import { encodePng } from "./png.js";
 import {
@@ -45,7 +51,8 @@ import {
   readProject,
   referenceFiles,
   type Project,
-  type ProjectSettings
+  type ProjectSettings,
+  type VideoBackend
 } from "./store.js";
 
 /** 生图的依赖分层：同一层内可并发，层与层之间必须按序。 */
@@ -101,15 +108,6 @@ function arkRequest(config: Config) {
     apiKey: config.arkApiKey,
     model: config.arkModel,
     timeoutMs: config.arkTimeoutMs
-  };
-}
-
-function miniMaxRequest(config: Config) {
-  return {
-    baseUrl: config.minimaxBaseUrl,
-    apiKey: config.minimaxApiKey,
-    model: config.minimaxModel,
-    timeoutMs: config.minimaxTimeoutMs
   };
 }
 
@@ -335,7 +333,7 @@ async function submitTurnVideo(projectId: string): Promise<void> {
   const project = await readProject(projectId);
   if (project === undefined) throw new Error(`项目不存在：${projectId}`);
   const config = await loadConfig();
-  if (config.minimaxApiKey.trim() === "") throw new Error("尚未配置 MiniMax API Key");
+  assertVideoBackendReady(config);
 
   const first = turnFirstFrame(project);
   if (first === undefined) throw new Error("还没有源图，无法生成转圈视频");
@@ -363,8 +361,7 @@ async function submitTurnVideo(projectId: string): Promise<void> {
   try {
     const jpegRel = "videos/turn-first-frame.jpg";
     const dataUri = await toJpegDataUri(assetPath(projectId, first.file), assetPath(projectId, jpegRel));
-    const taskId = await submitVideo({
-      ...miniMaxRequest(config),
+    const submitted = await submitVideoTask(config, {
       prompt,
       firstFrameImage: dataUri,
       duration: config.minimaxDuration,
@@ -375,12 +372,16 @@ async function submitTurnVideo(projectId: string): Promise<void> {
       current.turn.video = {
         ...current.turn.video,
         status: "running",
-        taskId,
+        taskId: submitted.taskId,
+        backend: submitted.backend,
         remoteStatus: "已提交",
         elapsedMs: Date.now() - startedAt,
         updatedAt: Date.now()
       };
-      log(current, "info", `转圈视频任务已提交（${taskId}）`);
+      log(current, "info", `转圈视频任务已提交（${submitted.taskId}）`);
+      // 自动探测出来的注入点（改了哪个节点的哪个输入）记进日志：
+      // 生成结果不对时，第一件要确认的事就是「提示词和首帧到底注进去了没有」。
+      for (const note of submitted.notes) log(current, "info", note);
     });
     ensurePoller(projectId);
   } catch (error) {
@@ -397,14 +398,16 @@ async function submitTurnVideo(projectId: string): Promise<void> {
 async function pollTurnVideoOnce(projectId: string, config: Config): Promise<void> {
   const project = await readProject(projectId);
   if (project === undefined) return;
-  const taskId = project.turn?.video?.taskId;
-  if (project.turn?.video?.status !== "running" || taskId === undefined) return;
+  const node = project.turn?.video;
+  const taskId = node?.taskId;
+  if (node?.status !== "running" || taskId === undefined) return;
+  // 后端按节点上记的那个值走，不按当前配置：任务可能是改设置之前提交的。
+  const backend: VideoBackend = node.backend ?? "minimax";
 
-  const request = miniMaxRequest(config);
   try {
-    const query = await queryVideo({ ...request, taskId });
+    const query = await queryVideoTask(config, backend, taskId);
     if (query.status === "failed") {
-      const reason = query.error ?? "MiniMax 报告该任务失败";
+      const reason = videoFailureReason(backend, query.error);
       await patchProject(projectId, (current) => {
         current.turn.video = { ...current.turn.video, status: "error", error: reason, remoteStatus: query.remoteStatus, updatedAt: Date.now() };
         log(current, "error", `转圈视频生成失败：${reason}`);
@@ -418,12 +421,10 @@ async function pollTurnVideoOnce(projectId: string, config: Config): Promise<voi
       return;
     }
 
-    const url =
-      query.videoUrl ??
-      (query.fileId !== undefined ? await retrieveFile({ ...request, fileId: query.fileId }) : undefined);
-    if (url === undefined) throw new Error("任务已成功，但响应里既没有视频地址也没有 file_id");
+    const url = query.url;
+    if (url === undefined) throw new Error("任务已成功，但查询结果里没有视频地址");
 
-    const bytes = await downloadVideo(url, config.minimaxTimeoutMs);
+    const bytes = await downloadVideoTask(config, backend, url);
     const relative = "videos/turn.mp4";
     await writeFile(assetPath(projectId, relative), bytes);
     await patchProject(projectId, (current) => {
@@ -714,7 +715,7 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
     const project = await readProject(projectId);
     if (project === undefined) throw new Error(`项目不存在：${projectId}`);
     const config = await loadConfig();
-    if (config.minimaxApiKey.trim() === "") throw new Error("尚未配置 MiniMax API Key");
+    assertVideoBackendReady(config);
 
     const targets = (keys ?? DIRECTION_KEYS).filter((key) => {
       const image = project.images[key];
@@ -753,8 +754,7 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
         const jpegRel = `videos/${key}-first-frame.jpg`;
         const dataUri = await toJpegDataUri(assetPath(projectId, image.file), assetPath(projectId, jpegRel));
         const prompt = (fresh.prompts.videoPerDirection?.[key] ?? fresh.prompts.video).trim();
-        const taskId = await submitVideo({
-          ...miniMaxRequest(config),
+        const submitted = await submitVideoTask(config, {
           prompt,
           firstFrameImage: dataUri,
           duration: config.minimaxDuration,
@@ -765,11 +765,13 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
           current.videos[key] = {
             ...current.videos[key],
             status: "running",
-            taskId,
+            taskId: submitted.taskId,
+            backend: submitted.backend,
             remoteStatus: "已提交",
             updatedAt: Date.now()
           };
-          log(current, "info", `「${label}」视频任务已提交（${taskId}）`);
+          log(current, "info", `「${label}」视频任务已提交（${submitted.taskId}）`);
+          for (const note of submitted.notes) log(current, "info", `「${label}」${note}`);
         });
       } catch (error) {
         const message = messageOf(error);
@@ -830,10 +832,11 @@ export async function pollVideosOnce(projectId: string): Promise<void> {
     pending.map(async (key) => {
       const label = directionOf(key)?.label ?? key;
       const taskId = project.videos[key].taskId as string;
+      const backend: VideoBackend = project.videos[key].backend ?? "minimax";
       try {
-        const query = await queryVideo({ ...miniMaxRequest(config), taskId });
+        const query = await queryVideoTask(config, backend, taskId);
         if (query.status === "failed") {
-          const reason = query.error ?? "MiniMax 报告该任务失败";
+          const reason = videoFailureReason(backend, query.error);
           await patchProject(projectId, (current) => {
             current.videos[key] = { ...current.videos[key], status: "error", error: reason, remoteStatus: query.remoteStatus, updatedAt: Date.now() };
             log(current, "error", `「${label}」视频生成失败：${reason}`);
@@ -848,12 +851,10 @@ export async function pollVideosOnce(projectId: string): Promise<void> {
         }
 
         // v2（H3）在查询结果里直接给地址；v1 还要拿 file_id 再换一次。
-        const url =
-          query.videoUrl ??
-          (query.fileId !== undefined ? await retrieveFile({ ...miniMaxRequest(config), fileId: query.fileId }) : undefined);
-        if (url === undefined) throw new Error("任务已成功，但响应里既没有视频地址也没有 file_id");
+        const url = query.url;
+        if (url === undefined) throw new Error("任务已成功，但查询结果里没有视频地址");
 
-        const bytes = await downloadVideo(url, config.minimaxTimeoutMs);
+        const bytes = await downloadVideoTask(config, backend, url);
         const relative = `videos/${key}.mp4`;
         await writeFile(assetPath(projectId, relative), bytes);
         await patchProject(projectId, (current) => {

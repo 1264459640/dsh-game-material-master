@@ -209,6 +209,7 @@ export const SHARED_TOOL_METHODS: ReadonlySet<string> = new Set([
   "saveConfig",
   "testArk",
   "testMinimax",
+  "testComfy",
   "setReviewMode"
 ]);
 
@@ -628,7 +629,7 @@ function intentFromCall(method: string, payload: Record<string, any>): OpenInten
 /** `game_material_call` 的描述：把每个远程方法的用途与入参写清楚。 */
 const CALL_DESCRIPTION = [
   "调用「游戏素材大师」插件的任意远程方法——插件界面上的每个功能都能在这里调用。",
-  "配置：getConfig() / saveConfig(payload: 任意配置字段，如 arkApiKey、arkModel、minimaxModel、cellWidth…) / testArk() / testMinimax()",
+  "配置：getConfig() / saveConfig(payload: 任意配置字段，如 arkApiKey、arkModel、minimaxModel、cellWidth…) / testArk() / testMinimax() / testComfy()",
   "  ⚠️ 用户可以在「设置 → 游戏素材大师 → 功能管理」里隐藏某些功能模块。被隐藏的模块**工具面一律拒绝**（界面也看不到），",
   "    调用会直接报错并说明去哪里打开；不要试图绕过。hiddenModules 本身只能由用户在设置界面里改，工具面不允许写。",
   "八方向图：listProjects() / createProject({name}) / getProject({projectId}) / deleteProject({projectId}) / renameProject({projectId,name}) /",

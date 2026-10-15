@@ -705,6 +705,8 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "saveConfig", payload: saveConfigSchema, result: configViewSchema },
   { method: "testArk", result: jsonObject },
   { method: "testMinimax", result: jsonObject },
+  // 本地 ComfyUI 后端自检（读 /system_stats + /queue，不排队生图）。
+  { method: "testComfy", result: jsonObject },
   // 浏览器半区在挂载时上报 origin，供宿主拼深链接；不是用户可调用的功能。
   { method: "reportClientOrigin", payload: reportOriginSchema, result: okSchema, clientOnly: true },
 
