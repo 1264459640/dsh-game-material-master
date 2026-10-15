@@ -484,6 +484,41 @@ async function main() {
   }, "无法识别的图片格式");
   await expectThrow("找不到的目标给出可读错误", () => run("game_material_status", { id: "pdeadbeef" }), "找不到");
 
+  // 本地自选视频：对话面也要能走（kind=video + key 指定槽位）。
+  // 槽位**必须显式给**：猜一个（例如默认转圈）会把一段行走视频塞到错误的位置，
+  // 而产物看起来「成功了」——只能等后面几步出错。
+  {
+    const videoPath = join(HOME, "local-walk.mp4");
+    await writeFile(
+      videoPath,
+      Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypmp42", "ascii"), Buffer.alloc(24)])
+    );
+    await expectThrow(
+      "本地视频：不给 key 直接拒绝（不猜槽位）",
+      () => run("game_material_upload", { module: "sprite", id: projectId, kind: "video", path: videoPath }),
+      "必须给 key"
+    );
+    await expectThrow(
+      "本地视频：槽位名写错直接拒绝",
+      () => run("game_material_upload", { module: "sprite", id: projectId, kind: "video", key: "frontt", path: videoPath }),
+      "必须给 key"
+    );
+    await expectThrow(
+      "本地视频：拿图片文件冒充会被文件头嗅探拦下",
+      () => run("game_material_upload", { module: "sprite", id: projectId, kind: "video", key: "back", path: sourcePath }),
+      "无法识别的视频格式"
+    );
+    const uploaded = await run("game_material_upload", { module: "sprite", id: projectId, kind: "video", key: "front", path: videoPath });
+    check(
+      "本地视频能通过对话面上传到指定方向",
+      uploaded.key === "front" && uploaded.video?.file === "videos/front.mp4",
+      JSON.stringify(uploaded.video ?? uploaded)
+    );
+    check("返回值里带着槽位（模型据此知道落到哪一格）", uploaded.kind === "video" && uploaded.key === "front", JSON.stringify({ kind: uploaded.kind, key: uploaded.key }));
+    const uploadText = renderText("game_material_upload", {}, uploaded);
+    check("渲染文本里点明了槽位", uploadText.includes("槽位 front"), uploadText.slice(0, 140));
+  }
+
   // ── 6.5 工具返回值必须能无损过 JSON ────────────────────────────────────
   // 新版 DSH 在工具边界做这道校验，不过就整次调用失败（只有一句
   // `value is not lossless JSON`，用户看不出是哪个字段）。跑过的每一次 run()

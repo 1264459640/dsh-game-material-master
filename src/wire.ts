@@ -36,6 +36,22 @@ const uploadSchema = z.object({
   /** 原始文件字节的 base64（不带 data: 前缀）。 */
   data: z.string()
 });
+/**
+ * 选用一段**本地视频**（用户自己选的，不走远程生成）。
+ *
+ * `key` 是槽位：`turn`（转圈视频）或八个方向之一的 key。两步放在同一个方法里而不是
+ * 拆成两个，是因为两条路的落盘、作废与回报完全同形，只是目标节点不同。
+ */
+const uploadVideoSchema = z.object({
+  projectId: z.string(),
+  /** `turn` 或方向 key（front / back / downLeft / …）。 */
+  key: z.string(),
+  name: z.string().optional(),
+  /** 原始视频字节的 base64（不带 data: 前缀）。 */
+  data: z.string()
+});
+/** 打包中间图片：只有项目 id，没有别的参数（打哪些是宿主按项目状态算的）。 */
+const exportImagesSchema = z.object({ projectId: z.string() });
 const promptsSchema = z.object({
   projectId: z.string(),
   /** 界面语言：「重置为默认」要重置成哪一国话的默认提示词（见 getProjectSchema）。 */
@@ -749,6 +765,8 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "setApproved", payload: approvedSchema, result: okSchema },
   { method: "setReviewMode", payload: setReviewModeSchema, result: okSchema },
   { method: "revealProject", payload: projectIdSchema, result: okSchema },
+  { method: "uploadVideo", payload: uploadVideoSchema, result: jsonObject },
+  { method: "exportImages", payload: exportImagesSchema, result: jsonObject },
 
   { method: "runImage", payload: runImageSchema, result: startedSchema },
   { method: "runImages", payload: runImagesSchema, result: startedSchema },

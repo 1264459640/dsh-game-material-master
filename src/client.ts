@@ -131,6 +131,23 @@
       "更换源图": "Replace source image",
       "刷新状态": "Refresh status",
       "在访达中打开项目目录": "Open the project directory in Finder",
+      "保存全部图片（zip）": "Save all images (zip)",
+      "正在打包全部图片…": "Packing all images…",
+      "已打包 {n0} 张图片": "Packed {n0} images",
+      "已打包 {n0} 张图片（另有 {n1} 张读不到，已跳过）": "Packed {n0} images ({n1} unreadable files were skipped)",
+      "选择本地视频": "Choose a local video",
+      "正在导入本地视频…": "Importing the local video…",
+      "已选用本地视频，正在抽候选帧并切出八个方向…": "Local video selected - extracting candidate frames and cutting the eight directions…",
+      "已选用本地视频（抽帧没有自动开始，点「抽取候选帧」即可）": "Local video selected (extraction did not start automatically - click \"Extract candidate frames\")",
+      "已选用「{n0}」的本地视频，接着到第 3 步抽取序列帧": "Local video selected for \"{n0}\" - extract the sequence frames in step 3",
+      "本地视频：{n0}（不花远程调用）": "Local video: {n0} (no remote call)",
+      "保存条带": "Save strip",
+      "保存视频": "Save video",
+      "保存预览带": "Save preview strip",
+      "手上已经有这样一段视频（自己电脑上的文件）时，点「选择本地视频」直接用它即可，不必走远程生成。": "If you already have such a video as a file on this computer, click \"Choose a local video\" and use it directly - no remote generation needed.",
+      "某一个方向已经有现成的行走视频（自己电脑上的文件）时，点那一格的「选择本地视频」直接用它，不必走远程生成。": "If you already have a walking video for a direction as a file on this computer, click \"Choose a local video\" in that cell and use it directly - no remote generation needed.",
+      "用自己电脑上的一段原地转圈视频（绿幕）顶替远程生成；导入后会自动抽候选帧并切出八个方向": "Use a chroma-key video of the character turning in place from this computer instead of remote generation; after the import the candidate frames are extracted and the eight directions are cut out automatically",
+      "用自己电脑上的一段「固定镜头 + 原地走」视频顶替这一方向的远程生成；之后照旧到第 3 步抽帧": "Use a fixed-camera walking-in-place video from this computer instead of remote generation for this direction; frames are still extracted in step 3",
       "先生成一段「角色原地匀速转一整圈」的绿幕视频，再按时间截出八个方向的帧；下面时间轴上的八个圆圈就是各自的截帧位置，拖动即可改。": "First generate a chroma-key video of the character turning a full circle in place at a constant speed, then cut frames for the eight directions by time. The eight circles on the timeline below mark each direction's frame position; drag them to change it.",
       "转圈截帧": "Turn-frame capture",
       "先生成一段「原地匀速转一整圈」的视频，再按时间截出八个方向（默认，一致性最好）": "Generate one video of a full turn in place at a constant speed, then cut the eight directions from it by time (default, best consistency)",
@@ -1581,6 +1598,9 @@
       ["setReviewMode", true],
       ["reportClientOrigin", true],
       ["revealProject", true],
+      // 本地自选视频（转圈 / 某个方向）与中间图片打包。
+      ["uploadVideo", true],
+      ["exportImages", true],
       ["runImage", true],
       ["runImages", true],
       ["setImageMode", true],
@@ -2381,6 +2401,11 @@
 .SPR_btn[data-primary=true]{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:var(--dsw-alias-state-business-on-primary, #fff)}
 .SPR_btn[data-on=true]{border-color:var(--dsw-alias-state-success-primary);color:var(--dsw-alias-state-success-primary)}
 .SPR_btn[data-danger=true]{color:var(--dsw-alias-state-error-primary)}
+/* 标签当按钮用：包着隐藏 <input type=file> 的 label（选择本地视频）与下载链接。
+   label 默认是行内元素，直接套 .SPR_btn 的对齐会跟旁边的按钮错开一行。 */
+.SPR_fileBtn{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.SPR_fileBtn[data-disabled=true]{cursor:default;opacity:.5}
+.SPR_fileBtn[data-disabled=true] input{pointer-events:none}
 .SPR_btnRow{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
 .SPR_area{width:100%;box-sizing:border-box;min-height:96px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace;font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1));border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:8px 10px}
 .SPR_input{box-sizing:border-box;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:5px 9px;width:100%}
@@ -3705,6 +3730,38 @@
         return result;
       };
 
+      /**
+       * 「保存全部图片（zip）」：宿主按**当前项目状态**现打一个 zip 落到 `out/` 下，
+       * 这里再触发一次浏览器下载。
+       *
+       * 为什么不直接摆一个 `<a href>`：包里有哪些图（以及文件名）只有宿主知道，
+       * 没有固定地址可指，所以只能「先请求、拿到相对路径再下载」。
+       */
+      const exportAllImages = () =>
+        void start(
+          async () => {
+            const pack = await api.exportImages({ projectId: project.id });
+            const url = `${pack?.assetBase ?? project.assetBase ?? ""}${pack?.file ?? ""}`;
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = fileLabel(pack?.file);
+            anchor.style.display = "none";
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setNotice({
+              kind: "ok",
+              text:
+                Number(pack?.skipped ?? 0) > 0
+                  ? T("已打包 {n0} 张图片（另有 {n1} 张读不到，已跳过）", { n0: pack?.count ?? 0, n1: pack?.skipped ?? 0 })
+                  : T("已打包 {n0} 张图片", { n0: pack?.count ?? 0 })
+            });
+            return pack;
+          },
+          { reload: true },
+          { key: KEY_EXPORT_IMAGES, label: T("正在打包全部图片…") }
+        );
+
       if (api === undefined) {
         return h("div", { className: "SPR_root" }, h("p", { className: "SPR_empty" }, T("正在挂载游戏素材大师…")));
       }
@@ -3963,6 +4020,18 @@
                     "div",
                     { className: "SPR_toolbar" },
                     h(Btn, { onClick: () => void loadProject(project.id) }, T("刷新状态")),
+                    // 中间图片（绿幕图 / 转圈候选帧与条带 / 各方向原始帧与抠像帧 / 整图）
+                    // 一次打成一个 zip：转圈模式的候选帧一抽就是 32~64 张，一张一个链接
+                    // 既点不完也看不清。放在这条**各阶段共用**的工具栏上，任何阶段都能存。
+                    h(
+                      BusyBtn,
+                      {
+                        busy: tasks.has(KEY_EXPORT_IMAGES),
+                        busyText: T("正在打包…"),
+                        onClick: () => void exportAllImages()
+                      },
+                      T("保存全部图片（zip）")
+                    ),
                     h(Btn, { onClick: () => void withApi(() => api.revealProject({ projectId: project.id })) }, T("在访达中打开项目目录"))
                   )
                 )
@@ -4022,6 +4091,15 @@
     const KEY_TURN_VIDEO = "turn:*video";
     const KEY_TURN_FRAMES = "turn:*frames";
     const KEY_TURN_PICK = (key) => `turn:pick:${key}`;
+    /**
+     * 本地自选视频的 pending key（转圈与每个方向各一条）。
+     *
+     * 前缀刻意和 `turn:*` / `video:*` 错开：那两个前缀被「这个阶段有没有在跑」
+     * 的判定用着（`tasks.any("video:*")`），混进去会把不相干的按钮一起禁用。
+     */
+    const KEY_LOCAL_VIDEO = (key) => `local-video:${key}`;
+    /** 「保存全部图片（zip）」的 pending key（这条工具栏是各阶段共用的）。 */
+    const KEY_EXPORT_IMAGES = "images:*zip";
     const TURN_FRAME_MIN = 8;
     const TURN_FRAME_MAX = 64;
 
@@ -4244,7 +4322,8 @@
         h(
           "p",
           { className: "SPR_hint" },
-          T("先生成一段「角色原地匀速转一整圈」的视频（绿幕、保持原图风格、除旋转外不做任何动作），再按时间截出八个方向的帧。八个方向出自同一段视频，一致性比逐方向生图好得多；下面时间轴上的八个圆圈就是各自的截帧位置，随便拖。")
+          T("先生成一段「角色原地匀速转一整圈」的视频（绿幕、保持原图风格、除旋转外不做任何动作），再按时间截出八个方向的帧。八个方向出自同一段视频，一致性比逐方向生图好得多；下面时间轴上的八个圆圈就是各自的截帧位置，随便拖。") +
+            T("手上已经有这样一段视频（自己电脑上的文件）时，点「选择本地视频」直接用它即可，不必走远程生成。")
         ),
         h("textarea", {
           className: "SPR_area",
@@ -4291,6 +4370,15 @@
                 ? T("转圈视频生成中…")
                 : T("重新生成转圈视频（计费一次）")
           ),
+          // 和远程生成**并列**的一条路：手上已经有一段原地转圈的绿幕视频时，
+          // 直接选它就行——不用花那一次视频调用，导入后同样自动抽帧、切八个方向。
+          h(LocalVideoPick, {
+            label: T("选择本地视频"),
+            title: T("用自己电脑上的一段原地转圈视频（绿幕）顶替远程生成；导入后会自动抽候选帧并切出八个方向"),
+            disabled: videoRunning,
+            testId: "turn-local-video",
+            onFile: (file) => pickLocalVideo({ start, setNotice, api, project, key: "turn", file })
+          }),
           h(
             BusyBtn,
             {
@@ -4340,6 +4428,12 @@
             },
             T("重置八个圆圈")
           ),
+          // 条带本身就是「整圈候选帧」那张中间图，值得能单独存下来（对着它挑帧/发给别人看）。
+          h(SaveLink, {
+            url: frames.strip === undefined ? undefined : assetUrl(project, frames.strip, frames.updatedAt),
+            name: `${project.name}-turn-strip.png`,
+            label: T("保存条带")
+          }),
           h(
             Btn,
             {
@@ -4387,11 +4481,27 @@
               videoRunning ? T("正在生成转圈视频…") : T("还没有转圈视频：点上面的「生成转圈视频」")
             ),
         video.error !== undefined ? h("p", { className: "SPR_error" }, video.error) : null,
+        // 这一栏在界面上是「这段视频的来路」：本地选的视频没有输入首帧，
+        // 照旧印「首帧用的是源图」会把人指向一张跟它无关的图。
         h(
           "div",
           { className: "SPR_refRow" },
-          T("首帧用的是{n0}：{n1}", { n0: video.firstFrame !== undefined && String(video.firstFrame).startsWith("images/") ? T("已生成的正面绿幕图") : T("上传的源图"), n1: video.firstFrame ?? "—" })
+          video.origin === "local"
+            ? T("本地视频：{n0}（不花远程调用）", { n0: video.originalName ?? fileLabel(video.file) })
+            : T("首帧用的是{n0}：{n1}", { n0: video.firstFrame !== undefined && String(video.firstFrame).startsWith("images/") ? T("已生成的正面绿幕图") : T("上传的源图"), n1: video.firstFrame ?? "—" })
         ),
+        // 视频本身也是中间产物（远程生成的那次是真金白银），得能存下来。
+        video.file !== undefined
+          ? h(
+              "div",
+              { className: "SPR_btnRow", style: { marginTop: 0 } },
+              h(SaveLink, {
+                url: assetUrl(project, video.file, video.updatedAt),
+                name: `${project.name}-turn.mp4`,
+                label: T("保存视频")
+              })
+            )
+          : null,
         total > 0
           ? h(TurnAxis, {
               project,
@@ -4460,7 +4570,13 @@
                         }), { reload: true })
                   },
                   node?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                h(SaveLink, {
+                  url: node?.file === undefined ? undefined : assetUrl(project, node.file, node.updatedAt ?? project.updatedAt),
+                  name: `${project.name}-${key}.png`,
+                  label: T("保存"),
+                  busy: nodeBusy
+                })
               )
             );
           })
@@ -4684,7 +4800,14 @@
                         }), { reload: true })
                   },
                   node?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                // 绿幕图是这一阶段唯一看得见的产物，直接存下来（拖进别的工具 / 存档）。
+                h(SaveLink, {
+                  url: node?.file === undefined ? undefined : assetUrl(project, node.file, node.updatedAt ?? project.updatedAt),
+                  name: `${project.name}-${direction.key}.png`,
+                  label: T("保存"),
+                  busy: nodeBusy
+                })
               )
             );
           })
@@ -4714,7 +4837,7 @@
       return h(
         React.Fragment,
         null,
-        h("p", { className: "SPR_hint" }, T("提示词要求「固定镜头、固定背景、原地走三步」。Hailuo 一段通常要 1~6 分钟，提交后可以离开这个页面。")),
+        h("p", { className: "SPR_hint" }, T("提示词要求「固定镜头、固定背景、原地走三步」。Hailuo 一段通常要 1~6 分钟，提交后可以离开这个页面。") + T("某一个方向已经有现成的行走视频（自己电脑上的文件）时，点那一格的「选择本地视频」直接用它，不必走远程生成。")),
         h("textarea", {
           className: "SPR_area",
           value: videoPromptDraft,
@@ -4816,7 +4939,11 @@
                     )
                   : h("div", { className: "SPR_thumbEmpty" }, T("还没有绿幕图")),
               nodeBusy || waiting ? h(BusyBadge, { show: true, text: overlayText }) : null,
-              video?.remoteStatus !== undefined ? h("span", { className: "SPR_refRow" }, T("远端状态：{n0}", { n0: video.remoteStatus })) : null,
+              video?.origin === "local"
+                ? h("span", { className: "SPR_refRow" }, T("本地视频：{n0}（不花远程调用）", { n0: video.originalName ?? fileLabel(video.file) }))
+                : video?.remoteStatus !== undefined
+                  ? h("span", { className: "SPR_refRow" }, T("远端状态：{n0}", { n0: video.remoteStatus }))
+                  : null,
               video?.error !== undefined ? h("p", { className: "SPR_error" }, video.error) : null,
               h(
                 "div",
@@ -4849,6 +4976,15 @@
                   },
                   video?.file === undefined ? T("生成视频") : T("重新生成")
                 ),
+                // 本地自选视频：和「生成视频」并列，落在**这一格**的槽位上。
+                h(LocalVideoPick, {
+                  label: T("选择本地视频"),
+                  title: T("用自己电脑上的一段「固定镜头 + 原地走」视频顶替这一方向的远程生成；之后照旧到第 3 步抽帧"),
+                  disabled: nodeBusy === true,
+                  testId: `local-video-${direction.key}`,
+                  onFile: (file) =>
+                    pickLocalVideo({ start, setNotice, api, project, key: direction.key, file, label: direction.label })
+                }),
                 h(
                   Btn,
                   {
@@ -4864,7 +5000,13 @@
                         }), { reload: true })
                   },
                   video?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                h(SaveLink, {
+                  url: video?.file === undefined ? undefined : assetUrl(project, video.file, video.updatedAt ?? project.updatedAt),
+                  name: `${project.name}-${direction.key}.mp4`,
+                  label: T("保存视频"),
+                  busy: nodeBusy
+                })
               )
             );
           })
@@ -5293,7 +5435,15 @@
                         }), { reload: true })
                   },
                   node?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                // 预览带就是这一段的全部帧（绿幕原帧）；要一张一张地拿，用底部的
+                // 「保存全部图片（zip）」——那里连抠像帧和候选帧一起打进去。
+                h(SaveLink, {
+                  url: node?.strip === undefined ? undefined : assetUrl(project, node.strip, node.updatedAt),
+                  name: `${project.name}-${direction.key}-strip.png`,
+                  label: T("保存预览带"),
+                  busy: nodeBusy
+                })
               )
             ),
             pickKey === direction.key
@@ -5962,6 +6112,97 @@
             }
           })
         )
+      );
+    }
+
+    /**
+     * 「选择本地视频」：一个包着隐藏 `<input type="file">` 的标签按钮。
+     *
+     * 为什么是 `<label>` 而不是 button + ref：文件选择框必须由**用户手势**打开，
+     * 而 label 天然把点击转给内部的 input，不需要 useRef / useState——少一个 Hook
+     * 就少一处「渲染顺序变了」的坑（这个模块的界面测试按住 Hook 顺序）。
+     */
+    function LocalVideoPick({ label, title, onFile, disabled, testId }) {
+      return h(
+        "label",
+        {
+          className: "SPR_btn SPR_fileBtn",
+          "data-disabled": disabled === true ? "true" : undefined,
+          title,
+          "data-testid": testId
+        },
+        label,
+        h("input", {
+          type: "file",
+          accept: "video/*",
+          disabled: disabled === true,
+          style: { display: "none" },
+          "data-testid": testId === undefined ? undefined : `${testId}-input`,
+          onChange: (event) => {
+            const file = event.target.files?.[0];
+            // 先清空 value：同一个文件连选两次也要能触发 change。
+            event.target.value = "";
+            if (file !== undefined && file !== null) void onFile(file);
+          }
+        })
+      );
+    }
+
+    /** `download` 属性要的是**文件名**：带上目录浏览器会当非法名丢掉。 */
+    function fileLabel(relative) {
+      const name = String(relative ?? "").split("/").pop() ?? "";
+      return name === "" ? "asset.png" : name;
+    }
+
+    /**
+     * 一张中间产物的「保存」。
+     *
+     * 用 `<a download>` 而不是按钮：下载本来就是浏览器的事（同源静态路由直接给文件），
+     * 宿主不必为它多开一个方法；产物就在眼前时，「保存」应该是一个链接而不是又一次调用。
+     */
+    function SaveLink({ url, name, label, busy, title }) {
+      if (url === undefined || url === null) return null;
+      return h(
+        "a",
+        {
+          className: "SPR_btn SPR_fileBtn",
+          href: url,
+          download: name,
+          title,
+          style: { textDecoration: "none" },
+          "aria-disabled": busy === true ? "true" : undefined,
+          onClick: busy === true ? (event) => event.preventDefault() : undefined
+        },
+        label ?? T("保存")
+      );
+    }
+
+    /**
+     * 选用一段本地视频（「选择本地视频」/ 拖进来之后走这里）。
+     *
+     * 两条链路共用：`key === "turn"` 是转圈视频（宿主导入后会**立刻**抽候选帧并切出
+     * 八个方向），其余 key 是某个方向的行走视频（之后照旧到第 3 步抽帧）。
+     * 文件字节走和源图同一条 base64 通道——插件零运行时依赖，不为它另开上传接口。
+     */
+    function pickLocalVideo({ start, setNotice, api, project, key, file, label }: any) {
+      if (project === null || file === undefined || file === null) return;
+      void start(
+        async () => {
+          const data = await readFileBase64(file);
+          const result = await api.uploadVideo({ projectId: project.id, key, name: file.name, data });
+          setNotice({
+            kind: "ok",
+            text:
+              key === "turn"
+                ? result?.extractStarted === true
+                  ? T("已选用本地视频，正在抽候选帧并切出八个方向…")
+                  : T("已选用本地视频（抽帧没有自动开始，点「抽取候选帧」即可）")
+                : T("已选用「{n0}」的本地视频，接着到第 3 步抽取序列帧", { n0: label ?? key })
+          });
+          return result;
+        },
+        { reload: true },
+        { key: KEY_LOCAL_VIDEO(key), label: T("正在导入本地视频…") }
       );
     }
 
@@ -15782,6 +16023,8 @@
         saveSettings: (payload) => call("saveSettings", payload),
         setApproved: (payload) => call("setApproved", payload),
         revealProject: (payload) => call("revealProject", payload),
+        uploadVideo: (payload) => call("uploadVideo", payload),
+        exportImages: (payload) => call("exportImages", payload),
         runImage: (payload) => call("runImage", payload),
         runImages: (payload) => call("runImages", payload),
         setImageMode: (payload) => call("setImageMode", payload),

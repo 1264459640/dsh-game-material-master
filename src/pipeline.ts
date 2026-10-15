@@ -34,9 +34,10 @@ import {
 } from "./directions.js";
 import { generateImage } from "./ark.js";
 import { downloadVideo, queryVideo, retrieveFile, submitVideo } from "./minimax.js";
-import { extractFrames, mimeOf, toDataUri, toJpegDataUri } from "./media.js";
+import { extractFrames, mimeOf, sniffVideo, toDataUri, toJpegDataUri } from "./media.js";
 import { composeSheet, keyGreen, type SheetRow } from "./chroma.js";
 import { encodePng } from "./png.js";
+import { zipEntries, type ZipEntry } from "./zip.js";
 import {
   assetPath,
   freshPicks,
@@ -702,6 +703,230 @@ export async function setImageMode(projectId: string, mode: "turn" | "direct"): 
     project.imageMode = mode;
     log(project, "info", mode === "turn" ? "阶段①改用「转圈截帧」" : "阶段①改用「逐方向生图」");
   });
+}
+
+// ── 本地自选视频：阶段①（转圈）与阶段②（八段行走）的第三条输入 ────────────
+//
+// 两处「需要生成视频」的地方都可以直接**自己选一段本地视频**，跳过远程生成：
+//   · `turn`       → 一段原地转圈的绿幕视频（导入后自动抽候选帧、切八张方向图）；
+//   · 八个方向 key → 某一段行走视频（导入后照旧在第 3 步抽帧）。
+//
+// 产物与远端生成的**完全同形**（同一个 `videos/` 目录、同一个 VideoNode 形状，
+// 只有 `origin: "local"` 这一个字段不同），所以阶段 3、4 一行都不用改。
+// 这条链路只在本机跑 ffmpeg，没有任何网络调用，因此上限比「发给模型」宽得多。
+
+/** 本地自选视频的大小上限（只受本机内存与传输体量限制，见 `importLocalVideo`）。 */
+export const LOCAL_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+
+/** 落盘用的文件名安全化：用户给的名字会直接拼进项目目录。 */
+function safeFileStem(input: string, fallback: string): string {
+  const cleaned = (input ?? "")
+    .replace(/[^\p{L}\p{N}_-]+/gu, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return cleaned === "" ? fallback : cleaned;
+}
+
+export interface LocalVideoResult {
+  /** 落到哪个槽位：`turn` 或方向 key。 */
+  key: string;
+  /** 落盘的相对路径（`videos/…`）。 */
+  file: string;
+  name: string;
+  bytes: number;
+  /** 转圈模式：导入后会自动抽候选帧，这里回报那次抽帧有没有真的启动。 */
+  extractStarted?: boolean;
+  extractReason?: string;
+}
+
+/**
+ * 把一段本地视频放进 `turn` 或某个方向的槽位。
+ *
+ * 除了写文件，还要做三件“不写就会静默坏掉”的事：
+ *   1. **作废旧产物**：这个槽位原来的视频、它抽出来的帧、以及由那些帧合成的
+ *      整图都属于上一段视频。尤其是抽帧缓存 `raw.bin`，留着就会拿旧帧去合成
+ *      （界面看着一切正常，只是人物朝向对不上）。
+ *   2. **摘掉远端任务号**：如果这一刻正好有一个远端任务在跑，它的结果稍后会
+ *      把我们的本地视频**直接覆盖掉**。写 `status: ready` 并清掉 `taskId`，
+ *      轮询器下一轮就不会再认领它（单次已经在下载途中的那一轮仍可能落盘，
+ *      所以日志里明确写一条）。
+ *   3. **转圈模式顺手抽帧**：远端路径也是「视频到手就抽候选帧」，这里保持一致，
+ *      否则用户导入完还得自己找「抽取候选帧」按钮，而且不知道时间轴为什么是空的。
+ */
+export async function importLocalVideo(
+  projectId: string,
+  key: string,
+  name: string,
+  base64: string
+): Promise<LocalVideoResult> {
+  const project = await readProject(projectId);
+  if (project === undefined) throw new Error(`项目不存在：${projectId}`);
+  const isTurn = key === "turn";
+  if (!isTurn && directionOf(key) === undefined) {
+    throw new Error(`未知方位：${key}（可用 turn 或 ${DIRECTION_KEYS.join(" / ")}）`);
+  }
+
+  const clean = base64.replace(/^data:[^;]+;base64,/, "");
+  if (clean.trim() === "") throw new Error("没有收到视频数据");
+  const bytes = Buffer.from(clean, "base64");
+  if (bytes.length === 0) throw new Error("视频数据为空");
+  if (bytes.length > LOCAL_VIDEO_MAX_BYTES) {
+    throw new Error(
+      `视频 ${(bytes.length / 1024 / 1024).toFixed(1)}MB 超过上限 ${Math.round(LOCAL_VIDEO_MAX_BYTES / 1024 / 1024)}MB，请先压缩或裁剪`
+    );
+  }
+  const sniffed = sniffVideo(clean);
+  if (sniffed === undefined) {
+    throw new Error("无法识别的视频格式（支持 MP4 / MOV / M4V / WebM / MKV / AVI）");
+  }
+  const originalName = safeFileStem(name.replace(/\.[^.]+$/, ""), `local-${key}`) + "." + sniffed.ext;
+  const relative = `videos/${isTurn ? "turn" : key}.${sniffed.ext}`;
+  const mb = (bytes.length / 1024 / 1024).toFixed(1);
+
+  await mkdir(dirname(assetPath(projectId, relative)), { recursive: true });
+  await writeFile(assetPath(projectId, relative), bytes);
+
+  if (isTurn) {
+    await patchProject(projectId, (current) => {
+      const droppedTask = current.turn.video?.taskId;
+      current.turn.video = {
+        status: "ready",
+        file: relative,
+        approved: false,
+        // 远端状态这一栏在界面上同时是「这段视频的来路」，本地导入就照实写。
+        remoteStatus: "本地视频",
+        origin: "local",
+        originalName,
+        // 首帧只对「图生视频」有意义，本地视频没有输入图，清掉免得界面指向一张无关的图。
+        firstFrame: undefined,
+        updatedAt: Date.now()
+      };
+      if (current.turn.frames.frames.length > 0) current.turn.frames.stale = true;
+      log(current, "info", `已选用本地视频作为转圈视频：${originalName}（${mb} MB）`);
+      if (droppedTask !== undefined) {
+        log(current, "warn", `原先的转圈视频远端任务（${droppedTask}）已作废，它的结果不会再被采用`);
+      }
+    });
+    const started = startTurnFrames(projectId);
+    return {
+      key,
+      file: relative,
+      name: originalName,
+      bytes: bytes.length,
+      extractStarted: started.started === true,
+      extractReason: started.reason
+    };
+  }
+
+  const label = directionOf(key)?.label ?? key;
+  await patchProject(projectId, (current) => {
+    const droppedTask = current.videos[key]?.taskId;
+    current.videos[key] = {
+      status: "ready",
+      file: relative,
+      approved: false,
+      remoteStatus: "本地视频",
+      origin: "local",
+      originalName,
+      updatedAt: Date.now()
+    };
+    // 旧帧与整图都属于上一段视频：不清掉就会拿另一段视频的帧继续往下走。
+    current.frames[key] = { status: "empty", frames: [], keyed: [], approved: false };
+    current.sheet = { status: "empty", approved: false };
+    log(current, "info", `已选用本地视频作为「${label}」的行走视频：${originalName}（${mb} MB），需要到第 3 步重新抽帧`);
+    if (droppedTask !== undefined) {
+      log(current, "warn", `「${label}」原先的远端任务（${droppedTask}）已作废，它的结果不会再被采用`);
+    }
+  });
+  return { key, file: relative, name: originalName, bytes: bytes.length };
+}
+
+// ── 中间图片打包 ──────────────────────────────────────────────────────────
+
+export interface ImagesPack {
+  /** 落盘的相对路径（`out/…zip`）。 */
+  file: string;
+  /** 真正打进包里的图片张数。 */
+  count: number;
+  /** 账面上有、但读不到（手删过 / 还没写完）的文件数。 */
+  skipped: number;
+  /** 打进包里的原始字节数（不是 zip 的大小）。 */
+  bytes: number;
+}
+
+/**
+ * 这个项目里所有**中间图片**的相对路径。
+ *
+ * 「中间」= 一路生成下来留下的每一张图：八方向绿幕图、转圈候选帧与整圈条带、
+ * 每段视频抽出来的绿幕帧与它的手动选帧候选、抠完绿幕的帧、以及最后合成的整图。
+ * 源图（用户自己的输入）不算，它不是这条路产出的东西。
+ *
+ * 顺序刻意按阶段走（① → ② → ③ → ④），解压出来的人眼一翻就能对上流程。
+ */
+export function intermediateImagePaths(project: Project): string[] {
+  const out: string[] = [];
+  const push = (value: string | undefined): void => {
+    if (typeof value === "string" && value !== "") out.push(value);
+  };
+  for (const key of DIRECTION_KEYS) {
+    push(project.images[key]?.file);
+    const node = project.frames[key];
+    for (const file of node?.frames ?? []) push(file);
+    for (const file of node?.keyed ?? []) push(file);
+    for (const file of node?.candidates?.frames ?? []) push(file);
+    push(node?.strip);
+    push(node?.candidates?.strip);
+  }
+  push(project.turn?.frames?.strip);
+  for (const file of project.turn?.frames?.frames ?? []) push(file);
+  push(project.sheet?.file);
+  push(project.sheet?.thumb);
+  return [...new Set(out)];
+}
+
+/**
+ * 把所有中间图片打成一个 zip，落在 `out/` 下（静态资源路由可直接下载）。
+ *
+ * 为什么是 zip 而不是几十个下载链接：转圈模式的候选帧一抽就是 32~64 张，
+ * 一张一个按钮既点不完也看不清。包里保留**项目内的相对路径**
+ * （`images/front.png`、`turn/frames/f00.png`、`frames/front/f00.png`…），
+ * 这样解压出来还能和项目目录对上号。
+ */
+export async function exportImages(projectId: string): Promise<ImagesPack> {
+  const project = await readProject(projectId);
+  if (project === undefined) throw new Error(`项目不存在：${projectId}`);
+  const wanted = intermediateImagePaths(project);
+  if (wanted.length === 0) {
+    throw new Error("还没有任何图片可保存：先在阶段①出绿幕图，或在阶段③抽取序列帧");
+  }
+
+  const entries: ZipEntry[] = [];
+  let bytes = 0;
+  let skipped = 0;
+  for (const relative of wanted) {
+    try {
+      const data = await readFile(assetPath(projectId, relative));
+      entries.push({ path: relative, data });
+      bytes += data.length;
+    } catch {
+      // 单张读不到不该让整包失败（可能是手删过的旧记录）：跳过并如实报数。
+      skipped++;
+    }
+  }
+  if (entries.length === 0) throw new Error("这些图片文件都不在了，请重新生成或重新抽帧");
+
+  const zip = zipEntries(entries);
+  const relative = `out/${safeFileStem(project.name, project.id)}-images.zip`;
+  await mkdir(dirname(assetPath(projectId, relative)), { recursive: true });
+  await writeFile(assetPath(projectId, relative), zip);
+  await patchProject(projectId, (current) => {
+    log(
+      current,
+      "info",
+      `已打包 ${entries.length} 张图片（${(zip.length / 1024 / 1024).toFixed(1)} MB）${skipped > 0 ? `，${skipped} 张读不到已跳过` : ""}`
+    );
+  });
+  return { file: relative, count: entries.length, skipped, bytes };
 }
 
 // ── 阶段 2：八段视频 ──────────────────────────────────────────────────────

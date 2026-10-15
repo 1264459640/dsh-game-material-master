@@ -44,6 +44,8 @@ import {
   clearVideos,
   disposePipeline,
   ensurePoller,
+  exportImages,
+  importLocalVideo,
   listJobs,
   pollVideosOnce,
   resetFramePicks,
@@ -464,6 +466,32 @@ export class GameStudioGateway extends TypertRemoteService {
       log(project, "info", `已上传源图：${originalName}（${(bytes.length / 1024).toFixed(0)} KB）`);
     });
     return { ok: true, file: relative, name: originalName };
+  }
+  /**
+   * 选用一段**本地视频**（用户自己选的，不走远程生成）。
+   *
+   * `key` 是槽位：`turn`（转圈视频）或八个方向之一的 key。远端生成与本地导入
+   * 产出的节点完全同形，所以阶段 3、4 不必区分；转圈模式在导入后会自动抽候选帧。
+   */
+  async uploadVideo(payload) {
+    const input = asRecord(payload);
+    return importLocalVideo(
+      asString(input.projectId),
+      asString(input.key),
+      asString(input.name, "local-video"),
+      asString(input.data)
+    );
+  }
+  /** 把项目里所有中间图片打成一个 zip（落在 `out/` 下，返回相对路径给界面下载）。 */
+  async exportImages(payload) {
+    const projectId = asString(asRecord(payload).projectId);
+    const pack = await exportImages(projectId);
+    const project = await readProject(projectId);
+    return {
+      ...pack,
+      assetBase: `${ROUTE_PREFIX}/assets/${projectId}/`,
+      name: project?.name ?? projectId
+    };
   }
   async savePrompts(payload) {
     const input = asRecord(payload);

@@ -35,6 +35,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | **没有任何运行时依赖** | `zod` / `cordis` / dsh-typert-protocol 等一律从 DSH 自身安装树解析；`node_modules` 与 lock 文件不入库 |
 | `lib/` **入库**（不是构建产物目录） | 包直接以 `main: lib/index.js` 发布，`npm publish` 不触发构建 |
 | 生成类调用必须带 loading 反馈，批量任务要按 `job.targets` 盖住**还没轮到**的方向 | 不盖遮罩时界面看着完全正常，只是「点了没反应」，用户会反复点——每次点击都真实计费。`verify-client.mjs` / `verify-feedback.mjs` 会拦 |
+| 本地自选视频必须与远端生成的产物**同形**，且导入时作废该槽位已有的下游产物 | 两条路只差 `origin` / `originalName` 两个字段，阶段③④才不用改。不作废（尤其是 `frames/<方向>/raw.bin`）就会拿上一段视频的帧去合成——界面看着完全正常，只是动作 / 朝向对不上；同理，导入时要摘掉在跑的远端 `taskId`，否则它稍后会把本地视频覆盖掉。`verify-host.mjs` 的 9d 段逐条钉住这几条 |
 | 新增产物子目录时，`SERVABLE_DIRS`（`src/index.ts`）必须同步加一条 | 静态资源路由按**第一段路径**比对白名单，漏掉就 403。界面只表现为「图裂了」、不报错——转圈截帧的 `turn/` 就踩过。模块六是**四处**同步：`SERVABLE_MAP_DIRS` / `AssetScope` 类型 / `resolveAssetTarget` 分支 / `SCOPES` 数组，`verify-map-gateway.mjs` 会真调一遍路由 |
 | 模块六：**客户端只能执行宿主下发的绘制计划**，不许自己算变体 / 形状 / chunk / 坐标变换 | 界面里唯一允许复刻的是 `MAP_pointToCell` / `MAP_cellAnchor` / `MAP_cellTopLeft` / `MAP_lineCells` 四个坐标函数（命中测试必需），且有黄金对照盯着；**连「哪些 chunk 可见」都由宿主算**（`mapPlan({view})` 回 `visibleKeys`）。多写一套口径就是旧模块「预览好看、导出位移」的老路，`verify-map-client.mjs` 会扫源码拦 |
 | 模块六：**环绕（wrap）是默认行为**，凡涉及「邻居」的地方都必须先取模 | 网格、命中测试、绘制范围、脏块、自动连接的邻域判断都要 wrap。漏掉一处的表现是「接缝处形状不对 / 撤销后画面花掉」，只在贴边时看得出来 —— `verify-map.mjs` 里有「画第 0 行必须连带弄脏最后一行」这条断言，且配了非环绕的反向验证 |
@@ -58,11 +59,11 @@ npm run typecheck    # 只做类型检查
 纯本地自检（不联网、不花钱），改完代码**至少跑这几个**：
 
 ```bash
-node scripts/verify-host.mjs       # 宿主全链路（322 项）
-node scripts/verify-client.mjs     # 浏览器半区契约（348 项）
-node scripts/verify-tools.mjs      # 对话调用面（147 项）
+node scripts/verify-host.mjs       # 宿主全链路（352 项）
+node scripts/verify-client.mjs     # 浏览器半区契约（352 项）
+node scripts/verify-tools.mjs      # 对话调用面（153 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
-node scripts/verify-feedback.mjs   # 浏览器半区真渲染（161 项，含功能管理、侧栏菜单与语义保存错误）
+node scripts/verify-feedback.mjs   # 浏览器半区真渲染（186 项，含功能管理、侧栏菜单与语义保存错误）
 node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
 node scripts/verify-rig-runtime.mjs  # 骨骼改动：官方 Spine 4.2 实际加载/IK/Path/FFD/顶点求值（开发依赖）
 node scripts/verify-tile.mjs       # 地图地块几何内核（147 项，含反向验证）

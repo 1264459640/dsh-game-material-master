@@ -29,7 +29,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 
 | Module | What it does | What you get |
 |---|---|---|
-| **① Eight-direction sprite sheet** | One character sheet → 8 directions × 8 frames (default "turn capture": eight directions cut from one rotation video) | A walk spritesheet you can drive with WASD |
+| **① Eight-direction sprite sheet** | One character sheet → 8 directions × 8 frames (default "turn capture": eight directions cut from one rotation video; both videos can also be **a local file of your own**) | A walk spritesheet you can drive with WASD (every intermediate image can be saved individually or as one zip) |
 | **② Image generation** | Prompt (optionally with reference images) → images → green-screen keying | Clean transparent PNG character art / props |
 | **③ Sequence frames** | First/last frame or a reference video → generate video → extract frames → key | A horizontally laid out, loopable sequence |
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
@@ -104,6 +104,31 @@ so old and new orientations never get mixed together). The default positions ass
 "starting from the front, one full rotation at constant speed"; when the model actually turns in a different
 direction or at a different pace, just drag the circles, or click "turn direction" to re-order them. Changing
 the candidate frame count (8–64) re-extracts automatically and rescales any positions you have dragged.
+
+### You can also use **a video from your own computer** (steps ① and ②)
+
+Neither of the two "generate a video" places only has the "call the model" path: when you already have a
+suitable video, click **Choose a local video** and pick it — the result is identical to a generated one and
+the later steps work exactly the same.
+
+- **Step ① · turn video**: pick a chroma-key video of the character turning a full circle in place; the plugin
+  extracts the candidate frames and cuts out the eight directions **immediately**, then you just drag the
+  circles to adjust positions.
+- **Step ② · the walk video of one direction**: each cell can pick its own file (fixed camera, walking in
+  place), and step 3 "extract all sequence frames" still applies.
+- MP4 / MOV / M4V / WebM / MKV / AVI are supported (detected by **file header**, not by extension), up to
+  100MB each; this path is processed locally with ffmpeg and is never uploaded to any model.
+- Replacing a video invalidates the frames and sheet already derived from it, so frames from the previous
+  video can never leak into the new one.
+
+### Every intermediate image can be saved
+
+**Every image** produced along the way can be saved: the eight chroma-key images, the turn candidate frames
+and the full-rotation strip, the chroma-key frames and manual-pick candidates extracted from each video, the
+keyed frames, and the final sheet. Every product you can see in the UI has a "Save" link; since one candidate
+extraction produces 32–64 images at once, the bottom toolbar also has **Save all images (zip)** — one archive
+laid out like the project directory (`images/…`, `turn/…`, `frames/…`, `keyed/…`, `out/sheet.png`).
+The generated videos (the turn video and the eight walk videos) each have a "Save video" link too.
 
 ### How to use it
 

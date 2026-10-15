@@ -79,6 +79,9 @@ export const METHOD_MODULE: Record<string, ModuleKey> = {
   saveSettings: "sprite",
   setApproved: "sprite",
   revealProject: "sprite",
+  /** 本地自选视频（转圈 / 某个方向）与中间图片打包：都归八方向图模块。 */
+  uploadVideo: "sprite",
+  exportImages: "sprite",
   runImage: "sprite",
   runImages: "sprite",
   setImageMode: "sprite",
@@ -634,6 +637,8 @@ const CALL_DESCRIPTION = [
   "八方向图：listProjects() / createProject({name}) / getProject({projectId}) / deleteProject({projectId}) / renameProject({projectId,name}) /",
   "  uploadSource({projectId,name,data:base64}) / savePrompts({projectId,images?,video?,turn?,videoPerDirection?,suffix?,resetImagesToDefault?,resetVideoToDefault?,resetTurnToDefault?}) /",
   "  saveSettings({projectId,settings}) / setApproved({projectId,stage:images|videos|frames|sheet,key?,approved}) / revealProject({projectId}) /",
+  "  uploadVideo({projectId,key:turn|<方向>,name,data:base64})【★本地自选视频：两处「要生成视频」的地方都能用自己电脑上的视频顶替远程生成——key=turn 是转圈视频（导入后自动抽候选帧并切八张图），key=<方向> 是某一段行走视频（之后到第 3 步抽帧）；产物与远端生成完全同形，`origin:'local'` 标注来路】/",
+  "  exportImages({projectId})【把所有中间图片（八方向绿幕图 / 转圈候选帧与条带 / 每段视频的绿幕帧与抠像帧 / 整图）打成一个 zip 落在 out/ 下，返回 file 与 assetBase 供下载】/",
   "  runImage({projectId,key,prompt?}) / runImages({projectId,force?}) / runVideos({projectId,keys?,regenerate?}) / pollVideos({projectId}) /",
   "  clearVideos({projectId,keys?}) / runFrames({projectId,keys?})【整段等分，同一套规则】 / rekey({projectId}) / compose({projectId})",
   "  prepareFramePick({projectId,key,count?})【只抽这一个方向的候选帧，免费】/ setFramePick({projectId,key,slot,index})【拖动第 slot 个输出帧到候选 index】/",
@@ -884,9 +889,10 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
       description: [
         "把本机文件上传进「游戏素材大师」——界面上那些「上传」框的对话等价物。",
         "参数 `path` 是文件的绝对路径或相对当前工作目录的路径，宿主自己读盘，**不要把 base64 贴进来**。",
-        "kind 取值：sprite=source（源设定图）；image=ref（参考图，最多 10 张）| item（直接加一张图，只做抠像用）；",
+        "kind 取值：sprite=source（源设定图）| video（**本地自选视频**，要用 `key` 指定槽位：turn=转圈视频，或 front/back/downLeft/downRight/upLeft/upRight/left/right 之一）；",
+        "image=ref（参考图，最多 10 张）| item（直接加一张图，只做抠像用）；",
         "sequence=firstFrame | lastFrame | referenceImage | referenceVideo；rig=source（角色整图）| part（单个部件 PNG，文件名即部件名）；map=tileset（图集原图）。",
-        "限制：图片 ≤30MB，参考视频 ≤40MB（平台请求体上限 64MB），图片类型按文件头嗅探。"
+        "限制：图片 ≤30MB，视频 ≤40MB（平台请求体上限 64MB；界面上那条本地上传路更宽），类型按文件头嗅探。"
       ].join("\n"),
       parameters: {
         type: "object",
@@ -894,7 +900,8 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
         properties: {
           module: { type: "string", enum: [...MODULES], description: "目标所属模块。" },
           id: { type: "string", description: "项目 id（p…）或任务 id（i… / s…）。" },
-          kind: { type: "string", enum: ["source", "ref", "item", "firstFrame", "lastFrame", "referenceImage", "referenceVideo", "part", "tileset"], description: "上传到哪个槽位。" },
+          kind: { type: "string", enum: ["source", "video", "ref", "item", "firstFrame", "lastFrame", "referenceImage", "referenceVideo", "part", "tileset"], description: "上传到哪个槽位。" },
+          key: { type: "string", description: "仅 sprite + kind=video 用：槽位 `turn`（转圈视频）或某个方向 key。" },
           path: { type: "string", description: "本机文件路径。" },
           name: { type: "string", description: "可选：展示用的文件名。" }
         },
@@ -909,7 +916,7 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
         const kind = asString(args?.kind);
         const path = asString(args?.path);
         if (path === "") throw new Error("path 不能为空");
-        return uploadFromPath(gateway, module, id, kind, path, asString(args?.name) || undefined);
+        return uploadFromPath(gateway, module, id, kind, path, asString(args?.name) || undefined, asString(args?.key) || undefined);
       }
     });
 
@@ -1556,7 +1563,7 @@ const VIDEO_MAX_BYTES = 40 * 1024 * 1024;
 
 /** 各模块允许的 kind，避免把「源图」传到「参考视频」这类错位。 */
 const UPLOAD_KINDS: Record<ModuleKey, string[]> = {
-  sprite: ["source"],
+  sprite: ["source", "video"],
   image: ["ref", "item"],
   sequence: ["firstFrame", "lastFrame", "referenceImage", "referenceVideo"],
   rig: ["source", "part"],
@@ -1568,13 +1575,17 @@ const UPLOAD_KINDS: Record<ModuleKey, string[]> = {
   map: ["tileset"]
 };
 
+/** sprite 的本地视频槽位：`turn`（转圈）或八个方向之一。 */
+const SPRITE_VIDEO_SLOTS = ["turn", "front", "back", "downLeft", "downRight", "upLeft", "upRight", "left", "right"];
+
 async function uploadFromPath(
   gateway: GameStudioGateway,
   module: ModuleKey,
   id: string,
   kind: string,
   path: string,
-  name?: string
+  name?: string,
+  key?: string
 ): Promise<Record<string, any>> {
   if (id === "") throw new Error("id 不能为空");
   if (!UPLOAD_KINDS[module].includes(kind)) {
@@ -1588,7 +1599,10 @@ async function uploadFromPath(
     throw new Error(`读不到文件：${absolute}`);
   }
   if (!info.isFile()) throw new Error(`不是文件：${absolute}`);
-  const isVideo = kind === "referenceVideo";
+  // 「是不是视频」按 kind 判（序列帧的参考视频、sprite 的本地自选视频），
+  // 上限与嗅探都跟着它走：落到图片那条路上会被图片嗅探当场拒掉，而且 30MB 的上限
+  // 会让一段正常的手机视频莫名其妙传不进来。
+  const isVideo = kind === "referenceVideo" || kind === "video";
   const limit = isVideo ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
   if (info.size > limit) {
     throw new Error(`文件 ${(info.size / 1024 / 1024).toFixed(1)}MB 超过上限 ${(limit / 1024 / 1024).toFixed(0)}MB：${absolute}`);
@@ -1602,7 +1616,31 @@ async function uploadFromPath(
   }
 
   const call = gateway as any;
+  /** sprite 的本地视频要额外回报「落到哪个槽位、有没有顺手抽帧」。 */
+  let videoResult: Record<string, any> | undefined;
   if (module === "sprite") {
+    if (kind === "video") {
+      // 槽位必须显式给：猜一个（比如默认转圈）会把一段行走视频塞进错误的位置，
+      // 而且产物看起来「成功了」——只能等着后面几步出错。
+      const slot = key ?? "";
+      if (!SPRITE_VIDEO_SLOTS.includes(slot)) {
+        throw new Error(
+          `sprite + kind=video 必须给 key（可用：${SPRITE_VIDEO_SLOTS.join(" / ")}），收到：${slot === "" ? "（空）" : slot}`
+        );
+      }
+      videoResult = await call.uploadVideo({ projectId: id, key: slot, name: fileName, data: base64 });
+      return {
+        module,
+        id,
+        kind,
+        key: slot,
+        name: fileName,
+        path: absolute,
+        bytes: info.size,
+        video: videoResult,
+        ...openInfo({ module, projectId: id }, "点开确认视频已就位")
+      };
+    }
     await call.uploadSource({ projectId: id, name: fileName, data: base64 });
   } else if (module === "image") {
     if (kind === "ref") await call.uploadImageRef({ jobId: id, name: fileName, data: base64 });
@@ -1660,7 +1698,17 @@ function renderIntake(value: any): string {
 
 function renderUpload(value: any): string {
   const tail = typeof value.openUrl === "string" ? `\n打开界面：[${value.openHint}](${value.openUrl})` : "";
-  return `已上传 ${value.name}（${(value.bytes / 1024).toFixed(0)} KB）→ ${value.module} · ${value.id} · ${value.kind}${tail}`;
+  const slot = typeof value.key === "string" ? ` · 槽位 ${value.key}` : "";
+  const video = value.video ?? {};
+  const note =
+    typeof value.key === "string"
+      ? video.key === "turn"
+        ? video.extractStarted === true
+          ? "；已自动开始抽候选帧并切出八个方向图"
+          : `；抽帧没有自动开始（${video.extractReason ?? "未知原因"}），需要手动 runTurnFrames`
+        : "；接着到第 3 步 runFrames 抽帧即可"
+      : "";
+  return `已上传 ${value.name}（${(value.bytes / 1024).toFixed(0)} KB）→ ${value.module} · ${value.id} · ${value.kind}${slot}${note}${tail}`;
 }
 
 function renderReviewMode(value: any): string {
@@ -1910,6 +1958,11 @@ function spriteNextActions(snapshot: any, stage: string | undefined, direction: 
             ? "还没有源图：先用 game_material_call({method:'uploadSource', payload:{projectId,name,data}}) 上传一张设定图"
             : `转圈视频还没有：game_material_call({method:'runTurnVideo', payload:{projectId}}) 然后 game_material_wait（★花钱一次，约几分钟）；视频到手会自动抽候选帧并切出八个方向`
         );
+        // 本地自选视频和远程生成是**并列**的两条路：用户手上已经有一段转圈视频时，
+        // 这条一步到位、不花钱，不应该被埋在描述里。
+        actions.push(
+          "也可以不用远程生成：把现成的视频用 game_material_upload({module:'sprite', id, kind:'video', key:'turn', path}) 传进来（等价于界面上的「选择本地视频」），导入后同样会自动抽候选帧并切出八个方向"
+        );
       } else {
         actions.push(
           `转圈视频已就绪，还差 ${images.total - images.ready} 张方向图：game_material_call({method:'runTurnFrames', payload:{projectId}}) 然后 game_material_wait（本地免费）`
@@ -1933,6 +1986,9 @@ function spriteNextActions(snapshot: any, stage: string | undefined, direction: 
   const videos = pick("videos");
   if (videos !== undefined && videos.ready < videos.total && (images === undefined || images.ready === images.total)) {
     actions.push(`视频还差 ${videos.total - videos.ready} 段：game_material_call({method:'runVideos', payload:{projectId}}) 然后 game_material_wait（这一步最贵，约几分钟）`);
+    actions.push(
+      "某个方向已经有现成视频时，用 game_material_upload({module:'sprite', id, kind:'video', key:'<方向>', path}) 直接顶替那一段（不花钱），之后照旧 runFrames 抽帧"
+    );
   }
   const frames = pick("frames");
   if (frames !== undefined && frames.ready < frames.total && (videos === undefined || videos.ready === videos.total)) {
