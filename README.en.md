@@ -244,7 +244,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 The package is published to npm: [dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-(currently `0.1.1`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
+(currently `0.6.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
 
 After installing, **restart DSH** (the host half is loaded at startup). The browser half is read from
 `lib/client.js` on disk on each request, so refreshing the browser is enough for it to take effect.
