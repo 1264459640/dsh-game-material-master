@@ -1287,7 +1287,7 @@ export class GameStudioGateway extends TypertRemoteService {
   }
   async prepareFramePick(payload) {
     const input = asRecord(payload);
-    const count = input.count === undefined || input.count === null ? undefined : clampInt(input.count, 32, 8, 64);
+    const count = input.count === undefined || input.count === null ? undefined : clampInt(input.count, 32, TURN_FRAME_COUNT_MIN, TURN_FRAME_COUNT_MAX);
     return startFramePick(asString(input.projectId), asString(input.key), count);
   }
   async setFramePick(payload) {

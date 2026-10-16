@@ -107,7 +107,7 @@ const resetTurnPicksSchema = z.object({
 });
 const cutTurnFramesSchema = z.object({ projectId: z.string(), keys: z.array(z.string()).optional() });
 const runKeysSchema = z.object({ projectId: z.string(), keys: z.array(z.string()).optional() });
-/** 从一个方向的行走视频抽出候选帧。count 是候选张数（8~64），不是最终序列帧数。 */
+/** 从一个方向的行走视频抽出候选帧。count 是候选张数（8~512），不是最终序列帧数。 */
 const prepareFramePickSchema = z.object({
   projectId: z.string(),
   key: z.string(),
