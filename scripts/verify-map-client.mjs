@@ -17,7 +17,8 @@
  *    都在这条链路上验。
  *
  * ③ **界面结构与纪律**。左列调色板（8 列 / 可选中 / 可滚动）、12 个图标按钮、
- *    顶栏没有阶段条、空态两个按钮、实验性弹窗、术语黑名单、每个 `SPR_` 类都有 CSS。
+ *    顶栏没有阶段条、空态两个按钮、**「不是实验性功能」的三处反向验证**（角标 /
+ *    弹窗 / 常驻提示条一个都不能有）、术语黑名单、每个 `SPR_` 类都有 CSS。
  *
  * 用法：node scripts/verify-map-client.mjs [lib/client.js]
  */
@@ -25,6 +26,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 // 整个脚本跑在一个 mkdtemp 出来的临时 DSH_HOME 里，结束连同项目一起删掉。
@@ -185,9 +187,37 @@ try {
     timers.clear();
     for (const fn of due) fn();
   }
+  /**
+   * 面板的轮询定时器（`view.busy === true` 时每 1.5s 重读一次项目）。
+   *
+   * ⚠️ 必须有真的实现：导出 / 预览是**宿主后台作业**，提交那次读到的还是「进行中」，
+   * 界面靠这个轮询才把新产物读回来（ENGINEERING.md 里记过这条：真机导出约 2s 后
+   * 文件列表自己冒出来）。以前这里返回 0 什么都不做，于是「提交完界面不刷新」这条
+   * 路径在自检里**根本走不到**。这里只登记、由测试显式 `tickTimers()` 放出来。
+   */
+  const intervals = new Map();
+  let intervalSeq = 0;
+  /** 放一次轮询（与真机的「又过了 1.5s」等价），再等宿主调用落地。 */
+  async function tickIntervals() {
+    const due = [...intervals.values()];
+    if (due.length === 0) return false;
+    for (const fn of due) fn();
+    let quiet = 0;
+    for (let tick = 0; tick < 240; tick++) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await Promise.resolve();
+      if (inFlight > 0) quiet = 0;
+      else if (++quiet >= 3) break;
+    }
+    return true;
+  }
   /** 把队列里还活着的定时器放出来，再等宿主调用落地（模拟「又过了 40ms」）。 */
   async function tickTimers() {
-    if (timers.size === 0) return;
+    const polled = await tickIntervals();
+    if (timers.size === 0) {
+      if (!polled) return;
+      return;
+    }
     pumpTimers();
     let quiet = 0;
     for (let tick = 0; tick < 240; tick++) {
@@ -210,6 +240,13 @@ try {
   const fillRects = [];
   let clears = 0;
   let lastFillStyle = "";
+  /** 标记层相关的画布调用：圆弧（`arc`）、圆圈里的数字（`fillText`）、以及**调用顺序**。 */
+  const arcs = [];
+  const texts = [];
+  const callOrder = [];
+  let lastFont = "";
+  let lastStrokeStyle = "";
+  let lastLineWidth = 1;
   /** 动画帧号：面板用 rAF + Date.now 推时钟，这里把 rAF 排队、由测试推进。 */
   const rafQueue = new Map();
   /** 「等待稳定超时」的记号每次 renderTree 最多说一次（它每轮都会触发，不然刷屏）。 */
@@ -257,6 +294,9 @@ try {
           clears++;
           currentFrame = [];
           drawFrames.push(currentFrame);
+          arcs.length = 0;
+          texts.length = 0;
+          callOrder.length = 0;
         },
         fillRect(x, y, w, h) {
           fillRects.push({ fillStyle: lastFillStyle, x, y, w, h });
@@ -266,7 +306,22 @@ try {
         lineTo() {},
         closePath() {},
         fill() {},
+        stroke() {
+          if (arcs.length > 0) arcs[arcs.length - 1].stroked = true;
+        },
+        arc(x, y, radius) {
+          arcs.push({ x, y, radius, fillStyle: lastFillStyle, strokeStyle: lastStrokeStyle, lineWidth: lastLineWidth, stroked: false });
+          callOrder.push("arc");
+        },
+        measureText(text) {
+          return { width: String(text).length * 7 };
+        },
+        fillText(text, x, y) {
+          texts.push({ text: String(text), x, y, font: lastFont, fillStyle: lastFillStyle });
+          callOrder.push("fillText");
+        },
         drawImage(...args) {
+          callOrder.push("drawImage");
           if (currentFrame === null) {
             currentFrame = [];
             drawFrames.push(currentFrame);
@@ -279,6 +334,25 @@ try {
         get: () => lastFillStyle,
         set: (value) => {
           lastFillStyle = String(value);
+        }
+      });
+      // 标记的圆圈与数字靠 font / strokeStyle / lineWidth 定位与上色，同样按普通属性记。
+      Object.defineProperty(ctx, "font", {
+        get: () => lastFont,
+        set: (value) => {
+          lastFont = String(value);
+        }
+      });
+      Object.defineProperty(ctx, "strokeStyle", {
+        get: () => lastStrokeStyle,
+        set: (value) => {
+          lastStrokeStyle = String(value);
+        }
+      });
+      Object.defineProperty(ctx, "lineWidth", {
+        get: () => lastLineWidth,
+        set: (value) => {
+          lastLineWidth = Number(value);
         }
       });
       node.getContext = () => ctx;
@@ -434,8 +508,14 @@ try {
     clearTimeout: (id) => {
       timers.delete(id);
     },
-    setInterval: () => 0,
-    clearInterval() {},
+    setInterval: (fn) => {
+      const id = ++intervalSeq;
+      intervals.set(id, fn);
+      return id;
+    },
+    clearInterval: (id) => {
+      intervals.delete(id);
+    },
     addEventListener() {},
     removeEventListener() {},
     document: undefined
@@ -492,8 +572,13 @@ try {
   check("apply 可执行", true);
 
   const test = bundle.__test ?? {};
-  const { MapModule, MapExperimentalDialog, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells } = test;
-  check("产物带出 MapModule 与实验性弹窗", typeof MapModule === "function" && typeof MapExperimentalDialog === "function");
+  const { MapModule, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells } = test;
+  check("产物带出 MapModule", typeof MapModule === "function");
+  /**
+   * 反向验证：模块⑥**不再是实验性功能**，所以那个弹窗组件必须从产物里彻底消失。
+   * 只删渲染、留着组件的话，下一个人「顺手」把它挂回去就又变回实验性了。
+   */
+  check("产物里不再有 MapExperimentalDialog（模块⑥已转正）", test.MapExperimentalDialog === undefined, Object.keys(test).filter((key) => /Experimental/.test(key)).join(","));
   check(
     "产物带出四个黄金对照函数（命中测试必需的那份复刻）",
     typeof MAP_pointToCell === "function" && typeof MAP_cellAnchor === "function" && typeof MAP_cellTopLeft === "function" && typeof MAP_lineCells === "function"
@@ -684,6 +769,8 @@ try {
     imports: 0,
     generates: [],
     exports: 0,
+    exportPayloads: [],
+    reveals: [],
     approvals: []
   };
   const apiRaw = {
@@ -751,6 +838,7 @@ try {
     runMapPreview: async (payload) => G.runPreviewStage(payload.projectId),
     runMapExport: async (payload) => {
       apiLog.exports++;
+      apiLog.exportPayloads.push({ scale: payload.scale, formats: { ...(payload.formats ?? {}) } });
       return G.runExportStage(payload.projectId, { scale: payload.scale, formats: payload.formats });
     },
     cancelMapJob: async () => ({ ok: true }),
@@ -758,7 +846,11 @@ try {
       apiLog.approvals.push(payload);
       return { ok: true };
     },
-    revealMapProject: async () => ({ ok: true })
+    revealMapProject: async (payload) => {
+      const { dir, fallback } = await G.mapRevealDir(payload.projectId, payload.target ?? "");
+      apiLog.reveals.push({ ...payload, dir, fallback });
+      return { ok: true, dir, fallback };
+    }
   };
   /** 每个宿主调用都计一次「在飞」，供 renderTree 判断真的静下来了。 */
   const api = Object.fromEntries(
@@ -798,6 +890,22 @@ try {
     return out;
   }
   const byClass = (tree, className) => collect(tree, (node) => typeof node.props?.className === "string" && node.props.className.split(" ").includes(className));
+  /**
+   * 重新挂载面板，直到**视图真的加载出来**为止（最多 3 次）。
+   *
+   * ⚠️ 挂载时要「读项目列表 → 读视图 → 问计划」，全是真的文件系统往返；本 harness
+   * 偶尔会在那一串异步还没落地时就判定「已经稳定」，于是这个全新面板停在空态。
+   * 那不是界面坏了（真机上刷新一次就好），但会让**后面每条断言连环崩**
+   * （`byTool(freshTree, "eraser")[0]` 直接 undefined，整个脚本挂掉、后半个文件的
+   * 覆盖全丢 —— 本机实测三次跑，分别死在第 10 / 15 / 16 节）。重挂一次即可。
+   */
+  async function freshPanel(apiImpl = api, tries = 3) {
+    let mounted = await renderTree(() => MapModule({ api: apiImpl }), { fresh: true });
+    for (let i = 1; i < tries && textOf(mounted).includes("还没有地图项目"); i++) {
+      mounted = await renderTree(() => MapModule({ api: apiImpl }), { fresh: true });
+    }
+    return mounted;
+  }
   const byTool = (tree, key) => collect(tree, (node) => node.props?.["data-tool"] === key);
   /**
    * 地图格 → 客户端坐标。
@@ -914,11 +1022,12 @@ try {
   check("面板能渲染（无异常、不是空态）", tree !== null && tree !== undefined && !textOf(tree).includes("还没有地图项目"), textOf(tree).slice(0, 60));
 
   /**
-   * ⚠️ 别在面板树里展开 `MapExperimentalDialog`：它自己有 Hook，跑在面板的存储上
-   * 会把槽位读串。这里只看「面板挂出了这个元素」，内容另开一份独立存储渲染。
+   * ⚠️ 模块⑥转正后这里**不能**再出现 `MapExperimentalDialog`。
+   * 早退分支（空态）与正常分支都要查：只改一处的话，用户从空态进去仍会看到
+   * 「实验性」弹窗，与页签上的正式模样自相矛盾。
    */
-  const gateElement = collect(tree, (node) => typeof node.type === "function" && node.type.name === "MapExperimentalDialog")[0];
-  check("进入模块⑥会弹实验性说明（实验性模块不能没有标记）", gateElement !== undefined);
+  const gateElement = collect(tree, (node) => typeof node.type === "function" && /Experimental(Dialog|Bar)/.test(node.type.name ?? ""))[0];
+  check("进入模块⑥**不弹**实验性说明（它不是实验性功能）", gateElement === undefined, gateElement?.type?.name ?? "");
 
   // ── 顶栏 ────────────────────────────────────────────────────────────────
   const projButton = byClass(tree, "SPR_mapEdProj")[0];
@@ -961,7 +1070,7 @@ try {
   const toolNodes = collect(tree, (node) => typeof node.props?.className === "string" && node.props.className.split(" ").includes("SPR_mapEdTool"));
   check("左列正好 12 个工具格（6 列 × 2 行）", toolNodes.length === 12, `${toolNodes.length} 个`);
   const toolKeys = [...collect(tree, (node) => typeof node.props?.["data-tool"] === "string")].map((node) => node.props["data-tool"]);
-  const wantKeys = ["undo", "redo", "pen", "eraser", "bucket", "pipette", "hand", "single", "grid", "gen", "settings"];
+  const wantKeys = ["undo", "redo", "pen", "eraser", "bucket", "pipette", "hand", "marker", "grid", "gen", "settings"];
   check(`11 个具名图标按钮都在（${wantKeys.join(" / ")}）`, wantKeys.every((key) => toolKeys.includes(key)) && toolKeys.filter((key) => wantKeys.includes(key)).length === 11, toolKeys.join(","));
   const layerBtn = byClass(tree, "SPR_mapEdLayerBtn")[0];
   const layerNum = byClass(tree, "SPR_mapEdLayerNum")[0];
@@ -1015,7 +1124,7 @@ try {
     // 图层按钮是复合控件（上下两个半块 + 层号），它的说明也走同一张标签
     byClass(tree, "SPR_mapEdLayerBtn")[0].props.onMouseEnter({ currentTarget: { getBoundingClientRect: rect } });
     tree = await renderTree(() => MapModule({ api }));
-    check("图层按钮也有小标签（讲清上下半块与层号）", textOf(tipOf(tree) ?? null).includes("上一层") && textOf(tipOf(tree) ?? null).includes("层号"), textOf(tipOf(tree) ?? null));
+    check("图层按钮也有小标签（讲清上下半块与打开图层列表）", textOf(tipOf(tree) ?? null).includes("上一层") && textOf(tipOf(tree) ?? null).includes("图层列表"), textOf(tipOf(tree) ?? null));
     byClass(tree, "SPR_mapEdLayerBtn")[0].props.onMouseLeave();
     tree = await renderTree(() => MapModule({ api }));
     check("图层按钮移开后也收起", tipOf(tree) === undefined);
@@ -1027,9 +1136,9 @@ try {
   byClass(tree, "SPR_mapEdLayerHalf").find((node) => node.props["data-dir"] === "down").props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   check("点「下一层」换回第 1 层", textOf(byClass(tree, "SPR_mapEdLayerNum")[0] ?? null) === "1");
-  check("底部显示当前层 / 总层数", textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null).includes("第 1 层 / 共 2 层"), textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null));
-  // 网格线 / 单层预览 / 一键生成 / 设置：点一下要能切 data-on（按钮是开关）
-  for (const [key, label] of [["grid", "网格线"], ["single", "单层预览"], ["gen", "一键生成"], ["settings", "设置"]]) {
+  check("底部显示当前层 / 总层数", textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null).includes("第 1 层 / 共 3 层"), textOf(byClass(tree, "SPR_mapEdFootText")[0] ?? null));
+  // 网格线 / 标记 / 一键生成 / 设置：点一下要能切 data-on（按钮是开关）
+  for (const [key, label] of [["grid", "网格线"], ["marker", "标记"], ["gen", "一键生成"], ["settings", "设置"]]) {
     const button = byTool(tree, key)[0];
     button.props.onClick();
     tree = await renderTree(() => MapModule({ api }));
@@ -1061,11 +1170,153 @@ try {
     textOf(assetsCard).match(/会动 \d+ 帧/)?.[0] ?? ""
   );
   check("列表里没有「改格子 / 改形态」这类入口（属性只能在新增时定）", !/改格子|改形态|这块素材怎么用/.test(textOf(assetsCard)));
+  /**
+   * ── 导出卡片：**选择 / 执行 / 拿文件**三件事分开 ──────────────────────────
+   *
+   * 用户对这一版的原始抱怨：「导出 PNG 是选项卡，导出 JSON 怎么就点击直接操作了？
+   * 而且还不能选择导出位置。而且多个文件应该打 zip」。所以这里逐条钉住：
+   * ① 内容是三只复选框（不是像页签的按钮），执行只有一个「导出」；
+   * ② 倍率只在勾了 PNG 时出现；
+   * ③ 导完给的是**一个 zip 的下载链接**（多产物自动打包），并写清文件落在哪；
+   * ④ 「另存为…」走原生保存框（有才显示），拿到的就是那个 zip。
+   */
   byClass(tree, "SPR_mapEdTopBtn")[1].props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   const exportCard = byClass(tree, "SPR_mapEdCard")[0];
-  check("点「导出」拉出导出卡片（PNG / 存档 JSON / 倍率 / 打开导出目录）", exportCard !== undefined && /导出图片 PNG/.test(textOf(exportCard)) && /导出存档 JSON/.test(textOf(exportCard)) && /倍率/.test(textOf(exportCard)), textOf(exportCard).slice(0, 80));
-  check("导出卡片给定倍率档位 1×–4×", collect(exportCard, (node) => node.type === "option").length === 4);
+  const exportBox = (key) => collect(exportCard, (node) => node.props?.["data-testid"] === `map-export-${key}`)[0];
+  check(
+    "点「导出」拉出导出卡片（三只复选框 + 一个「导出」按钮）",
+    exportCard !== undefined && ["png", "json", "tilesets"].every((key) => exportBox(key) !== undefined) && /导出内容/.test(textOf(exportCard)),
+    textOf(exportCard).slice(0, 80)
+  );
+  check(
+    "★ 不再有「导出图片 PNG / 导出存档 JSON」这种点一下就执行的按钮（选择与执行分开）",
+    !/导出图片 PNG|导出存档 JSON/.test(textOf(exportCard)) && byClass(exportCard, "SPR_btn").filter((node) => textOf(node) === "导出").length === 1,
+    textOf(exportCard).slice(0, 120)
+  );
+  check("默认勾上 PNG 与存档 JSON、不勾素材原图", exportBox("png").props.checked === true && exportBox("json").props.checked === true && exportBox("tilesets").props.checked !== true);
+  check("导出卡片给定倍率档位 1×–4×（只在勾了 PNG 时出现）", collect(exportCard, (node) => node.type === "option").length === 4 && /倍率/.test(textOf(exportCard)));
+  check("卡片上写清「多产物自动打包」这条规则", /自动打成一个 ZIP/.test(textOf(exportCard)), textOf(exportCard).match(/产出[^。]*。/)?.[0] ?? "");
+  check("还没导出过时给空态文案（不是一份假清单）", /还没有导出过/.test(textOf(exportCard)));
+
+  // 取消勾选 PNG：倍率跟着消失（倍率只对 PNG 有意义）
+  exportBox("png").props.onChange({ target: { checked: false } });
+  tree = await renderTree(() => MapModule({ api }));
+  const cardNoPng = byClass(tree, "SPR_mapEdCard")[0];
+  check("取消勾选 PNG 后倍率那一行消失", !/倍率/.test(textOf(cardNoPng)), textOf(cardNoPng).slice(0, 100));
+  // 三只都取消：导出按钮变灰（点了也没东西可导）
+  collect(cardNoPng, (node) => node.props?.["data-testid"] === "map-export-json")[0].props.onChange({ target: { checked: false } });
+  tree = await renderTree(() => MapModule({ api }));
+  const cardNone = byClass(tree, "SPR_mapEdCard")[0];
+  const runButton = collect(cardNone, (node) => node.props?.["data-testid"] === "map-export-run")[0];
+  check("一个都不勾时「导出」是禁用的", runButton !== undefined && runButton.props.disabled === true);
+
+  // 勾回 PNG + JSON，真导一次
+  collect(cardNone, (node) => node.props?.["data-testid"] === "map-export-png")[0].props.onChange({ target: { checked: true } });
+  tree = await renderTree(() => MapModule({ api }));
+  collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.props?.["data-testid"] === "map-export-json")[0].props.onChange({ target: { checked: true } });
+  tree = await renderTree(() => MapModule({ api }));
+  const exportsBefore = apiLog.exports;
+  collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.props?.["data-testid"] === "map-export-run")[0].props.onClick();
+  tree = await renderTree(() => MapModule({ api }));
+  check("点「导出」真的调了一次 runMapExport", apiLog.exports === exportsBefore + 1);
+  check(
+    "提交的 formats 就是勾选的那三项（png/json/tilesets），界面不自作主张",
+    JSON.stringify(apiLog.exportPayloads[apiLog.exportPayloads.length - 1]?.formats) === JSON.stringify({ png: true, json: true, tilesets: false }),
+    JSON.stringify(apiLog.exportPayloads[apiLog.exportPayloads.length - 1])
+  );
+
+  /**
+   * ⚠️ 导出是**宿主后台作业**：`runMapExport` 立刻回 `{started:true}`，文件是几轮之后才落盘的。
+   * 所以先等宿主 `mapBusy` 落下去（不然断言读到的是上一帧的清单，会以「随机失败」的形式报出来）。
+   *
+   * 不能只 `setImmediate` 空转：那是**真写盘**（PNG + zip），要给它真实的挂钟时间，
+   * 而本 harness 把 `setTimeout` 换成了可取消定时器队列 —— 所以用 `node:timers/promises`。
+   *
+   * 落盘之后靠**面板自己的刷新路径**把新清单读回来：`view.busy === true` 期间的
+   * 1.5s 轮询（`tickTimers` 会把它放出来）。这条路径以前在自检里是空的
+   * （`setInterval` 是空实现），也就是「提交完界面不刷新」根本测不到。
+   */
+  for (let tick = 0; tick < 200 && G.mapBusy(projectId); tick++) await delay(25);
+  check("宿主导出作业跑完（自检层面确认真落盘了）", G.mapBusy(projectId) === false);
+  /**
+   * 界面是**异步**看到这件事的：提交那一刻读到的还是「进行中」，得靠 busy 期间的
+   * 1.5s 轮询再读一次才拿到新清单（真机实测：导出约 2s 后文件列表自己冒出来）。
+   * 所以这里按真机的节奏一轮轮放轮询，最多放几轮 —— 一轮就到位反而不正常。
+   */
+  let resultCard = null;
+  let result = null;
+  for (let round = 0; round < 6; round++) {
+    tree = await renderTree(() => MapModule({ api }));
+    resultCard = byClass(tree, "SPR_mapEdCard")[0];
+    result = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-result")[0];
+    if (result !== undefined) break;
+    await tickTimers();
+  }
+  check("导出跑完后界面自己刷新出结果区（busy 期间的轮询真的在跑）", result !== undefined && /最近一次导出：\d+ 个文件/.test(textOf(result)), textOf(resultCard).slice(0, 140));
+  const download = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-download")[0];
+  const viewForExport = await G.mapView(await G.readMapProject(projectId));
+  const zipFile = viewForExport.exportFiles.find((file) => file.endsWith(".zip"));
+  check("★ 主下载按钮指向那个 zip（多产物一次拿走）", download !== undefined && zipFile !== undefined && String(download.props.href).endsWith(zipFile), `${download?.props.href} vs ${zipFile}`);
+  check("下载按钮带 download 属性（点了是存盘，不是开着看）", download !== undefined && download.props.download === zipFile);
+  check("结果区把每个产物都列出来（zip 上标着「打包，含全部内容」）", ["map.png", "map.json"].every((name) => textOf(resultCard).includes(name)) && /打包，含全部内容/.test(textOf(resultCard)), textOf(resultCard).slice(0, 160));
+  const pathLine = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-path")[0];
+  check("★ 写清文件落在哪（导出目录的本机绝对路径，不再「意味不明」）", pathLine !== undefined && textOf(pathLine).includes(viewForExport.exportPath) && textOf(pathLine).includes("export"), textOf(pathLine));
+  const saveAsButton = collect(resultCard, (node) => node.props?.["data-testid"] === "map-export-save-as")[0];
+  check("没有原生保存框时不给「另存为…」按钮，改说明位置由浏览器决定", saveAsButton === undefined && /下载目录/.test(textOf(resultCard)));
+
+  // 「打开导出目录」必须带 target:"export"（不带就打开的是项目根目录 —— 老版本的坏法）
+  apiLog.reveals.length = 0;
+  collect(resultCard, (node) => node.type === "a" || node.type === "button")
+    .find((node) => textOf(node) === "打开导出目录")
+    ?.props.onClick();
+  tree = await renderTree(() => MapModule({ api }));
+  check('点「打开导出目录」带上 target:"export"', apiLog.reveals.length === 1 && apiLog.reveals[0].target === "export", JSON.stringify(apiLog.reveals));
+  /**
+   * 打开的必须是**导出目录本身**（老版本打开的是项目根目录 —— 那里并没有他要的文件）。
+   * 断言宿主解析出来的路径，而不是底部那条提示：提示是瞬时状态，本来就会被下一次
+   * setNotice 顶掉，拿它当断言会随机红。
+   */
+  check("打开的是导出目录本身（不是项目根目录）", apiLog.reveals[0]?.dir === viewForExport.exportPath && apiLog.reveals[0]?.fallback === false, `${apiLog.reveals[0]?.dir} vs ${viewForExport.exportPath}`);
+
+  /**
+   * 「另存为…」：装一个原生保存框的桩。断言的是**先弹框再取字节**这个顺序 ——
+   * 先 await fetch 会把手势耗掉，Chromium 直接抛「Must be handling a user gesture」。
+   */
+  const saved = [];
+  const order = [];
+  windowStub.showSaveFilePicker = async (options) => {
+    order.push("pick");
+    return {
+      name: options.suggestedName,
+      async createWritable() {
+        return {
+          async write(blob) {
+            order.push("write");
+            saved.push({ name: options.suggestedName, size: blob.size });
+          },
+          async close() {
+            order.push("close");
+          }
+        };
+      }
+    };
+  };
+  globalThis.fetch = async (url) => {
+    order.push("fetch");
+    return { ok: true, status: 200, async blob() { return { size: 42, url: String(url) }; } };
+  };
+  tree = await renderTree(() => MapModule({ api }));
+  const saveAsNow = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.props?.["data-testid"] === "map-export-save-as")[0];
+  check("有原生保存框时出现「另存为…」", saveAsNow !== undefined && textOf(saveAsNow).includes("另存为"));
+  saveAsNow?.props.onClick();
+  tree = await renderTree(() => MapModule({ api }));
+  check("「另存为…」先弹保存框、再取字节、最后写盘", order.join(">") === "pick>fetch>write>close", order.join(">"));
+  check("保存框建议的文件名就是那个 zip，写进去的字节数来自下载内容", saved.length === 1 && saved[0].name === zipFile && saved[0].size === 42, JSON.stringify(saved));
+  check("存完给一句「已保存到 …」", /已保存到/.test(textOf(tree)), textOf(tree).slice(0, 120));
+  delete windowStub.showSaveFilePicker;
+  delete globalThis.fetch;
+
   byClass(tree, "SPR_mapEdTopBtn")[1].props.onClick();
   tree = await renderTree(() => MapModule({ api }));
   check("再点一次卡片收起", byClass(tree, "SPR_mapEdCard").length === 0);
@@ -1101,8 +1352,15 @@ try {
    * （增量缓存按视口失效）。
    */
   async function forceFullPlanReload(current) {
-    for (const key of ["single", "single"]) {
-      byTool(current, key)[0].props.onClick();
+    // 单层预览的开关现在在图层卡里（工具格腾给了「标记」），所以先开卡再连点两次。
+    // 卡片是开 / 关同一个按钮：已经开着就别再点，否则会把它关掉。
+    if (collect(current, (node) => node.props?.["data-testid"] === "map-single-layer").length === 0) {
+      collect(current, (node) => node.props?.["data-testid"] === "map-open-layers")[0].props.onClick();
+      current = await renderTree(() => MapModule({ api }));
+    }
+    for (let i = 0; i < 2; i++) {
+      const box = collect(current, (node) => node.props?.["data-testid"] === "map-single-layer")[0];
+      box.props.onChange({ target: { checked: box.props.checked !== true } });
       current = await renderTree(() => MapModule({ api }));
     }
     return current;
@@ -1202,7 +1460,15 @@ try {
   rafQueue.clear();
   check("画面在动时确实注册了动画回调（不是死帧）", pendingTicks.length > 0, `${pendingTicks.length} 个`);
   try {
-    Date.now = () => realNow() + 1500;
+    /**
+     * ⚠️ 拨**恰好一个帧间隔**（`fps = 1` → 1000ms），不能拨 1500ms。
+     *
+     * 面板算的是 `floor(elapsed * fps) % frameCount`：拨 1.5s 时落到哪一帧取决于
+     * `elapsed` 的奇偶 —— 也就是说这条断言隐含依赖「跑到这里时一共花了多少挂钟时间」。
+     * 前面的用例多花半秒（例如新增的导出段要真写盘）就会翻成 frame 0，表现为
+     * 「莫名其妙挂一条与本次改动无关的动画断言」。拨整数个间隔则恒 +1 帧。
+     */
+    Date.now = () => realNow() + 1000;
     for (const tick of pendingTicks) tick();
   } finally {
     Date.now = realNow;
@@ -1472,7 +1738,13 @@ try {
   section("9) 单层预览（layerIds 交给宿主过滤，界面不筛 op）");
   {
     const queriesBefore = apiLog.plans.length;
-    byTool(tree, "single")[0].props.onClick();
+    // 图层卡是开 / 关同一个按钮：已经开着就别再点（不然会关掉）。
+    if (collect(tree, (node) => node.props?.["data-testid"] === "map-single-layer").length === 0) {
+      collect(tree, (node) => node.props?.["data-testid"] === "map-open-layers")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    const singleBox = () => collect(tree, (node) => node.props?.["data-testid"] === "map-single-layer")[0];
+    singleBox().props.onChange({ target: { checked: true } });
     tree = await renderTree(() => MapModule({ api }));
     const singleQueries = apiLog.plans.slice(queriesBefore).filter((query) => Array.isArray(query.layerIds));
     check("打开单层预览后请求计划时带了 layerIds", singleQueries.length > 0, `${singleQueries.length} 次查询带 layerIds`);
@@ -1493,7 +1765,7 @@ try {
       fillRects.some((rect) => rect.fillStyle === "rgb(56,170,68)"),
       [...new Set(fillRects.map((rect) => rect.fillStyle))].slice(0, 4).join(" / ")
     );
-    byTool(tree, "single")[0].props.onClick();
+    singleBox().props.onChange({ target: { checked: false } });
     tree = await renderTree(() => MapModule({ api }));
     const allAgain = apiLog.plans[apiLog.plans.length - 1];
     check("关掉单层预览后 layerIds 不再传（回到全部层）", allAgain.layerIds === undefined, JSON.stringify(allAgain.layerIds));
@@ -1502,8 +1774,8 @@ try {
   // ══ 10. 橡皮不依赖笔刷（新面板重来一次，笔刷恒为 null）════════════════════
   section("10) 橡皮的可用性不依赖笔刷（新挂载的面板，笔刷为 null）");
   {
-    const freshTree = await renderTree(() => MapModule({ api }), { fresh: true });
-    check("新挂载的面板有机会画（视图已加载）", !textOf(freshTree).includes("还没有地图项目"));
+    const freshTree = await freshPanel();
+    check("新挂载的面板有机会画（视图已加载）", !textOf(freshTree).includes("还没有地图项目"), textOf(freshTree).slice(0, 160));
     byTool(freshTree, "eraser")[0].props.onClick();
     let erased = await renderTree(() => MapModule({ api }));
     const before = apiLog.applies.length;
@@ -1549,7 +1821,7 @@ try {
     const emptyTree = await renderTree(() => MapModule({ api: emptyApi }), { fresh: true });
     check("没有项目时给空态而不是崩", textOf(emptyTree).includes("还没有地图项目"), textOf(emptyTree).slice(0, 60));
     check("空态有两个按钮：选一张素材图开始 / 用自带素材试试", /选一张素材图开始/.test(textOf(emptyTree)) && /用自带素材试试/.test(textOf(emptyTree)), textOf(emptyTree).slice(0, 120));
-    check("空态也带着实验性说明弹窗（早退分支不能漏）", collect(emptyTree, (node) => typeof node.type === "function" && node.type.name === "MapExperimentalDialog").length === 1);
+    check("空态也不带实验性弹窗 / 提示条（早退分支同样不能漏）", collect(emptyTree, (node) => typeof node.type === "function" && /Experimental(Dialog|Bar)/.test(node.type.name ?? "")).length === 0 && byClass(emptyTree, "SPR_expTag").length === 0);
     check("空态不出现阶段条 / 自造阶段类名", byClass(emptyTree, "SPR_step").length === 0 && byClass(emptyTree, "SPR_meSteps").length === 0);
     const startBtn = collect(emptyTree, (node) => node.type === "button" && textOf(node).includes("选一张素材图开始"))[0];
     if (startBtn !== undefined) startBtn.props.onClick();
@@ -1557,22 +1829,24 @@ try {
     check("空态文本里不出现 markdown 星号", !textOf(emptyTree).includes("**"));
   }
 
-  // ══ 13. 实验性弹窗 ═══════════════════════════════════════════════════════
-  section("13) 实验性弹窗（能关、文言不复讲旧功能）");
+  // ══ 13. 模块⑥不是实验性功能 ══════════════════════════════════════════════
+  section("13) 模块⑥已转正：角标 / 弹窗 / 常驻提示条三处一个都不能有");
   {
-    const gate = await withFreshHooks(async () => {
-      let closed = false;
-      const raw = await renderTree(() => MapExperimentalDialog({ onClose: () => { closed = true; } }));
-      const expanded = expandComponents(raw);
-      const closer = collect(expanded, (node) => node.props?.["data-testid"] === "rig-experimental-ok")[0] ?? collect(expanded, (node) => node.type === "button" && textOf(node).trim() !== "")[0];
-      if (closer !== undefined) closer.props.onClick({ stopPropagation() {} });
-      return { expanded, closer, closed };
-    });
-    const gateText = textOf(gate.expanded);
-    check("弹窗列出模块六自己的要点（>= 3 条）", byClass(gate.expanded, "SPR_gateBody").length >= 3, `${byClass(gate.expanded, "SPR_gateBody").length} 条`);
-    check("弹窗讲的是「本地跑、不花钱」（模块六的性质）", gateText.includes("全本地") || gateText.includes("不花钱"), gateText.slice(0, 60));
-    check("弹窗内容不再讲旧功能（地形族 / 掩码 / 切分 / 图集 / Tiled / 等距 / chunk / 阶段）", !/地形族|掩码|切分|图集|Tiled|等距|chunk|优先级|阶段/.test(gateText), gateText.slice(0, 80));
-    check("弹窗有关闭按钮，点了会回调 onClose", gate.closer !== undefined && gate.closed === true, `closed=${String(gate.closed)}`);
+    const source = readFileSync(fileURLToPath(new URL("../src/client.ts", import.meta.url)), "utf8");
+    /**
+     * 「转正」这件事必须三处同时改，只改一处的结果是：
+     *   · 只删弹窗 → 页签上还挂着「实验性」角标（用户在入口就看到矛盾信息）；
+     *   · 只删角标 → 进去还弹「仍在开发中」；
+     *   · 留着常驻提示条 → 弹窗关掉之后模块里一直写着「该模块功能尚不完善」。
+     */
+    const modulesBlock = (source.match(/function make_MODULES\(\) \{[\s\S]*?\n\s*\];/) ?? [])[0] ?? "";
+    const mapEntry = (modulesBlock.match(/\{ key: "map"[^}]*\}/) ?? [])[0] ?? "";
+    check("MODULES 里模块⑥的条目存在且没有 experimental: true", mapEntry !== "" && !mapEntry.includes("experimental"), mapEntry);
+    check("源码里不再有 MapExperimentalDialog / MAP_EXPERIMENTAL_POINTS", !source.includes("MapExperimentalDialog") && !source.includes("MAP_EXPERIMENTAL_POINTS"));
+    check("实验性「不再提示」标志里没有 map 这一格（模块④⑤之外不该有）", !/experimentalGateMuted = \{[^}]*\bmap\b/.test(source));
+    check("模块⑤仍然是实验性（别把转正顺手扩大化）", /title: T\("45°地图地块生成"\)[^}]*experimental: true/.test(source));
+    const treeNow = await withFreshHooks(() => renderTree(() => MapModule({ api })));
+    check("面板里没有实验性角标与常驻提示条", byClass(treeNow, "SPR_expTag").length === 0 && byClass(treeNow, "SPR_expBar").length === 0);
   }
 
   // ══ 14. 静态源码约束 ═════════════════════════════════════════════════════
@@ -1704,7 +1978,7 @@ try {
      * 首帧就会缺一块 —— 这条断言就是「预览 = 导出」在挂载那一刻的形态。
      */
     await G.applyMapOps(projectId, [{ kind: "paint", layerId: "l0", cells: [{ r: 25, c: 25, tile: propBrush }] }]);
-    const freshTree = await renderTree(() => MapModule({ api }), { fresh: true });
+    const freshTree = await freshPanel();
     const freshQuery = apiLog.plans[apiLog.plans.length - 1];
     const mountFrame = frameOf();
     const needPlan = await G.mapPlan(projectId, { view: freshQuery.view, have: [] });
@@ -1730,7 +2004,7 @@ try {
   {
     // 前面的用例把 `tree` 留在了别的快照上（第 15 段还单独挂过一次），这里重新挂一份
     // 自洽的面板再点，免得点到过期闭包上（菜单开关会因此「点了没反应」）。
-    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    tree = await freshPanel();
     // ── 新建 / 重命名：自带对话框，不依赖原生 window.prompt ───────────────
     windowStub.__promptCalls.length = 0;
     const projButton = byClass(tree, "SPR_mapEdProj")[0];
@@ -1834,7 +2108,7 @@ try {
   section("17) 地图外不落笔（不折回另一边）+ 图内快速拖动补满");
   {
     // 夹具准备：上一段建过自己的项目（没有素材），这里重挂并切回主夹具，选一支笔
-    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    tree = await freshPanel();
     const mainName17 = (await G.readMapProject(projectId)).name;
     if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
       byClass(tree, "SPR_mapEdProj")[0].props.onClick();
@@ -1916,9 +2190,9 @@ try {
     );
   }
   // ══ 18) 自由尺寸 / 用法说明 / 通过按钮文案 ═══════════════════════════════
-  section("18) 地图尺寸与素材格子都可自由填；用法四项悬停有解释；通过按钮叫「确定」");
+  section("18) 地图尺寸与素材格子都可自由填；用法四项悬停有解释；卡片里没有「确定」按钮（关卡片只有右上角的 ×）");
   {
-    tree = await renderTree(() => MapModule({ api }), { fresh: true });
+    tree = await freshPanel();
     // 上一段建过自己的项目（没有素材），切回主夹具再测尺寸与素材设置
     const mainName18 = (await G.readMapProject(projectId)).name;
     if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
@@ -2003,24 +2277,177 @@ try {
     tree = await renderTree(() => MapModule({ api }));
     check("「恢复默认素材」把它拿回来（同名不会变成两份）", rowCount() === beforeRows && textOf(byClass(tree, "SPR_mapEdCard")[0]).includes(builtinName), `${rowCount()} 张`);
 
-    // ── 通过按钮：普通按钮「确定」，按下即标记 + **收起卡片**，没有「取消确认」这一说
-    const cardBeforeConfirm = byClass(tree, "SPR_mapEdCard")[0];
-    const confirmBtn = collect(cardBeforeConfirm, (node) => node.type === "button" && textOf(node) === "确定")[0];
+    /**
+     * ── 卡片里**不再有「确定」按钮** ────────────────────────────────────────
+     *
+     * 用户原话：「确定键可以删了，和右上角的 x 没区别」。确实 —— 阶段标记在界面上
+     * 不可见（上一版为了去掉「取消确认」把它做成了普通按钮），那颗按钮对用户就只剩
+     * 「关掉卡片」一个作用。现在关卡片只有右上角的 ×；阶段标记仍可由验收流程 /
+     * 对话面（`setMapApproved`）改，界面上唯一还暴露它的是设置卡里那颗**有状态**的
+     * 「整个模块看过了」。
+     */
+    const cardBeforeClose = byClass(tree, "SPR_mapEdCard")[0];
     check(
-      "素材卡的通过按钮叫「确定」（不再是「这步看过了」）",
-      confirmBtn !== undefined && confirmBtn.props["data-on"] === undefined && confirmBtn.props["data-approved"] === undefined,
-      collect(cardBeforeConfirm, (node) => node.type === "button").map((node) => textOf(node)).join(" / ")
+      "卡片里没有「确定」按钮（和右上角的 × 重复的那一颗）",
+      collect(cardBeforeClose, (node) => node.type === "button" && textOf(node) === "确定").length === 0 && !/看过了|已确定|取消确认/.test(textOf(cardBeforeClose)),
+      collect(cardBeforeClose, (node) => node.type === "button").map((node) => textOf(node)).join(" / ")
     );
-    check(
-      "它不是勾选式、也没有「取消确认」（用户：素材根本没有取消确认这一说）",
-      !/✓|已确定|取消确定/.test(textOf(cardBeforeConfirm)),
-      textOf(cardBeforeConfirm).match(/[^\s]*(?:已确定|取消确定|✓)[^\s]*/)?.[0] ?? "（没有这类文案）"
-    );
-    confirmBtn.props.onClick();
+    collect(cardBeforeClose, (node) => node.props?.className === "SPR_mapEdCardClose")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
-    const stages = (await G.readMapProject(projectId)).stages;
-    check("点「确定」标记素材阶段已通过", stages?.assets?.status === "done", JSON.stringify(stages));
-    check("点「确定」之后卡片收起来（回到画布，不是留着一个已确定的按钮）", byClass(tree, "SPR_mapEdCard").length === 0, `还剩 ${byClass(tree, "SPR_mapEdCard").length} 张卡片`);
+    check("右上角的 × 就是关卡片的那条路（按一下收起）", byClass(tree, "SPR_mapEdCard").length === 0, `还剩 ${byClass(tree, "SPR_mapEdCard").length} 张卡片`);
+    // ── 阶段标记：界面上只剩设置卡里那颗有状态的按钮（点了四阶段一起打）
+    byTool(tree, "settings")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const approvalsBefore = apiLog.approvals.length;
+    const seenButton = collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "整个模块看过了")[0];
+    check("阶段标记只剩设置卡的「整个模块看过了」这一颗", seenButton !== undefined);
+    seenButton?.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const sentApproval = apiLog.approvals[apiLog.approvals.length - 1];
+    check(
+      "点它一次把四个阶段一起打过（不带 stage）",
+      apiLog.approvals.length === approvalsBefore + 1 && sentApproval?.approved === true && sentApproval?.stage === undefined,
+      JSON.stringify(sentApproval)
+    );
+  }
+
+  // ══ 19. 图层命名 + 标记层 ════════════════════════════════════════════════
+  section("19) 图层改名 / 换顺序 + 标记层（数字由宿主给，界面只画圆圈）");
+  {
+    tree = await freshPanel();
+    // 前面的用例可能停在自建项目上：按名字切回主夹具（和 18 节同一套走法）。
+    const mainName19 = (await G.readMapProject(projectId)).name;
+    if (byClass(tree, "SPR_mapEdMenuItem").length === 0) {
+      byClass(tree, "SPR_mapEdProj")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    const mainItem19 = byClass(tree, "SPR_mapEdMenuItem").find((node) => textOf(node) === mainName19);
+    if (mainItem19 !== undefined) {
+      mainItem19.props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    /** 图层卡是开 / 关同一个按钮：已经开着就别再点。 */
+    const ensureLayers = async () => {
+      if (collect(tree, (node) => node.props?.["data-testid"] === "map-single-layer").length === 0) {
+        collect(tree, (node) => node.props?.["data-testid"] === "map-open-layers")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+      }
+    };
+    await ensureLayers();
+    const testid = (id) => collect(tree, (node) => node.props?.["data-testid"] === id)[0];
+
+    // ── 图层改名：点名字 → 就地输入 → 失焦提交一条结构补丁 ─────────────────
+    const layerPick = testid("map-layer-pick-0");
+    check("图层卡里列出每一层（点名字就地改）", layerPick !== undefined && textOf(layerPick).length > 0, textOf(layerPick ?? null));
+    const savesBeforeRename = apiLog.saves.length;
+    layerPick.props.onDoubleClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const nameInput = testid("map-layer-name-0");
+    check("双击名字变成输入框（就地改名）", nameInput !== undefined && nameInput.props.autoFocus === true);
+    nameInput.props.onChange({ target: { value: "主地面" } });
+    tree = await renderTree(() => MapModule({ api }));
+    testid("map-layer-name-0").props.onBlur();
+    tree = await renderTree(() => MapModule({ api }));
+    const renamePatch = apiLog.saves[apiLog.saves.length - 1];
+    check("改名提交的是 `layers: [{id,name}]`（宿主的字段，不是界面自己存）", apiLog.saves.length === savesBeforeRename + 1 && Array.isArray(renamePatch?.layers) && renamePatch.layers[0].name === "主地面", JSON.stringify(renamePatch));
+
+    // ── 空名字本地就拦住（不发请求，也不静默成功）────────────────────────
+    const savesBeforeEmpty = apiLog.saves.length;
+    testid("map-layer-pick-0").props.onDoubleClick();
+    tree = await renderTree(() => MapModule({ api }));
+    testid("map-layer-name-0").props.onChange({ target: { value: "   " } });
+    tree = await renderTree(() => MapModule({ api }));
+    testid("map-layer-name-0").props.onBlur();
+    tree = await renderTree(() => MapModule({ api }));
+    check("空名字不发请求，并给出提示（宿主对空名字是静默 no-op）", apiLog.saves.length === savesBeforeEmpty && textOf(tree).includes("图层名字不能为空"), textOf(tree).slice(-60));
+
+    // ── 换顺序 / 删图层：都走 saveMapDoc 的结构键 ────────────────────────
+    const savesBeforeMove = apiLog.saves.length;
+    const upBtn = byClass(tree, "SPR_mapEdMiniBtn").find((node) => node.props.title === "上移一层" && node.props.disabled !== true);
+    upBtn.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const movePatch = apiLog.saves[apiLog.saves.length - 1];
+    check("「上移一层」提交 moveLayer（宿主换顺序）", apiLog.saves.length === savesBeforeMove + 1 && movePatch?.moveLayer !== undefined, JSON.stringify(movePatch));
+
+    // ── 标记：宿主侧先摆两个（一个有名、一个空名），再整份重挂 ─────────────
+    await G.applyMapOps(projectId, [
+      { kind: "marker", op: "add", r: 3, c: 3, name: "宝箱" },
+      { kind: "marker", op: "add", r: 5, c: 6 }
+    ]);
+    tree = await freshPanel();
+    await ensureLayers();
+    const markerRows = [1, 2].map((n) => testid(`map-marker-${n}`));
+    check("标记列表按编号列出（第 1 / 第 2 个）", markerRows.every((row) => row !== undefined));
+    check("标记行上是编号圆点 + 坐标", markerRows[0] !== undefined && textOf(byClass(markerRows[0], "SPR_mapEdMarkerDot")[0] ?? null) === "1" && textOf(markerRows[0]).includes("(3,3)"), textOf(markerRows[0] ?? null));
+    const markerInputs = markerRows.map((row) => collect(row, (node) => node.props?.className === "SPR_mapEdMarkerName")[0]);
+    check("名字进输入框（有名字的显示名字，没名字的用「标记 N」占位）", markerInputs[0]?.props.value === "宝箱" && markerInputs[1]?.props.value === "" && markerInputs[1]?.props.placeholder === "标记 2", JSON.stringify(markerInputs.map((node) => node?.props?.value)));
+
+    // ── 改名字：一条 rename op（不占格、不脏图）──────────────────────────
+    const appliesBeforeRename = apiLog.applies.length;
+    markerInputs[1].props.onFocus();
+    tree = await renderTree(() => MapModule({ api }));
+    const secondInput = collect(testid("map-marker-2"), (node) => node.props?.className === "SPR_mapEdMarkerName")[0];
+    secondInput.props.onChange({ target: { value: "出口" } });
+    tree = await renderTree(() => MapModule({ api }));
+    collect(testid("map-marker-2"), (node) => node.props?.className === "SPR_mapEdMarkerName")[0].props.onBlur();
+    tree = await renderTree(() => MapModule({ api }));
+    const renameOp = apiLog.applies.slice(appliesBeforeRename).flatMap((entry) => entry.ops ?? []).find((op) => op.kind === "marker" && op.op === "rename");
+    check("标记改名提交 `{kind:'marker', op:'rename'}`（宿主负责落盘）", renameOp !== undefined && renameOp.name === "出口", JSON.stringify(renameOp ?? null));
+
+    // ── 画布：圆圈与数字来自宿主的计划 ───────────────────────────────────
+    tree = await freshPanel();
+    const lastPlanQuery = apiLog.plans[apiLog.plans.length - 1];
+    const hostMarkPlan = await G.mapPlan(projectId, { view: lastPlanQuery.view, have: [], layerIds: lastPlanQuery.layerIds });
+    const hostMarkers = hostMarkPlan.markers.slice().sort((a, b) => a.n - b.n);
+    check("宿主计划里带着两个标记（圆心 / 半径 / 字号 / 数字）", hostMarkers.length === 2 && hostMarkers.every((marker) => marker.radius > 0 && marker.font > 0), JSON.stringify(hostMarkers));
+    check("画布画了两个圆圈，圆心与半径逐项等于宿主给的那份", arcs.length === 2 && arcs.every((arc, index) => arc.x === hostMarkers[index].x && arc.y === hostMarkers[index].y && arc.radius === hostMarkers[index].radius), JSON.stringify(arcs));
+    check("圆圈里的数字是宿主给的编号（界面不自己数）", texts.map((entry) => entry.text).join(",") === hostMarkers.map((marker) => String(marker.n)).join(","), JSON.stringify(texts.map((entry) => entry.text)));
+    check("数字的字号来自计划（字体串里带那个字号）", texts.every((entry, index) => entry.font.includes(` ${hostMarkers[index].font}px`) && entry.font.startsWith("700 ")), JSON.stringify(texts.map((entry) => entry.font)));
+    check("圆圈有描边（不是一坨纯色）", arcs.every((arc) => arc.stroked === true && arc.strokeStyle === "#f0c040"), JSON.stringify(arcs.map((arc) => [arc.stroked, arc.strokeStyle])));
+    check("标记画在地块**之后**（压在地图上，不会被后画的块盖住）", callOrder.lastIndexOf("drawImage") < callOrder.indexOf("arc"), `最后一个 drawImage @${callOrder.lastIndexOf("drawImage")}，第一个 arc @${callOrder.indexOf("arc")}`);
+
+    // ── 标记工具：点空格放下、右键删掉、点已有的是选中 ────────────────────
+    byTool(tree, "marker")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    /** 每次交互后都重新取画布节点：手势闭包里的 `view` 会被上一次操作留在旧快照上。 */
+    const tap = async (button, at, pointerId) => {
+      const node = collect(tree, (item) => item.props?.["data-testid"] === "map-canvas")[0];
+      node.props.onPointerDown({ clientX: at.x, clientY: at.y, button, pointerId });
+      await tickTimers();
+      node.props.onPointerUp({ pointerId });
+      tree = await renderTree(() => MapModule({ api }));
+    };
+    const markerOpsSince = (from) => apiLog.applies.slice(from).flatMap((entry) => entry.ops ?? []).filter((op) => op.kind === "marker");
+
+    const freeCell = { r: 7, c: 2 };
+    const appliesBeforeAdd = apiLog.applies.length;
+    await tap(0, clientOf(freeCell.r, freeCell.c), 31);
+    const addOp = markerOpsSince(appliesBeforeAdd).find((op) => op.op === "add");
+    check("标记工具：左键点空格提交 `{kind:'marker', op:'add'}`（编号由宿主发）", addOp !== undefined && addOp.r === freeCell.r && addOp.c === freeCell.c, JSON.stringify(addOp ?? null));
+
+    const boxAt = clientOf(3, 3);
+    const appliesBeforePick = apiLog.applies.length;
+    await tap(0, boxAt, 32);
+    check("标记工具：点已有标记只是**选中**它（不重复放置）", markerOpsSince(appliesBeforePick).length === 0, `提交了 ${markerOpsSince(appliesBeforePick).length} 条标记 op`);
+    await ensureLayers();
+    check("选中之后图层卡里那一行高亮（data-on）", collect(tree, (item) => item.props?.["data-on"] === "true" && typeof item.props?.["data-testid"] === "string" && item.props["data-testid"].startsWith("map-marker-")).length === 1, "高亮行数");
+
+    const appliesBeforeRemove = apiLog.applies.length;
+    await tap(2, boxAt, 33);
+    const removeOp = markerOpsSince(appliesBeforeRemove).find((op) => op.op === "remove");
+    check("标记工具：右键删掉这一格的标记", removeOp !== undefined && typeof removeOp.id === "string", JSON.stringify(removeOp ?? null));
+
+    // ── 反向验证：计划里不带标记时，画布一个圈都不许画 ────────────────────
+    // （证明圆心与数字来自**宿主计划**，不是界面自己数 `view.markers` 推出来的。）
+    const apiNoMarkers = {
+      ...api,
+      mapPlan: async (payload) => {
+        const result = await api.mapPlan(payload);
+        return { ...result, markers: [] };
+      }
+    };
+    tree = await freshPanel(apiNoMarkers);
+    check("反向验证：视图里有标记但计划没带 → 画布一个圈都不画", arcs.length === 0, `${arcs.length} 个圈`);
   }
 
 } finally {
@@ -2033,3 +2460,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.log(`  ✗ ${failure}`);
   process.exit(1);
 }
+

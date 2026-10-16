@@ -10,6 +10,7 @@
  */
 
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { inflateRawSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,6 +32,56 @@ function check(name, ok, detail) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 极简 ZIP 读取器（**只给自检用**）。
+ *
+ * 只断言「zip 存在、字节数不小」是不够的：中央目录偏移写错、CRC 写错、
+ * deflate 流被截断时那种断言照样通过。这里走真解包：中央目录 → 本地头 →
+ * inflateRaw → 校验长度与 CRC，于是「打包出来的图片包能解开」才是真的。
+ */
+const ZIP_CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+function zipCrc32(buffer) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buffer.length; i++) c = ZIP_CRC_TABLE[(c ^ buffer[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function readZip(buffer) {
+  const EOCD = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (EOCD < 0) throw new Error("不是 zip：找不到 EOCD");
+  const count = buffer.readUInt16LE(EOCD + 10);
+  let offset = buffer.readUInt32LE(EOCD + 16);
+  const out = new Map();
+  for (let i = 0; i < count; i++) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error("中央目录签名不对");
+    const method = buffer.readUInt16LE(offset + 10);
+    const crc = buffer.readUInt32LE(offset + 16);
+    const compSize = buffer.readUInt32LE(offset + 20);
+    const rawSize = buffer.readUInt32LE(offset + 24);
+    const nameLen = buffer.readUInt16LE(offset + 28);
+    const extraLen = buffer.readUInt16LE(offset + 30);
+    const commentLen = buffer.readUInt16LE(offset + 32);
+    const localAt = buffer.readUInt32LE(offset + 42);
+    const name = buffer.toString("utf8", offset + 46, offset + 46 + nameLen);
+    if (buffer.readUInt32LE(localAt) !== 0x04034b50) throw new Error(`本地头签名不对：${name}`);
+    const start = localAt + 30 + buffer.readUInt16LE(localAt + 26) + buffer.readUInt16LE(localAt + 28);
+    const payload = buffer.subarray(start, start + compSize);
+    const data = method === 0 ? Buffer.from(payload) : inflateRawSync(payload);
+    if (data.length !== rawSize) throw new Error(`解出来的长度不对：${name}`);
+    if (zipCrc32(data) !== crc) throw new Error(`CRC 不对：${name}`);
+    out.set(name, data);
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
 
 async function main() {
   console.log(`临时 DSH_HOME: ${HOME}\n`);
@@ -65,9 +116,11 @@ async function main() {
 
   const invocations = captured.manifest?.invocations ?? [];
   // 方法数是**清单完整性**的锚点：新增 / 删除远程方法时必须同步改这个数字。
-  // 模块六重做时删了 4 个（族 / 多地图）加了 2 个（一键生成 / 内置素材），132 → 130；
-  // 本地 ComfyUI 视频后端新增 testComfy，130 → 131。
-  check("manifest 方法数为 131（新增远程方法时同步改这个数）", invocations.length === 131, `实际 ${invocations.length}`);
+  // 模块六重做时删了 4 个（族 / 多地图）加了 2 个（一键生成 / 内置素材），132 → 130。
+  // 八方向图加「本地自选视频」与「中间图片打包」两个方法，130 → 132。
+  // 生图后端加「自定义后端连接测试」（testCustomImage），132 → 133；
+  // 本地 ComfyUI 视频后端新增 testComfy，133 → 134。
+  check("manifest 方法数为 134（新增远程方法时同步改这个数）", invocations.length === 134, `实际 ${invocations.length}`);
   const ids = new Set(invocations.map((i) => i.id));
   check("方法 id 唯一", ids.size === invocations.length);
   check("所有方法都声明在 gameStudio 服务下", invocations.every((i) => i.service === "gameStudio" && i.namespace === "gameStudio"));
@@ -268,6 +321,46 @@ async function main() {
   check("不带 Key 的保存不会清空 Key", kept.arkApiKeySet === true);
   const cleared = await studio.saveConfig({ clearArkApiKey: true });
   check("clearArkApiKey 能清空 Key", cleared.arkApiKeySet === false);
+
+  // ── 2c. 生图后端：ark / custom 两条路走真实网关 ───────────────────────
+  // 只在这里验「配置能不能存进去、能不能读出来、脱敏对不对、阻塞判断是不是宿主算的」；
+  // 三种协议本身的请求细节由 scripts/verify-custom-image.mjs 打本地假服务端覆盖。
+  check("默认生图后端是火山方舟", initial.imageProvider === "ark", String(initial.imageProvider));
+  check("配置视图给出三种自定义协议", Array.isArray(initial.customProtocols) && initial.customProtocols.map((entry) => entry.id).join(",") === "openai,comfyui,sdwebui", JSON.stringify((initial.customProtocols ?? []).map((entry) => entry.id)));
+  check("每个协议都带默认地址与端点说明", (initial.customProtocols ?? []).every((entry) => typeof entry.baseUrl === "string" && entry.baseUrl !== "" && typeof entry.hint === "string" && entry.hint !== ""));
+  // 「当前后端」与「自定义那一组」是**两份**阻塞：前者决定能不能开跑，
+  // 后者决定自定义那一组的「测试连接」按钮能不能点 —— 两组互不牵连，
+  // 否则没配火山方舟 Key 的用户连自己的本地服务都测不了。
+  check("默认按火山方舟判定当前后端（没有 Key 就拦）", /火山方舟 API Key/.test(String(initial.imageProviderBlocker)), String(initial.imageProviderBlocker));
+  check("默认的自定义那一组是齐的（有默认地址与模型名）", initial.customImageBlocker === null, String(initial.customImageBlocker));
+  check("摘要写明当前生效的后端", typeof initial.imageProviderSummary === "string" && initial.imageProviderSummary.includes("火山方舟"), String(initial.imageProviderSummary));
+
+  const customSaved = await studio.saveConfig({
+    imageProvider: "custom",
+    customProtocol: "comfyui",
+    customBaseUrl: "http://127.0.0.1:8188",
+    customApiKey: "local-secret-9",
+    customModel: "sdxl.safetensors",
+    customWorkflow: '{"1":{"class_type":"KSampler","inputs":{"seed":"{{seed}}"}}}'
+  });
+  check("保存后当前后端是自定义", customSaved.imageProvider === "custom");
+  check("自定义 Key 只回传尾号提示", customSaved.customApiKeyHint === "…et-9", customSaved.customApiKeyHint);
+  check("返回体里没有自定义 Key 明文", JSON.stringify(customSaved).includes("local-secret-9") === false);
+  check("配好之后宿主判定可以开跑", customSaved.imageProviderBlocker === null, String(customSaved.imageProviderBlocker));
+  check(
+    "选了自定义后端后，缺火山方舟 Key 不再阻塞（两套配置互不牵连）",
+    customSaved.arkApiKeySet === false && customSaved.imageProviderBlocker === null
+  );
+  check("摘要带上协议与地址", customSaved.imageProviderSummary.includes("ComfyUI API") && customSaved.imageProviderSummary.includes("127.0.0.1:8188"), customSaved.imageProviderSummary);
+  await studio.saveConfig({ customWorkflow: "" });
+  check(
+    "ComfyUI 没填工作流时宿主给出阻塞说明（界面与工具面共用同一份判断）",
+    /工作流 JSON/.test(String((await studio.getConfig()).imageProviderBlocker)),
+    String((await studio.getConfig()).imageProviderBlocker)
+  );
+  const backToArk = await studio.saveConfig({ imageProvider: "ark", customWorkflow: "", customApiKey: "" });
+  check("切回火山方舟后阻塞回到 Key 那一句", /火山方舟 API Key/.test(String(backToArk.imageProviderBlocker)), String(backToArk.imageProviderBlocker));
+  check("清空自定义 Key 生效", backToArk.customApiKeySet === false);
 
   // ── 3. 项目 CRUD ──────────────────────────────────────────────────────
   console.log("3) 项目增删改查");
@@ -1136,6 +1229,239 @@ async function main() {
       await new Promise((resolve) => turnGateway.close(resolve));
       await studio.saveConfig({ minimaxBaseUrl: "https://api.minimaxi.com", clearMinimaxApiKey: true });
     }
+  }
+
+  // ── 9d. 本地自选视频 + 中间图片打包 ───────────────────────────────────
+  //
+  // 两处「需要生成视频」的地方（转圈视频、某个方向的行走视频）都允许直接用一段
+  // 本地文件顶替远程生成。产物必须与远端路径**完全同形**，而且旧产物必须一起作废
+  // ——留着上一段视频抽出来的帧，后面几步会拿着别的动作去合成，界面看着一切正常。
+  console.log("9d) 本地自选视频与中间图片打包（不联网、不花钱）");
+  {
+    const localFile = join(HOME, "local-walk.mp4");
+    await ffmpeg([
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "color=c=0x00c040:s=160x160:d=2:r=12",
+      "-f", "lavfi", "-i", "color=c=0xff8800:s=30x70:d=2:r=12",
+      "-filter_complex", "[0][1]overlay=x='20+90*t/2':y='45'",
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+      localFile
+    ]);
+    const localBytes = await readFile(localFile);
+    const localBase64 = localBytes.toString("base64");
+
+    // 先把这个方向的下游都置成 ready：导入本地视频必须把它们全部作废。
+    // 另一个方向（back）也一并置成 ready，用来验证「只动作点名的那一格」。
+    await patchProject(projectId, (project) => {
+      project.videos.front = { status: "ready", file: "videos/front.mp4", approved: true };
+      project.frames.front = {
+        status: "ready",
+        frames: ["frames/front/f00.png"],
+        keyed: ["keyed/front/f00.png"],
+        approved: true,
+        raw: "frames/front/raw.bin"
+      };
+      project.videos.back = { status: "ready", file: "videos/back.mp4", approved: true };
+      project.frames.back = { status: "ready", frames: ["frames/back/f00.png"], keyed: [], approved: true };
+      project.sheet = { status: "ready", file: "out/sheet.png", approved: true };
+    });
+
+    await expectThrow(
+      "本地视频：认不出容器的直接拒绝",
+      () => studio.uploadVideo({ projectId, key: "front", name: "x.mp4", data: png.toString("base64") }),
+      "无法识别的视频格式"
+    );
+    await expectThrow(
+      "本地视频：未知槽位直接拒绝",
+      () => studio.uploadVideo({ projectId, key: "frontt", name: "x.mp4", data: localBase64 }),
+      "未知方位"
+    );
+    await expectThrow(
+      "本地视频：项目不存在时报错",
+      () => studio.uploadVideo({ projectId: "p-not-exist", key: "front", name: "x.mp4", data: localBase64 }),
+      "项目不存在"
+    );
+
+    const imported = await studio.uploadVideo({ projectId, key: "front", name: "我的行走视频.mp4", data: localBase64 });
+    check(
+      "本地视频落到方向槽位（原名只当展示，落盘名按容器规范）",
+      imported.key === "front" && imported.file === "videos/front.mp4" && imported.bytes === localBytes.length,
+      JSON.stringify(imported)
+    );
+    const afterImport = await studio.getProject({ projectId });
+    check(
+      "节点与远端生成同形（status / file / approved）",
+      afterImport.videos.front.status === "ready" &&
+        afterImport.videos.front.file === "videos/front.mp4" &&
+        afterImport.videos.front.approved === false,
+      JSON.stringify(afterImport.videos.front)
+    );
+    check(
+      "标出来路是本地（origin=local）并记住原文件名",
+      afterImport.videos.front.origin === "local" && afterImport.videos.front.originalName === "我的行走视频.mp4",
+      `${afterImport.videos.front.origin} / ${afterImport.videos.front.originalName}`
+    );
+    check(
+      "旧的序列帧与整图一并作废（否则整图会混进上一段视频的帧）",
+      afterImport.frames.front.status === "empty" &&
+        afterImport.frames.front.frames.length === 0 &&
+        afterImport.frames.front.raw === undefined &&
+        afterImport.sheet.status === "empty",
+      `${afterImport.frames.front.status} / ${afterImport.frames.front.frames.length} 帧 / sheet=${afterImport.sheet.status}`
+    );
+    check(
+      "未点名的方向不受影响",
+      afterImport.videos.back.status === "ready" && afterImport.frames.back.status === "ready",
+      `${afterImport.videos.back.status} / ${afterImport.frames.back.status}`
+    );
+    check(
+      "导入写进运行日志（可追溯到用了哪个文件）",
+      afterImport.log.some((entry) => /已选用本地视频作为「南 · 正对镜头」的行走视频/.test(entry.message))
+    );
+
+    // 转圈视频：导入后必须**自动**抽候选帧并切出八个方向（与远端路径一致），
+    // 否则时间轴是空的，用户还得自己找按钮。
+    //
+    // 顺便覆盖「此刻正好有个远端任务在跑」：必须摘掉 taskId，否则它稍后拿到结果
+    // 会把本地视频直接覆盖掉（本地文件没了，任务号还指着远端）。
+    await patchProject(projectId, (project) => {
+      project.turn.video = { status: "running", taskId: "remote-task-in-flight", approved: false };
+    });
+    const turnImport = await studio.uploadVideo({ projectId, key: "turn", name: "turn-local.mp4", data: localBase64 });
+    check(
+      "本地视频落到转圈槽位，并自动开始抽候选帧",
+      turnImport.file === "videos/turn.mp4" && turnImport.extractStarted === true,
+      JSON.stringify(turnImport)
+    );
+    const afterTurnImport = await studio.getProject({ projectId });
+    check(
+      "远端在跑的任务号被摘掉（避免它回头覆盖本地视频）",
+      afterTurnImport.turn.video.taskId === undefined && afterTurnImport.turn.video.status === "ready",
+      JSON.stringify({ status: afterTurnImport.turn.video.status, taskId: afterTurnImport.turn.video.taskId })
+    );
+    check(
+      "转圈视频也标了 origin=local，且不再指向一张无关的首帧",
+      afterTurnImport.turn.video.origin === "local" && afterTurnImport.turn.video.firstFrame === undefined,
+      `${afterTurnImport.turn.video.origin} / ${afterTurnImport.turn.video.firstFrame ?? "(无)"}`
+    );
+    check(
+      "丢弃远端任务的处置写进了日志",
+      afterTurnImport.log.some((entry) => /原先的转圈视频远端任务/.test(entry.message))
+    );
+
+    let turnLocal = null;
+    for (let i = 0; i < 60; i++) {
+      await sleep(500);
+      const snapshot = await studio.getProject({ projectId });
+      const busy = (snapshot.jobs ?? []).some((job) => job.key === "turn:frames");
+      if (!busy && (snapshot.turn.frames.status === "ready" || snapshot.turn.frames.status === "error")) {
+        turnLocal = snapshot;
+        break;
+      }
+    }
+    check(
+      "本地转圈视频的候选帧真的抽出来了（ffmpeg 跑得动这段本地文件）",
+      turnLocal?.turn.frames.status === "ready",
+      `${turnLocal?.turn.frames.status ?? "超时"} ${turnLocal?.turn.frames.error ?? ""}`
+    );
+    check(
+      "八个方向图都由这段本地视频切出来",
+      Object.values(turnLocal?.images ?? {}).every((node) => node.status === "ready" && node.file.startsWith("images/")),
+      JSON.stringify(Object.fromEntries(Object.entries(turnLocal?.images ?? {}).map(([k, v]) => [k, v.status])))
+    );
+
+    // ── 中间图片打包 ────────────────────────────────────────────────────
+    //
+    // 先把整条本地链路跑到位（抽帧 → 抠像合成），包里才会同时出现
+    // 「抽出来的绿幕帧」和「抠好的帧」——否则这个断言只是在测一个空目录。
+    const waitFor = async (fn, timeoutMs = 30000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const value = await fn();
+        if (value !== undefined && value !== null) return value;
+        await sleep(500);
+      }
+      return null;
+    };
+    // 转圈导入把八个方向的下游都作废了（切帧必然换朝向），所以这里补一段方向视频。
+    await studio.uploadVideo({ projectId, key: "front", name: "walk-again.mp4", data: localBase64 });
+    await studio.runFrames({ projectId, keys: ["front"] });
+    const framesSettled = await waitFor(async () => {
+      const snapshot = await studio.getProject({ projectId });
+      const busy = (snapshot.jobs ?? []).some((job) => job.key === "frames:extract");
+      return !busy && snapshot.frames.front.status === "ready" ? snapshot : null;
+    });
+    check("本地视频能被正常抽帧（第 3 步照旧）", framesSettled?.frames.front.status === "ready", String(framesSettled?.frames.front.status ?? "超时"));
+    await studio.compose({ projectId });
+    const composed = await waitFor(async () => {
+      const snapshot = await studio.getProject({ projectId });
+      return snapshot.sheet.status === "ready" ? snapshot : null;
+    });
+    check("本地视频的帧能合成整图", composed?.sheet.status === "ready", String(composed?.sheet.status ?? "超时"));
+
+    const freshProject = await studio.createProject({ name: "空项目·图片打包" });
+    await expectThrow(
+      "一张图都没有时拒绝打包（并说清先去做什么）",
+      () => studio.exportImages({ projectId: freshProject.projectId }),
+      "还没有任何图片可保存"
+    );
+
+    const pack = await studio.exportImages({ projectId });
+    check(
+      "打包返回相对路径 / 张数 / 字节数",
+      /^out\/.+\.zip$/.test(pack.file ?? "") && Number(pack.count) > 8 && Number(pack.bytes) > 0,
+      JSON.stringify({ file: pack.file, count: pack.count, bytes: pack.bytes })
+    );
+    check("打包结果自带 assetBase（界面据此直接下载）", /\/assets\/.+\/$/.test(pack.assetBase ?? ""), String(pack.assetBase));
+    const zipBytes = await readFile(join(projectRoot, pack.file));
+    const entries = readZip(zipBytes);
+    check("zip 能真解开（中央目录 / 长度 / CRC 都对）", entries.size === pack.count, `${entries.size} 个条目 vs 报告 ${pack.count}`);
+    // 包里保留项目内的相对路径，解压出来还能跟项目目录对上号。
+    const names = [...entries.keys()];
+    check(
+      "八方向绿幕图在包里（images/<方向>.png）",
+      ["front", "back", "left", "right"].every((key) => entries.has(`images/${key}.png`)),
+      names.filter((name) => name.startsWith("images/")).join(",")
+    );
+    check(
+      "转圈候选帧与条带在包里（turn/…）",
+      entries.has("turn/strip.png") && entries.has("turn/frames/f00.png"),
+      names.filter((name) => name.startsWith("turn/")).slice(0, 4).join(",")
+    );
+    check(
+      "抽出来的绿幕帧在包里（frames/…）",
+      entries.has("frames/front/f00.png"),
+      names.filter((name) => name.startsWith("frames/")).slice(0, 3).join(",")
+    );
+    check(
+      "抠完绿幕的帧在包里（keyed/…）",
+      entries.has("keyed/front/f00.png"),
+      names.filter((name) => name.startsWith("keyed/")).slice(0, 3).join(",")
+    );
+    check(
+      "合成整图也在包里（out/sheet.png）",
+      entries.has("out/sheet.png"),
+      names.filter((name) => name.startsWith("out/")).join(",")
+    );
+    check(
+      "包里的图是真 PNG（前 8 字节是 PNG 魔数）",
+      [...entries.values()].every((data) => data.length > 8 && data.subarray(0, 4).toString("hex") === "89504e47"),
+      `${entries.size} 个条目`
+    );
+    // 资源路由必须能取到这个 zip（白名单只比第一段路径，`out` 在名单里）：
+    // 漏了就是「点了保存，浏览器下到一个 403 页面」，而且界面只表现为「下载没反应」。
+    {
+      const zipServer = createServer((req, res) => void handler(req, res));
+      await new Promise((resolve) => zipServer.listen(0, "127.0.0.1", resolve));
+      const zipPort = zipServer.address().port;
+      const zipUrl = `http://127.0.0.1:${zipPort}/dsh-game-material-master/assets/${projectId}/${pack.file}`;
+      const zipResponse = await fetch(zipUrl);
+      const served = Buffer.from(await zipResponse.arrayBuffer());
+      check("打包好的 zip 能经资源路由下载（200）", zipResponse.status === 200, `${zipResponse.status}`);
+      check("路由给的字节与磁盘一致", served.length === zipBytes.length && served.subarray(0, 4).toString("hex") === "504b0304", `${served.length} vs ${zipBytes.length}`);
+      await new Promise((resolve) => zipServer.close(resolve));
+    }
+    check("打包写进运行日志", (await studio.getProject({ projectId })).log.some((entry) => /已打包 .* 张图片/.test(entry.message)));
   }
 
   // ── 10. 图片生成模块（本地链路，不调 API）────────────────────────────

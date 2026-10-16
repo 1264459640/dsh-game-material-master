@@ -32,7 +32,8 @@ import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, join } from "node:path";
-import { generateImage, ArkError } from "./ark.js";
+import { ArkError } from "./ark.js";
+import { assertImageProviderReady, generateImageWithProvider, imageModelOf, imageSizeOf, imageWatermarkOf } from "./imageprovider.js";
 import { loadConfig, tileJobsRoot } from "./config.js";
 import { messageOf, readJson, writeJsonAtomic, appendJobLog, sweepTempFiles, type JobLogEntry } from "./jsonio.js";
 import {
@@ -855,7 +856,7 @@ export async function runGenerateStage(projectId: string, options: GenerateOptio
   const project = await readTileProject(projectId);
   if (project === undefined) throw new Error(`项目不存在：${projectId}`);
   const config = await loadConfig();
-  if (config.arkApiKey.trim() === "") throw new Error("尚未配置火山方舟 API Key（设置 → 游戏素材大师）");
+  assertImageProviderReady(config);
 
   const selected = options.key !== undefined
     ? project.items.filter((item) => item.key === options.key)
@@ -967,15 +968,11 @@ async function generateOne(
   }
 
   const prompt = buildTilePrompt(item, project.style);
-  const result = await generateImage({
-    baseUrl: config.arkBaseUrl,
-    apiKey: config.arkApiKey,
-    model: config.arkModel,
+  const result = await generateImageWithProvider({
     prompt,
     images,
-    size: config.arkSize,
-    watermark: config.arkWatermark,
-    timeoutMs: config.arkTimeoutMs
+    size: imageSizeOf(config),
+    watermark: imageWatermarkOf(config)
   });
 
   const ext = sniffImageExt(result.bytes);

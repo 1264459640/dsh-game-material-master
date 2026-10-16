@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import { appendJobLog } from "./jsonio.js";
-import { ARK_MODEL_PRESETS, DEFAULT_CONFIG, ROW_ORDER_VERSION, MINIMAX_HOST_PRESETS, MINIMAX_MODEL_PRESETS, loadConfig, maskConfig, migrateLegacyDataRoot, projectsRoot, saveConfig } from "./config.js";
+import { ARK_MODEL_PRESETS, CUSTOM_PROTOCOLS, CUSTOM_PROTOCOL_DEFAULTS, DEFAULT_CONFIG, ROW_ORDER_VERSION, MINIMAX_HOST_PRESETS, MINIMAX_MODEL_PRESETS, loadConfig, maskConfig, migrateLegacyDataRoot, projectsRoot, saveConfig } from "./config.js";
 import {
   DEFAULT_ROW_ORDER,
   DIRECTION_KEYS,
@@ -29,6 +29,7 @@ import {
 } from "./directions.js";
 import { checkFfmpeg } from "./media.js";
 import { testArk } from "./ark.js";
+import { customImageBlocker, imageModelOf, imageProviderBlocker, imageProviderSummary, isCustomProvider, testCustomImage } from "./imageprovider.js";
 import {
   detectComfyBindings,
   fetchComfyObjectInfo,
@@ -54,6 +55,8 @@ import {
   clearVideos,
   disposePipeline,
   ensurePoller,
+  exportImages,
+  importLocalVideo,
   listJobs,
   pollVideosOnce,
   resetFramePicks,
@@ -219,6 +222,9 @@ const MIME_TYPES = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".json": "application/json; charset=utf-8",
+  // 模块六的导出包：`.zip` 少了这一条会掉进 octet-stream —— 浏览器照样存得下来，
+  // 但少了这个类型，某些浏览器/壳会把「另存为」的默认扩展名写错。
+  ".zip": "application/zip",
   // 骨骼动画的自包含预览是一整个 HTML 文件，必须用 text/html 才能被 iframe 渲染。
   ".html": "text/html; charset=utf-8",
   ".atlas": "text/plain; charset=utf-8"
@@ -289,6 +295,24 @@ export class GameStudioGateway extends TypertRemoteService {
       rowOrder: [...config.rowOrder],
       defaults: { ...DEFAULT_CONFIG },
       arkModels: ARK_MODEL_PRESETS,
+      /**
+       * 生图后端的呈现材料。
+       *
+       * `imageProviderBlocker` 由宿主算好回传，界面与**对话工具面**共用同一份判断
+       * （tools.ts 的 intake 也读它）：两边各写一套「配好了没」的规则，
+       * 迟早会出现「界面说没配好、模型说配好了」这种互相矛盾的提示。
+       */
+      customProtocols: CUSTOM_PROTOCOLS.map((key) => ({
+        id: key,
+        label: CUSTOM_PROTOCOL_DEFAULTS[key].label,
+        baseUrl: CUSTOM_PROTOCOL_DEFAULTS[key].baseUrl,
+        hint: CUSTOM_PROTOCOL_DEFAULTS[key].hint
+      })),
+      imageProviderSummary: imageProviderSummary(config),
+      /** 当前生效的生图模型（模块里那个只读展示位用它，比 summary 短）。 */
+      imageModel: imageModelOf(config),
+      imageProviderBlocker: imageProviderBlocker(config) ?? null,
+      customImageBlocker: customImageBlocker(config) ?? null,
       minimaxModels: MINIMAX_MODEL_PRESETS,
       minimaxHosts: MINIMAX_HOST_PRESETS,
       // 「优云智算版 H3」由用户在模型下拉里显式选择，选中后网关地址/路径/档位全部跟着它走。
@@ -314,13 +338,26 @@ export class GameStudioGateway extends TypertRemoteService {
   }
   /**
   * 保存配置。
-  * 约定：`arkApiKey` / `minimaxApiKey` **只有用户确实改了才带**——不带就是保持原值，
-  * 带空串才是清除。这样界面就不必把明文 key 回填到输入框里。
+  * 约定：`arkApiKey` / `minimaxApiKey` / `customApiKey` **只有用户确实改了才带**——
+  * 不带就是保持原值，带空串才是清除。这样界面就不必把明文 key 回填到输入框里。
   */
   async saveConfig(payload) {
     const input = asRecord(payload);
     const patch: any = {};
     const directKeys = [
+      "imageProvider",
+      "customProtocol",
+      "customBaseUrl",
+      "customModel",
+      "customSize",
+      "customNegativePrompt",
+      "customSteps",
+      "customCfgScale",
+      "customSampler",
+      "customDenoising",
+      "customSeed",
+      "customWorkflow",
+      "customTimeoutMs",
       "arkBaseUrl",
       "arkModel",
       "arkSize",
@@ -372,10 +409,14 @@ export class GameStudioGateway extends TypertRemoteService {
       patch.arkApiKey = input.arkApiKey.trim();
     if (typeof input.minimaxApiKey === "string")
       patch.minimaxApiKey = input.minimaxApiKey.trim();
+    if (typeof input.customApiKey === "string")
+      patch.customApiKey = input.customApiKey.trim();
     if (input.clearArkApiKey === true)
       patch.arkApiKey = "";
     if (input.clearMinimaxApiKey === true)
       patch.minimaxApiKey = "";
+    if (input.clearCustomApiKey === true)
+      patch.customApiKey = "";
     // ComfyUI 的 Cookie 也是凭据，与 API Key 同一套约定：不带 = 保持原值，带串 = 覆盖，
     // clearComfyCookies = 清空。它**不进** directKeys——那里是原样透传，Cookie 要先归一化。
     if (typeof input.comfyCookies === "string")
@@ -396,6 +437,10 @@ export class GameStudioGateway extends TypertRemoteService {
       model: config.arkModel,
       timeoutMs: config.arkTimeoutMs
     });
+  }
+  /** 测自定义生图后端。与 testArk 对称，各自测各自那一组配置。 */
+  async testCustomImage() {
+    return testCustomImage();
   }
   async testMinimax() {
     const config = await loadConfig();
@@ -558,6 +603,32 @@ export class GameStudioGateway extends TypertRemoteService {
     // 新源图根本进不了模型——表现就是「换了源图，生成结果一点没变」。
     const discarded = await resetDerivedFromSource(projectId);
     return { ok: true, file: relative, name: originalName, discarded };
+  }
+  /**
+   * 选用一段**本地视频**（用户自己选的，不走远程生成）。
+   *
+   * `key` 是槽位：`turn`（转圈视频）或八个方向之一的 key。远端生成与本地导入
+   * 产出的节点完全同形，所以阶段 3、4 不必区分；转圈模式在导入后会自动抽候选帧。
+   */
+  async uploadVideo(payload) {
+    const input = asRecord(payload);
+    return importLocalVideo(
+      asString(input.projectId),
+      asString(input.key),
+      asString(input.name, "local-video"),
+      asString(input.data)
+    );
+  }
+  /** 把项目里所有中间图片打成一个 zip（落在 `out/` 下，返回相对路径给界面下载）。 */
+  async exportImages(payload) {
+    const projectId = asString(asRecord(payload).projectId);
+    const pack = await exportImages(projectId);
+    const project = await readProject(projectId);
+    return {
+      ...pack,
+      assetBase: `${ROUTE_PREFIX}/assets/${projectId}/`,
+      name: project?.name ?? projectId
+    };
   }
   async savePrompts(payload) {
     const input = asRecord(payload);
@@ -1202,17 +1273,21 @@ export class GameStudioGateway extends TypertRemoteService {
     return { ok: true, stage: stage === "" ? null : stage, approved };
   }
   async revealMapProject(payload: any) {
-    const id = asString(asRecord(payload).projectId);
-    const project = await mapgen.readMapProject(id);
-    if (project === undefined) throw new Error(`项目不存在：${id}`);
-    const dir = mapgen.mapProjectDir(id);
+    const input = asRecord(payload);
+    const id = asString(input.projectId);
+    /**
+     * `target: "export"` = 打开**导出目录**（界面上的「打开导出目录」按钮）；
+     * 其余（含省略）= 项目目录。两者都不是随便拼路径 —— 见 `mapgen.mapRevealDir`：
+     * 它按与导出同一处口径算目录名，还没导出过就退回项目目录并用 `fallback` 说明。
+     */
+    const { dir, fallback } = await mapgen.mapRevealDir(id, asString(input.target));
     const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
     try {
       spawn(command, [dir], { detached: true, stdio: "ignore" }).unref();
     } catch (error) {
       throw new Error(`无法打开目录：${error instanceof Error ? error.message : String(error)}`);
     }
-    return { ok: true, dir };
+    return { ok: true, dir, fallback };
   }
   // ── 流水线控制 ──────────────────────────────────────────────────────────
   async runImage(payload) {
@@ -1479,9 +1554,11 @@ export class GameStudioGateway extends TypertRemoteService {
     if (typeof input.suffix === "string") job.suffix = input.suffix;
     if (input.settings !== undefined) {
       const raw = asRecord(input.settings);
-      // 生图模型是全局设置（设置 → 游戏素材大师 → 生图模型），任务里不保留可覆盖的副本。
-      job.settings.model = (await loadConfig()).arkModel;
-      job.settings.size = asString(raw.size, job.settings.size);
+      const current = await loadConfig();
+      // 生图模型是全局设置（设置 → 游戏素材大师 → 生图后端），任务里不保留可覆盖的副本。
+      job.settings.model = imageModelOf(current);
+      // 自定义后端的尺寸也是全局参数；火山方舟下才保留任务级覆盖。
+      job.settings.size = isCustomProvider(current) ? current.customSize : asString(raw.size, job.settings.size);
       job.settings.count = clampInt(raw.count, job.settings.count, 1, 8);
       job.settings.watermark = raw.watermark === true;
     }

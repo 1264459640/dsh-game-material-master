@@ -223,6 +223,14 @@ try {
     })()
   );
   check(
+    "applyMapOps：标记 op 的键也要原样穿过 schema（少一个键就会被静默丢掉）",
+    (() => {
+      const parsed = parseOf("applyMapOps", { projectId: "m1", ops: [{ kind: "marker", op: "add", r: 1, c: 2, name: "宝箱" }, { kind: "marker", op: "rename", id: "m1", name: "x" }, { kind: "marker", op: "move", id: "m1", r: 3, c: 3 }, { kind: "marker", op: "remove", id: "m1" }] });
+      const ops = parsed.ops ?? [];
+      return ops.length === 4 && ops[0].name === "宝箱" && ops[0].r === 1 && ops[1].id === "m1" && ops[2].c === 3 && ops[3].op === "remove";
+    })(),
+  );
+  check(
     "applyMapOps：ops / have / stroke 都进 schema，旧字段 mapId 已被移除",
     (() => {
       const parsed = parseOf("applyMapOps", { projectId: "m1", ops: [{ kind: "paint", layerId: "l0", cells: [] }], have: ["0,0"], stroke: "s1", mapId: "old" });
@@ -293,7 +301,8 @@ try {
   projectId = created.id;
   check("createMapProject 返回 m 前缀 id", typeof projectId === "string" && projectId.startsWith("m"), projectId);
   check("返回的是视图：带 assetBase 与 busy=false", String(created.assetBase).endsWith(`/map-assets/${projectId}/`) && created.busy === false, String(created.assetBase));
-  check("视图：默认两层、画布尺寸跟着文档", created.layers.length === 2 && created.cols === 40 && created.rows === 40, JSON.stringify(created.layers));
+  check("视图：默认三层（地理 / 装饰 / 建筑）、画布尺寸跟着文档", created.layers.length === 3 && created.layers.map((l) => l.name).join("、") === "地理层、装饰层、建筑层" && created.cols === 40 && created.rows === 40, JSON.stringify(created.layers));
+  check("视图：带标记表（新项目是空的）", Array.isArray(created.markers) && created.markers.length === 0, JSON.stringify(created.markers));
   check("视图：没有旧字段（maps / activeMapId / coverage / families）", !("maps" in created) && !("activeMapId" in created) && !("coverage" in created) && !("families" in created), Object.keys(created).join(","));
   check("视图：stages 四阶段、rules 已 done", Object.keys(created.stages).join(",") === "assets,rules,paint,export" && created.stages.rules.status === "done");
   check("视图：还带 maxChunks（界面提示「缩得太小」用）", typeof created.maxChunks === "number" && created.maxChunks > 0);
@@ -333,6 +342,12 @@ try {
   const applied = await gw("applyMapOps", { projectId, ops: [{ kind: "paint", layerId: layer0, cells: [{ r: 4, c: 4, tile: base }, { r: 1, c: 1, tile: base }] }] });
   check("applyMapOps 返回 changed / dirtyChunks / canUndo", applied.changed === 2 && Array.isArray(applied.dirtyChunks) && applied.canUndo === true && applied.canRedo === false, JSON.stringify(applied));
   check("applyMapOps 对空 have 回空 dropKeys", applied.dropKeys.length === 0);
+  const gwMark = await gw("applyMapOps", { projectId, ops: [{ kind: "marker", op: "add", r: 6, c: 6, name: "网关标记" }] });
+  const gwView = await gw("getMapProject", { projectId });
+  check("applyMapOps：标记 op 走网关真的落进文档（编号从 1 开始）", gwMark.changed === 1 && gwView.markers.some((marker) => marker.name === "网关标记" && marker.r === 6 && marker.c === 6 && marker.n === 1), JSON.stringify(gwView.markers));
+  const gwPlan = await gw("mapPlan", { projectId, view: { x: 0, y: 0, width: 40 * 32, height: 40 * 32 } });
+  const gwPlanMark = (gwPlan.markers ?? [])[0];
+  check("mapPlan：标记带圆心 / 半径 / 字号 / 数字（界面只 arc + fillText）", gwPlanMark !== undefined && gwPlanMark.x === 6 * 32 + 16 && gwPlanMark.y === 6 * 32 + 16 && gwPlanMark.radius > 0 && gwPlanMark.font > 0 && gwPlanMark.n === 1, JSON.stringify(gwPlanMark ?? null));
   const dropped = await gw("applyMapOps", { projectId, ops: [{ kind: "paint", layerId: layer0, cells: [{ r: 3, c: 3, tile: base }] }], have: ["0,0", "9,9"] });
   check("applyMapOps.have 生效（真的算出该丢哪个 chunk）", dropped.dropKeys.includes("0,0") && !dropped.dropKeys.includes("9,9"), JSON.stringify({ dirty: dropped.dirtyChunks, drop: dropped.dropKeys }));
   const depth0 = mapgen.historyState(projectId).depth;
@@ -366,11 +381,11 @@ try {
   const docRename = await gw("saveMapDoc", { projectId, name: "改过名的地图" });
   check("saveMapDoc.name 生效", docRename.doc.name === "改过名的地图", docRename.doc.name);
   const docAdd = await gw("saveMapDoc", { projectId, addLayer: { name: "装饰" }, layers: [{ id: layer0, name: "地面" }] });
-  check("saveMapDoc.addLayer + layers 改名生效", docAdd.doc.layers.length === 3 && docAdd.doc.layers[0].name === "地面" && docAdd.doc.layers[2].name === "装饰", JSON.stringify(docAdd.doc.layers));
-  const docMove = await gw("saveMapDoc", { projectId, moveLayer: { id: "l2", toIndex: 0 } });
-  check("saveMapDoc.moveLayer 生效", docMove.doc.layers[0].id === "l2", docMove.doc.layers.map((l) => l.id).join(","));
-  const docRemove = await gw("saveMapDoc", { projectId, removeLayerId: "l2" });
-  check("saveMapDoc.removeLayerId 生效", docRemove.doc.layers.length === 2 && !docRemove.doc.layers.some((l) => l.id === "l2"));
+  check("saveMapDoc.addLayer + layers 改名生效", docAdd.doc.layers.length === 4 && docAdd.doc.layers[0].name === "地面" && docAdd.doc.layers[3].name === "装饰", JSON.stringify(docAdd.doc.layers));
+  const docMove = await gw("saveMapDoc", { projectId, moveLayer: { id: "l3", toIndex: 0 } });
+  check("saveMapDoc.moveLayer 生效", docMove.doc.layers[0].id === "l3", docMove.doc.layers.map((l) => l.id).join(","));
+  const docRemove = await gw("saveMapDoc", { projectId, removeLayerId: "l3" });
+  check("saveMapDoc.removeLayerId 生效", docRemove.doc.layers.length === 3 && !docRemove.doc.layers.some((l) => l.id === "l3"));
   const docClear = await gw("saveMapDoc", { projectId, clearLayerId: layer0 });
   check("saveMapDoc.clearLayerId 生效", (await mapgen.readTheDoc(projectId)).data[layer0].every((value) => value === 0));
   check("saveMapDoc 返回体带最新视图（界面要重算画布）", docClear.view !== undefined && docClear.view.cols === docClear.doc.cols && docClear.view.layers.length === docClear.doc.layers.length, JSON.stringify({ viewCols: docClear.view?.cols, docCols: docClear.doc.cols }));
@@ -436,11 +451,18 @@ try {
   const docNow = await mapgen.readTheDoc(projectId);
   const expectedDir = EXPORT.safeFileName(docNow.name, docNow.id);
   check("视图的 exportBase 按地图名取目录", exported.exportBase === `export/${expectedDir}/`, exported.exportBase);
-  check("导出清单只列三个文件", exported.exportFiles.slice().sort().join(",") === "manifest.json,map.json,map.png", exported.exportFiles.join(" "));
+  const expectedZip = `${expectedDir}.zip`;
+  check(
+    "导出清单 = map.png / map.json / zip / manifest.json（多产物自动打包，走网关也一样）",
+    exported.exportFiles.slice().sort().join(",") === ["manifest.json", "map.json", "map.png", expectedZip].sort().join(","),
+    exported.exportFiles.join(" ")
+  );
+  check("视图带上导出目录的本机绝对路径", exported.exportPath.endsWith(join("export", expectedDir)) && exported.exportPath.includes(mapgen.mapProjectDir(projectId)), exported.exportPath);
   const listing = await mapgen.readExportListing(projectId, "http://127.0.0.1:9999");
   check("readExportListing 给绝对 URL", listing.base.startsWith("http://127.0.0.1:9999/dsh-game-material-master/map-assets/") && listing.files.every((url) => url.startsWith("http")));
+  check("zip 在清单里也是可点的绝对 URL（界面点一下就能下载）", listing.files.some((url) => url.endsWith(`/${expectedZip}`)), listing.files.join(" "));
   const snapshot = await mapgen.mapSnapshot(await mapgen.readMapProject(projectId), "http://127.0.0.1:9999");
-  check("快照把预览图与导出产物换成绝对 URL", snapshot.previewUrls.every((url) => url.includes("/preview/")) && snapshot.exportFiles.length === 3, snapshot.previewUrls.join(" "));
+  check("快照把预览图与导出产物换成绝对 URL", snapshot.previewUrls.every((url) => url.includes("/preview/")) && snapshot.exportFiles.length === exported.exportFiles.length, snapshot.previewUrls.join(" "));
   check("快照带 busy 与 nextActions", typeof snapshot.busy === "boolean" && Array.isArray(snapshot.nextActions));
 
   // ══ 10. 工具面（call / status / review / intake / approve / upload）══════
@@ -462,7 +484,7 @@ try {
 
   const reviewed = await run("game_material_review", { module: "map", id: projectId });
   check("review：map 分支给出四个阶段", Array.isArray(reviewed.stages) && reviewed.stages.length === 4 && reviewed.stages.every((stage) => links.MAP_STAGES.includes(stage.stage)), JSON.stringify(reviewed.stages?.map((s) => s.stage)));
-  check("review：含 tilesets（绝对 URL）/ layers / preview / exportBaseUrl / exportFiles", Array.isArray(reviewed.tilesets) && reviewed.tilesets.every((t) => String(t.url).startsWith("http")) && Array.isArray(reviewed.layers) && reviewed.previewUrls.length > 0 && reviewed.exportBaseUrl.startsWith("http") && reviewed.exportFiles.length === 3);
+  check("review：含 tilesets（绝对 URL）/ layers / preview / exportBaseUrl / exportFiles / exportPath", Array.isArray(reviewed.tilesets) && reviewed.tilesets.every((t) => String(t.url).startsWith("http")) && Array.isArray(reviewed.layers) && reviewed.previewUrls.length > 0 && reviewed.exportBaseUrl.startsWith("http") && reviewed.exportFiles.length === exported.exportFiles.length && typeof reviewed.exportPath === "string" && reviewed.exportPath !== "");
   check("review：不再有 families / coverage（旧体系的残留）", reviewed.families === undefined && reviewed.coverage === undefined);
   check("review：nextActions 是文字（模型能直接念）", Array.isArray(reviewed.nextActions) && reviewed.nextActions.every((text) => typeof text === "string"));
   check("review：带 openUrl，名称用项目名（地图名在 exportBase 里）", String(reviewed.openUrl).includes("module=map") && reviewed.name === (await mapgen.readMapProject(projectId)).name, reviewed.name);
@@ -512,6 +534,7 @@ try {
    */
   const request = async (path, method = "GET") => {
     const chunks = [];
+    const headers = {};
     let status = 0;
     const req = new Readable({ read() {} });
     req.url = path;
@@ -524,15 +547,18 @@ try {
         callback();
       }
     });
-    res.setHeader = () => {};
-    res.writeHead = (code) => {
+    res.setHeader = (name, value) => {
+      headers[String(name).toLowerCase()] = value;
+    };
+    res.writeHead = (code, more) => {
       status = code;
+      for (const [name, value] of Object.entries(more ?? {})) headers[String(name).toLowerCase()] = value;
       return res;
     };
     res.statusCode = 200;
     await route.handler(req, res);
     await Promise.race([once(res, "finish").catch(() => undefined), sleep(500)]);
-    return { status: status === 0 ? res.statusCode : status, body: Buffer.concat(chunks) };
+    return { status: status === 0 ? res.statusCode : status, body: Buffer.concat(chunks), headers };
   };
   const assetBase = `/dsh-game-material-master/map-assets/${projectId}`;
   const tilesetFile = (await gw("getMapProject", { projectId })).tilesets[0].file;
@@ -543,6 +569,13 @@ try {
   const exportDir = (await gw("getMapProject", { projectId })).exportBase.replace(/^export\//, "").replace(/\/$/, "");
   const okExport = await request(`${assetBase}/export/${exportDir}/map.png`);
   check("导出产物能取到（export 在白名单里）", okExport.status === 200, `status=${okExport.status}`);
+  /**
+   * zip 走**同一条**路由（白名单只比对第一段 `export`），所以这里要一起钉住：
+   * 下载按钮指向的就是这个 URL，它 403/404 的话界面表现只是「点了没反应」。
+   */
+  const zipName = (await gw("getMapProject", { projectId })).exportFiles.find((file) => file.endsWith(".zip"));
+  const okZip = await request(`${assetBase}/export/${exportDir}/${encodeURIComponent(zipName)}`);
+  check("导出的 zip 能取到（200，且 MIME 是 application/zip）", okZip.status === 200 && okZip.body.length > 0 && String(okZip.headers["content-type"]).includes("application/zip"), `status=${okZip.status} type=${okZip.headers["content-type"]}`);
   const okHead = await request(`${assetBase}/${tilesetFile}`, "HEAD");
   check("HEAD 也是 200（空体）", okHead.status === 200, `status=${okHead.status}`);
   const traversalEncoded = await request(`/dsh-game-material-master/map-assets/${projectId}/%2e%2e%2f%2e%2e%2fetc/passwd`);

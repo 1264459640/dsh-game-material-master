@@ -36,6 +36,22 @@ const uploadSchema = z.object({
   /** 原始文件字节的 base64（不带 data: 前缀）。 */
   data: z.string()
 });
+/**
+ * 选用一段**本地视频**（用户自己选的，不走远程生成）。
+ *
+ * `key` 是槽位：`turn`（转圈视频）或八个方向之一的 key。两步放在同一个方法里而不是
+ * 拆成两个，是因为两条路的落盘、作废与回报完全同形，只是目标节点不同。
+ */
+const uploadVideoSchema = z.object({
+  projectId: z.string(),
+  /** `turn` 或方向 key（front / back / downLeft / …）。 */
+  key: z.string(),
+  name: z.string().optional(),
+  /** 原始视频字节的 base64（不带 data: 前缀）。 */
+  data: z.string()
+});
+/** 打包中间图片：只有项目 id，没有别的参数（打哪些是宿主按项目状态算的）。 */
+const exportImagesSchema = z.object({ projectId: z.string() });
 const promptsSchema = z.object({
   projectId: z.string(),
   /** 界面语言：「重置为默认」要重置成哪一国话的默认提示词（见 getProjectSchema）。 */
@@ -589,6 +605,19 @@ const saveTileMapCellsSchema = z.object({
 // 单项目 = 单张地图：`mapId` 只剩 `getMapProject` 里那个兼容位（老深链接带的），
 // 其它方法的 payload 一律不带 mapId。
 const mapProjectIdSchema = z.object({ projectId: z.string() });
+/**
+ * 「在文件夹中显示」。`target: "export"` = 导出目录（界面上的「打开导出目录」），
+ * 省略 = 项目目录。
+ *
+ * ⚠️ 这里必须给 reveal 单独一条 schema：它与 `deleteMapProject` / `cancelMapJob` 共用
+ * `mapProjectIdSchema`，直接把 `target` 加在那个共享 schema 上会让所有方法都多一个无意义字段；
+ * 而**不加**的后果是 typert 把 `target` 静默丢掉 —— 界面点「打开导出目录」打不开导出的那个目录，
+ * 且不报任何错。
+ */
+const revealMapProjectSchema = z.object({
+  projectId: z.string(),
+  target: z.enum(["project", "export"]).optional()
+});
 const mapGetSchema = z.object({
   projectId: z.string(),
   /** 仅兼容旧深链接：单项目单地图后它没有意义，宿主忽略。 */
@@ -692,7 +721,24 @@ const runMapPreviewSchema = z.object({ projectId: z.string() });
 const runMapExportSchema = z.object({
   projectId: z.string(),
   scale: z.number().optional(),
-  formats: z.record(z.string(), z.unknown()).optional()
+  /**
+   * 导出内容（**逐项写清楚**，不再是 `record(unknown)`）：界面上是三个复选框 +
+   * 一个倍率，宿主按同一组键决定写哪些文件。
+   *
+   * - `png` / `json`：地图图片、存档数据（都不给 = 都要，与旧行为一致）；
+   * - `tilesets`：把素材原图一起拷进 `tilesets/`（整包自包含）；
+   * - `zip`：打一个 zip；不给 = 产物超过一个就自动打；
+   * - `scale`：只影响 PNG 的整数倍率。
+   */
+  formats: z
+    .object({
+      png: z.boolean().optional(),
+      json: z.boolean().optional(),
+      tilesets: z.boolean().optional(),
+      zip: z.boolean().optional(),
+      scale: z.number().optional()
+    })
+    .optional()
 });
 const setMapApprovedSchema = z.object({
   projectId: z.string(),
@@ -704,6 +750,7 @@ const setMapApprovedSchema = z.object({
 export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configViewSchema },
   { method: "saveConfig", payload: saveConfigSchema, result: configViewSchema },
   { method: "testArk", result: jsonObject },
+  { method: "testCustomImage", result: jsonObject },
   { method: "testMinimax", result: jsonObject },
   // 本地 ComfyUI 后端自检（读 /system_stats + /queue，不排队生图）。
   { method: "testComfy", result: jsonObject },
@@ -721,6 +768,8 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "setApproved", payload: approvedSchema, result: okSchema },
   { method: "setReviewMode", payload: setReviewModeSchema, result: okSchema },
   { method: "revealProject", payload: projectIdSchema, result: okSchema },
+  { method: "uploadVideo", payload: uploadVideoSchema, result: jsonObject },
+  { method: "exportImages", payload: exportImagesSchema, result: jsonObject },
 
   { method: "runImage", payload: runImageSchema, result: startedSchema },
   { method: "runImages", payload: runImagesSchema, result: startedSchema },
@@ -845,7 +894,7 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "runMapExport", payload: runMapExportSchema, result: startedSchema },
   { method: "cancelMapJob", payload: mapProjectIdSchema, result: okSchema },
   { method: "setMapApproved", payload: setMapApprovedSchema, result: okSchema },
-  { method: "revealMapProject", payload: mapProjectIdSchema, result: okSchema }
+  { method: "revealMapProject", payload: revealMapProjectSchema, result: okSchema }
 ];
 
 

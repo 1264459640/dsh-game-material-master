@@ -33,6 +33,7 @@ import { encodePng } from "./png.js";
 import { type Bitmap } from "./bitmap.js";
 import { cellIndex, type MapDoc } from "./mapdoc.js";
 import {
+  cellCenter,
   cellTopLeft,
   chunkKey,
   chunkOf,
@@ -95,6 +96,31 @@ export interface PlanLegendEntry {
   rect: MapRect;
 }
 
+/**
+ * 计划里的一条标记（图层卡里的「标记层」）。
+ *
+ * **圆圈里的数字、圆心、半径、字号全部由宿主算好**：客户端只 `arc` + `fillText`，
+ * 一个数都不许自己推（这套口径与图块 op 完全一致 —— 两边各算一遍就是「预览好看、
+ * 导出不一致」的老路）。
+ *
+ * 名字也在里面：界面悬停时要显示它，但**不铺在画布上**（几十个名字会糊成一片）。
+ */
+export interface PlanMarker {
+  /** 稳定 id（界面靠它认「点到了哪一个」）。 */
+  id: string;
+  /** 圆圈里的数字（= 文档标记数组下标 + 1，删掉一个后面自动往前顶）。 */
+  n: number;
+  name: string;
+  /** **规范**格坐标（wrap 后）。 */
+  r: number;
+  c: number;
+  /** 圆心**绝对像素**（环绕时同一标记会出现多份，每个像素位置一条）。 */
+  x: number;
+  y: number;
+  radius: number;
+  font: number;
+}
+
 /** 计划的像素包围盒（origin 恒为 0：只按整格算，贴图不跨格）。 */
 export interface PlanBounds {
   originX: number;
@@ -113,6 +139,8 @@ export interface RenderPlan {
   frameCount: number;
   /** 计划里出现的循环（按内容去重，顺序 = 首次出现顺序）。 */
   cycles: number[][];
+  /** 落在 `range` 里的标记（**不进 chunk 缓存**，每次查询整份重发）。 */
+  markers: PlanMarker[];
   warnings: string[];
 }
 
@@ -437,7 +465,59 @@ export function buildPlan(
     chunks.push({ key, ops: list.map((item) => item.op) });
   }
 
-  return { chunks, bounds: planBounds(context, doc), legend, fps: DEFAULT_FPS, frameCount, cycles, warnings };
+  return {
+    chunks,
+    bounds: planBounds(context, doc),
+    legend,
+    fps: DEFAULT_FPS,
+    frameCount,
+    cycles,
+    markers: buildMarkers(context, doc, range),
+    warnings
+  };
+}
+
+/**
+ * 落在 `range` 里的标记。
+ *
+ * 与 `cellOpsAt` 同一套走法：按**未 wrap** 的格坐标遍历视口，读格时 `wrapCell` ——
+ * 于是环绕接缝处的标记会以多个像素位置各出一条，界面不需要知道环绕。
+ *
+ * 一格最多一个标记（宿主 `applyOps` 已经拦住重复放置），所以这里是 1:1 的查表。
+ */
+export function buildMarkers(context: RenderContext, doc: MapDoc, range: CellRange): PlanMarker[] {
+  if (doc.markers.length === 0) return [];
+  const layout = layoutOf(context.grid, doc.cols, doc.rows);
+  const byCell = new Map<number, { n: number; marker: (typeof doc.markers)[number] }>();
+  doc.markers.forEach((marker, index) => {
+    byCell.set(marker.r * doc.cols + marker.c, { n: index + 1, marker });
+  });
+  // 圆别比格子还大（小网格 + 大标记会互相盖住），字号跟着半径走。
+  const radius = Math.max(5, Math.round(Math.min(layout.stepX, layout.stepY) * 0.42));
+  const font = Math.max(8, Math.round(radius * 1.2));
+  const out: PlanMarker[] = [];
+  for (let rr = range.r0; rr < range.r1; rr++) {
+    for (let cc = range.c0; cc < range.c1; cc++) {
+      const w = wrapCell(layout, rr, cc);
+      // 非环绕时越界就是越界（`wrapCell` 原样返回）。
+      if (w.r < 0 || w.c < 0 || w.r >= doc.rows || w.c >= doc.cols) continue;
+      const hit = byCell.get(w.r * doc.cols + w.c);
+      if (hit === undefined) continue;
+      const center = cellCenter(layout, rr, cc);
+      out.push({
+        id: hit.marker.id,
+        n: hit.n,
+        name: hit.marker.name,
+        r: w.r,
+        c: w.c,
+        x: Math.round(center.x),
+        y: Math.round(center.y),
+        radius,
+        font
+      });
+    }
+  }
+  return out;
 }
 
 // ── 光栅化（导出 PNG 用）──────────────────────────────────────────────────

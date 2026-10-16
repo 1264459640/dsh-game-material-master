@@ -84,6 +84,14 @@ export interface VideoNode {
   error?: string;
   elapsedMs?: number;
   updatedAt?: number;
+  /**
+   * 这段视频是哪来的：`remote`（MiniMax 生成，缺省）还是 `local`
+   * （用户在界面上自己选的本地视频）。两条路的产物完全同形，下游只看 `file`，
+   * 这个字段只用来在界面上说清楚「这段不是我生成的」，以及排查时能一眼看出。
+   */
+  origin?: "remote" | "local";
+  /** 本地视频的原始文件名（只用于界面显示）。 */
+  originalName?: string;
 }
 
 export interface FramesNode {
@@ -186,6 +194,10 @@ export interface TurnVideoNode {
   firstFrame?: string;
   elapsedMs?: number;
   updatedAt?: number;
+  /** 见 `VideoNode.origin`：本地自选的转圈视频同样落这个字段。 */
+  origin?: "remote" | "local";
+  /** 本地视频的原始文件名（只用于界面显示）。 */
+  originalName?: string;
 }
 
 /**
@@ -626,7 +638,9 @@ function normalizeProject(raw: any): Project {
         ...videos[key],
         ...node,
         approved: node.approved === true,
-        backend: normalizeVideoBackend(node.backend)
+        backend: normalizeVideoBackend(node.backend),
+        origin: node.origin === "local" ? "local" : undefined,
+        originalName: typeof node.originalName === "string" ? node.originalName : undefined
       };
     }
   }
@@ -761,7 +775,9 @@ function normalizeTurn(raw: any, frameCount: number): TurnState {
       error: typeof raw?.video?.error === "string" ? raw.video.error : undefined,
       firstFrame: typeof raw?.video?.firstFrame === "string" ? raw.video.firstFrame : undefined,
       elapsedMs: typeof raw?.video?.elapsedMs === "number" ? raw.video.elapsedMs : undefined,
-      updatedAt: typeof raw?.video?.updatedAt === "number" ? raw.video.updatedAt : undefined
+      updatedAt: typeof raw?.video?.updatedAt === "number" ? raw.video.updatedAt : undefined,
+      origin: raw?.video?.origin === "local" ? "local" : undefined,
+      originalName: typeof raw?.video?.originalName === "string" ? raw.video.originalName : undefined
     },
     frames: {
       status: (raw?.frames?.status ?? "empty") as NodeStatus,

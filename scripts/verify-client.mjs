@@ -163,6 +163,8 @@ const FEEDBACK_REQUIRED = {
   runTurnVideo: "转圈视频",
   runTurnFrames: "转圈候选帧抽取",
   setTurnPick: "改截帧位置",
+  uploadVideo: "本地自选视频（转圈 / 某方向）",
+  exportImages: "中间图片打包",
   runImageJob: "图片生成",
   keyImageJob: "图片抠像",
   runSequenceVideo: "序列帧：生视频",

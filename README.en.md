@@ -30,11 +30,11 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 
 | Module | What it does | What you get |
 |---|---|---|
-| **① Eight-direction sprite sheet** | One character sheet → 8 directions × 8 frames (default "turn capture": eight directions cut from one rotation video) | A walk spritesheet you can drive with WASD |
+| **① Eight-direction sprite sheet** | One character sheet → 8 directions × 8 frames (default "turn capture": eight directions cut from one rotation video; both videos can also be **a local file of your own**) | A walk spritesheet you can drive with WASD (every intermediate image can be saved individually or as one zip) |
 | **② Image generation** | Prompt (optionally with reference images) → images → green-screen keying | Clean transparent PNG character art / props |
 | **③ Sequence frames** | First/last frame or a reference video → generate video → extract frames → key | A horizontally laid out, loopable sequence |
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
-| **⑥ Map editor** (experimental, **fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon) | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles) |
+| **⑥ Map editor** (**fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon; three default layers — terrain / decor / buildings — that you can rename and reorder; a **marker layer**: one nameable marker per cell, drawn as a numbered circle) | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles, markers); tick what to export and multiple files come as one ZIP download |
 | ~~④ Rigged animation~~ | Part extraction → assembly → skeletal animation → Spine / DragonBones atlas | **Experimental, not covered in this document** |
 
 > 💡 **Module ⑤ "Map tile generation" is built on one idea: geometry by code, content by AI.**
@@ -105,6 +105,31 @@ so old and new orientations never get mixed together). The default positions ass
 "starting from the front, one full rotation at constant speed"; when the model actually turns in a different
 direction or at a different pace, just drag the circles, or click "turn direction" to re-order them. Changing
 the candidate frame count (8–64) re-extracts automatically and rescales any positions you have dragged.
+
+### You can also use **a video from your own computer** (steps ① and ②)
+
+Neither of the two "generate a video" places only has the "call the model" path: when you already have a
+suitable video, click **Choose a local video** and pick it — the result is identical to a generated one and
+the later steps work exactly the same.
+
+- **Step ① · turn video**: pick a chroma-key video of the character turning a full circle in place; the plugin
+  extracts the candidate frames and cuts out the eight directions **immediately**, then you just drag the
+  circles to adjust positions.
+- **Step ② · the walk video of one direction**: each cell can pick its own file (fixed camera, walking in
+  place), and step 3 "extract all sequence frames" still applies.
+- MP4 / MOV / M4V / WebM / MKV / AVI are supported (detected by **file header**, not by extension), up to
+  100MB each; this path is processed locally with ffmpeg and is never uploaded to any model.
+- Replacing a video invalidates the frames and sheet already derived from it, so frames from the previous
+  video can never leak into the new one.
+
+### Every intermediate image can be saved
+
+**Every image** produced along the way can be saved: the eight chroma-key images, the turn candidate frames
+and the full-rotation strip, the chroma-key frames and manual-pick candidates extracted from each video, the
+keyed frames, and the final sheet. Every product you can see in the UI has a "Save" link; since one candidate
+extraction produces 32–64 images at once, the bottom toolbar also has **Save all images (zip)** — one archive
+laid out like the project directory (`images/…`, `turn/…`, `frames/…`, `keyed/…`, `out/sheet.png`).
+The generated videos (the turn video and the eight walk videos) each have a "Save video" link too.
 
 ### How to use it
 
@@ -213,7 +238,7 @@ flowchart LR
 
 ## Driving it from chat
 
-**Every feature of all six modules** (including the experimental rigged animation, map tiles and the map editor) **is available through
+**Every feature of all six modules** (including the experimental rigged animation and map tiles) **is available through
 chat**. The plugin registers the whole pipeline as `game_material_*` tools, so an agent can drive it forward,
 wait, review, and also stop at each step for you to approve.
 
@@ -245,7 +270,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 The package is published to npm: [dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-(currently `0.1.1`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
+(currently `0.6.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
 
 After installing, **restart DSH** (the host half is loaded at startup). The browser half is read from
 `lib/client.js` on disk on each request, so refreshing the browser is enough for it to take effect.
@@ -270,8 +295,12 @@ installation tree.
 
 | Item | Description |
 |---|---|
+| Image backend | Pick **Volcengine Ark Seedream** (default) or a **custom image model**; switching here redirects every image-generating module |
 | Volcengine Ark API Key | "Test connection" really generates a 1K thumbnail (a small charge) and validates both the key and the model |
 | Image model | Defaults to `doubao-seedream-5-0-flash-260915`; switchable to 5.0 Pro / Lite / 4.5 |
+| Custom protocol | One of `OpenAI API` / `ComfyUI API` / `Stable Diffusion WebUI API`; just give the host root URL |
+| Custom parameters | Model name, output size (width x height), negative prompt, steps / CFG / sampler, img2img denoising, seed, timeout |
+| ComfyUI workflow | Paste the whole JSON from "Export (API)"; placeholders `{{prompt}}` `{{width}}` `{{seed}}` `{{image}}` and friends are supported, and a workflow with none runs as-is |
 | MiniMax API Key | "Test connection" is free and can tell an invalid key apart from other errors |
 | Video model | Defaults to `MiniMax-H3` (v2 protocol); Hailuo / I2V use v1; the UCloud version of H3 is selected explicitly |
 | Base URL | Host root, without `/v1` or `/v2`. `api.minimax.cn` in mainland China, `api.minimaxi.com` internationally |
@@ -280,8 +309,23 @@ installation tree.
 | Feature management | Per-module switches: a disabled module disappears from the UI **and the agent cannot call it either** (see below) |
 
 Keys are written only to `<DSH_HOME>/game-material-master/config.json` on your machine, and the UI always
-masks them when displaying them back. **The model is a plugin-level setting shared by all three modules**;
-after you switch models, tasks align to the new tier automatically.
+masks them when displaying them back. **The image backend and model are plugin-level settings shared by
+every module that generates images**; after you switch, tasks align to the new tier automatically.
+Image-to-video always goes through MiniMax and is unaffected by the image backend.
+
+### Custom image backend
+
+Besides Volcengine Ark you can plug in **your own image service** (Settings → Game Material Master → Image backend):
+
+| Protocol | Text-to-image | With reference images | Notes |
+|---|---|---|---|
+| OpenAI API | `POST {base}/images/generations` | `POST {base}/images/edits` (falls back to the `image` field of generations when the endpoint does not exist) | Works with OpenAI itself and compatible gateways; both `b64_json` and `url` responses are accepted |
+| ComfyUI API | `POST {base}/prompt` → poll `/history` → `GET /view` | `POST {base}/upload/image` first, then the file name goes into the workflow | Needs an **API-format** workflow JSON; when `{{image}}` is absent the `LoadImage` node is patched automatically |
+| Stable Diffusion WebUI API | `POST {base}/sdapi/v1/txt2img` | `POST {base}/sdapi/v1/img2img` (`init_images` + denoising strength) | WebUI must be started with `--api`; an API key of `user:pass` uses HTTP Basic |
+
+Local servers usually need no API key; enter the **host root** (for example `http://127.0.0.1:8188`) and the
+plugin appends the protocol-specific endpoint. Hit "Test connection" to really generate one test image and
+prove the whole path works.
 
 ### Local ComfyUI (image-to-video)
 

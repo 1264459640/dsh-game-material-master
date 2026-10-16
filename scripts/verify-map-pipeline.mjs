@@ -20,6 +20,7 @@
  * 用法：node scripts/verify-map-pipeline.mjs
  */
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { inflateRawSync } from "node:zlib";
 import * as geom from "../lib/mapgeom.js";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -55,6 +56,58 @@ const { decodeFile } = await import("../lib/bitmap.js");
 const { encodePng } = await import("../lib/png.js");
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────
+
+/**
+ * 极简 ZIP 读取器（**只给自检用**）。
+ *
+ * ⚠️ 为什么不直接断言「zip 文件存在、字节数不小」：那种断言在写出一个坏 zip
+ * （中央目录偏移错、CRC 错、deflate 流截断）时**照样通过**。这里走的是真解包：
+ * 中央目录 → 本地头 → inflateRaw → 校验长度与 CRC，并断言条目路径与内容。
+ */
+function readZip(buffer) {
+  const EOCD = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (EOCD < 0) throw new Error("不是 zip：找不到 EOCD");
+  const count = buffer.readUInt16LE(EOCD + 10);
+  let offset = buffer.readUInt32LE(EOCD + 16);
+  const out = new Map();
+  for (let i = 0; i < count; i++) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error("中央目录签名不对");
+    const method = buffer.readUInt16LE(offset + 10);
+    const crc = buffer.readUInt32LE(offset + 16);
+    const compSize = buffer.readUInt32LE(offset + 20);
+    const rawSize = buffer.readUInt32LE(offset + 24);
+    const nameLen = buffer.readUInt16LE(offset + 28);
+    const extraLen = buffer.readUInt16LE(offset + 30);
+    const commentLen = buffer.readUInt16LE(offset + 32);
+    const localAt = buffer.readUInt32LE(offset + 42);
+    const name = buffer.toString("utf8", offset + 46, offset + 46 + nameLen);
+    if (buffer.readUInt32LE(localAt) !== 0x04034b50) throw new Error(`本地头签名不对：${name}`);
+    const start = localAt + 30 + buffer.readUInt16LE(localAt + 26) + buffer.readUInt16LE(localAt + 28);
+    const payload = buffer.subarray(start, start + compSize);
+    const data = method === 0 ? Buffer.from(payload) : inflateRawSync(payload);
+    if (data.length !== rawSize) throw new Error(`解出来的长度不对：${name}`);
+    if (zipCrc32(data) !== crc) throw new Error(`CRC 不对：${name}`);
+    out.set(name, data);
+    offset += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
+
+const ZIP_CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+
+function zipCrc32(buffer) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buffer.length; i++) c = ZIP_CRC_TABLE[(c ^ buffer[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
 
 /** 第 (col,row) 块的「可辨颜色」：一块一个色，块内纯色。 */
 function blockColor(col, row) {
@@ -304,30 +357,48 @@ try {
   // ══ 5. 文档模型与图层结构 ════════════════════════════════════════════════
   section("5) 文档模型与图层结构");
   const bare = DOC.createMapDoc("mid", "夹具", 8, 8);
-  check("默认两层：图层 1 / 图层 2", bare.layers.length === 2 && bare.layers[0].name === "图层 1" && bare.layers[1].name === "图层 2", bare.layers.map((l) => l.name).join("、"));
-  check("每层数据都是 cols×rows 个 0", bare.data.l0.length === 64 && bare.data.l1.length === 64 && bare.data.l0.every((value) => value === 0));
+  check("默认三层：地理层 / 装饰层 / 建筑层", bare.layers.length === 3 && bare.layers.map((l) => l.name).join("、") === "地理层、装饰层、建筑层", bare.layers.map((l) => l.name).join("、"));
+  check("每层数据都是 cols×rows 个 0", bare.data.l0.length === 64 && bare.data.l1.length === 64 && bare.data.l2.length === 64 && bare.data.l0.every((value) => value === 0));
+  check("新文档没有标记", Array.isArray(bare.markers) && bare.markers.length === 0);
   const added = DOC.addLayer(bare, "树");
   check("加图层：新层数据独立初始化（不共享同一个数组）", bare.data[added.id] !== bare.data.l0 && bare.data[added.id].length === 64);
-  check("只剩一层时拒绝删除", (() => { const one = DOC.createMapDoc("mid", "一", 4, 4); DOC.removeLayer(one, "l1"); return DOC.removeLayer(one, "l0") === false; })());
-  check("图层改名拒绝空名字（返回 false，不静默换成「图层」）", DOC.renameLayer(bare, "l0", "   ") === false && bare.layers[0].name === "图层 1");
+  check("只剩一层时拒绝删除", (() => { const one = DOC.createMapDoc("mid", "一", 4, 4); DOC.removeLayer(one, "l2"); DOC.removeLayer(one, "l1"); return DOC.removeLayer(one, "l0") === false; })());
+  check("图层改名拒绝空名字（返回 false，不静默换成「图层」）", DOC.renameLayer(bare, "l0", "   ") === false && bare.layers[0].name === "地理层");
   check("moveLayer 换顺序", DOC.moveLayer(bare, "l2", 0) === true && bare.layers[0].id === "l2");
   check("clearLayer 返回清掉的格数", (() => { const d = DOC.createMapDoc("mid", "c", 4, 4); d.data.l0[0] = 3; d.data.l0[5] = 4; return DOC.clearLayer(d, "l0") === 2; })());
   check("resizeDoc 报出丢掉的格数（左上角对齐）", (() => { const d = DOC.createMapDoc("mid", "r", 8, 8); d.data.l0[7 * 8 + 7] = 1; d.data.l0[0] = 2; return DOC.resizeDoc(d, 4, 4).dropped === 1; })());
 
+  // 老文档升级：只有「从没改过名的出厂两层」才动名字，改过名的一个字都不动。
+  const legacy = DOC.normalizeMapDoc({ id: "legacy", name: "老地图", cols: 4, rows: 4, layers: [{ id: "l0", name: "图层 1" }, { id: "l1", name: "图层 2" }], data: { l0: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], l1: [] } }, "legacy");
+  check("老文档（出厂两层名）升级成三层 + 名字", legacy.layers.map((l) => l.name).join("、") === "地理层、装饰层、建筑层" && legacy.data.l2.length === 16, JSON.stringify(legacy.layers));
+  check("升级不动已经画好的内容（序号按 id 对齐）", legacy.data.l0[0] === 1 && legacy.markers.length === 0);
+  const custom = DOC.normalizeMapDoc({ id: "custom", name: "改过名", cols: 4, rows: 4, layers: [{ id: "l0", name: "我的地面" }, { id: "l1", name: "物件" }], data: {} }, "custom");
+  check("老文档（用户改过名的）**不升级**，只补 markers 字段", custom.layers.length === 2 && custom.layers[0].name === "我的地面" && Array.isArray(custom.markers));
+  const strayMarkers = DOC.normalizeMapDoc({ id: "stray", name: "越界标记", cols: 4, rows: 4, layers: [{ id: "l0", name: "地理层" }], data: {}, markers: [{ id: "m1", r: 1, c: 1, name: "留着" }, { r: 9, c: 9, name: "越界" }, { r: 2, c: 2 }, { id: "m1", r: 3, c: 3, name: "重复 id" }] }, "stray");
+  const strayIds = new Set(strayMarkers.markers.map((marker) => marker.id));
+  check(
+    "读盘：越界标记丢掉、重复 id 重新分配、缺字段兜住",
+    strayMarkers.markers.length === 3 && strayIds.size === 3 && strayMarkers.markers[0].id === "m1" && strayMarkers.markers[1].name === "" && strayMarkers.markers[2].id !== "m1",
+    JSON.stringify(strayMarkers.markers)
+  );
+
   const p4 = await newProject("结构与编辑", { cols: 8, rows: 8 });
   await G.importMapTileset(p4.id, "四色", sheetPng(128, 128, 32).toString("base64"));
   const st1 = await G.saveMapDocStructure(p4.id, { layers: [{ id: "l0", name: "地面" }], addLayer: { name: "装饰" } });
-  check("结构补丁：改名 + 加图层一次生效", st1.doc.layers.map((l) => l.name).join("、") === "地面、图层 2、装饰", JSON.stringify(st1.doc.layers));
-  check("新图层数据已初始化", (await G.readTheDoc(p4.id)).data.l2.length === 64);
+  check("结构补丁：改名 + 加图层一次生效", st1.doc.layers.map((l) => l.name).join("、") === "地面、装饰层、建筑层、装饰", JSON.stringify(st1.doc.layers));
+  check("新图层数据已初始化", (await G.readTheDoc(p4.id)).data.l3.length === 64);
   check("未知图层改名给警告而不是静默", (await G.saveMapDocStructure(p4.id, { layers: [{ id: "nope", name: "x" }] })).warnings.some((text) => text.includes("图层不存在")));
-  const stMove = await G.saveMapDocStructure(p4.id, { moveLayer: { id: "l2", toIndex: 0 } });
-  check("结构补丁：moveLayer 换顺序", stMove.doc.layers[0].id === "l2", stMove.doc.layers.map((l) => l.id).join(","));
-  const stRemove = await G.saveMapDocStructure(p4.id, { removeLayerId: "l2" });
-  check("结构补丁：removeLayerId 删图层", stRemove.doc.layers.length === 2 && !stRemove.doc.layers.some((l) => l.id === "l2"), JSON.stringify(stRemove.warnings));
-  await G.saveMapDocStructure(p4.id, { removeLayerId: "l1" });
-  const stLast = await G.saveMapDocStructure(p4.id, { removeLayerId: "l0" });
+  const stMove = await G.saveMapDocStructure(p4.id, { moveLayer: { id: "l3", toIndex: 0 } });
+  check("结构补丁：moveLayer 换顺序", stMove.doc.layers[0].id === "l3", stMove.doc.layers.map((l) => l.id).join(","));
+  const stRemove = await G.saveMapDocStructure(p4.id, { removeLayerId: "l3" });
+  check("结构补丁：removeLayerId 删图层", stRemove.doc.layers.length === 3 && !stRemove.doc.layers.some((l) => l.id === "l3"), JSON.stringify(stRemove.warnings));
+  // 「删到最后一层」单开一个项目：下面几节还要用 p4 的 l0 画图。
+  const p4d = await newProject("删到最后一层", { cols: 4, rows: 4 });
+  await G.saveMapDocStructure(p4d.id, { removeLayerId: "l2" });
+  await G.saveMapDocStructure(p4d.id, { removeLayerId: "l1" });
+  const stLast = await G.saveMapDocStructure(p4d.id, { removeLayerId: "l0" });
   check("删到最后一层时明确拒绝并说明", stLast.doc.layers.length === 1 && stLast.warnings.some((text) => text.includes("至少要留一个图层")), stLast.warnings.join(" | "));
-  const stClearEmpty = await G.saveMapDocStructure(p4.id, { clearLayerId: "l0" });
+  const stClearEmpty = await G.saveMapDocStructure(p4.id, { clearLayerId: "l1" });
   check("清空本来就是空的层：给出提示（而不是假装做了事）", stClearEmpty.warnings.some((text) => text.includes("本来就是空的")), stClearEmpty.warnings.join(" | "));
   await G.applyMapOps(p4.id, [{ kind: "paint", layerId: "l0", cells: [{ r: 0, c: 0, tile: 1 }, { r: 6, c: 6, tile: 1 }, { r: 7, c: 0, tile: 1 }, { r: 7, c: 7, tile: 1 }] }]);
   const stClear = await G.saveMapDocStructure(p4.id, { clearLayerId: "l0" });
@@ -510,6 +581,21 @@ try {
   );
   check("包围盒恒等于网格脚印（40×32 = 1280）", seam.bounds.width === 1280 && seam.bounds.height === 1280, JSON.stringify(seam.bounds));
   check("视口越界的计划不是 truncated（上限之内）", seam.truncated === false);
+  /**
+   * ⚠️ 视口比地图大（相机被夹在 0、画布还有富余）时，收口必须取「地图自己那一轮」。
+   * 取「视口左上角起的一轮」会被 padding 推成 `[-1, cols-1)`：最右一列只剩画布外
+   * 那份副本 —— 真机表现是地图右边缘永远少一列。夹具里 (39,39) 有内容，正好能抓住。
+   */
+  const wideDoc = await G.readTheDoc(p1.id);
+  const widePlan = await G.mapPlan(p1.id, { view: { x: 0, y: 0, width: 1280 * 3, height: 1280 * 3 } });
+  const wideOps = allOps(widePlan);
+  check(
+    "视口比地图大：整张地图都给（最右一列 / 最下一行都在，且像素位置都在图内）",
+    wideOps.some((op) => op.c === wideDoc.cols - 1) &&
+      wideOps.some((op) => op.r === wideDoc.rows - 1) &&
+      wideOps.every((op) => op.x >= 0 && op.y >= 0 && op.x < wideDoc.cols * 32 && op.y < wideDoc.rows * 32),
+    `${wideOps.length} 条；最大 x=${Math.max(...wideOps.map((op) => op.x))} 最小 x=${Math.min(...wideOps.map((op) => op.x))}`
+  );
   /**
    * ⚠️ 块键一律**按几何推**，不写死数字：`MAP_CHUNK_SIZE` 是性能旋钮（见 mapgeom.ts），
    * 断言要表达的是「wrap 感知的脏块 + 客户端报的键怎么映射」，不是某一套具体键名。
@@ -787,7 +873,7 @@ try {
   check("丢缓存（新模块实例）后从磁盘读回同一份内容", reloaded !== undefined && reloaded.data.l0[20 * 24 + 20] === 7 && reloaded.data.l0[21 * 24 + 5] === 8);
   check("新实例的撤销栈是空的（历史不落盘，这是设计）", freshGen.historyState(p6.id).canUndo === false && freshGen.historyState(p6.id).depth === 0);
   const docOnDisk = JSON.parse(await readFile(G.mapDocFile(p6.id), "utf8"));
-  check("map.json 落盘的就是图层元数据 + 每层数据（没有形状 / 掩码 / chunk 之类派生数据）", Object.keys(docOnDisk).join(",") === "id,name,cols,rows,layers,data,createdAt,updatedAt", Object.keys(docOnDisk).join(","));
+  check("map.json 落盘的就是图层元数据 + 每层数据 + 标记（没有形状 / 掩码 / chunk 之类派生数据）", Object.keys(docOnDisk).join(",") === "id,name,cols,rows,layers,data,markers,createdAt,updatedAt", Object.keys(docOnDisk).join(","));
 
   // ══ 14. 预览与导出 ══════════════════════════════════════════════════════
   section("14) 验收预览（只出地图渲染图）");
@@ -803,7 +889,7 @@ try {
   await waitIdle(p6.id);
   check("cancelMapJob 能收尾（不忙、阶段不是 error）", G.mapBusy(p6.id) === false && (await G.readMapProject(p6.id)).stages.paint.status !== "error");
 
-  section("15) 导出：目录名 / 三个文件 / 逐字段 / 逐字节 / 逐像素");
+  section("15) 导出：目录名 / 产物 / 自动打 zip / 逐字段 / 逐字节 / 逐像素");
   const p5 = await newProject("导出", { cols: 8, rows: 8 });
   const fiveSheet = (await G.importMapTileset(p5.id, "四色", sheetPng(128, 128, 32).toString("base64"))).tilesets[0];
   const renamed = await G.saveMapDocStructure(p5.id, { name: "地图 A/B" });
@@ -814,13 +900,29 @@ try {
   const afterExport = await waitIdle(p5.id);
   check("导出作业没有报错", afterExport.stages.export.status === "done", JSON.stringify(afterExport.stages.export));
   const expectedDir = EXPORT.safeFileName("地图 A/B", "x");
+  const expectedZip = `${expectedDir}.zip`;
   const exportDirs = await readdir(join(G.mapProjectDir(p5.id), "export"));
   check("导出目录名 = safeFileName(地图名, 地图 id)（不是项目名）", exportDirs.length === 1 && exportDirs[0] === expectedDir, `${exportDirs.join(" ")} vs ${expectedDir}`);
   check("反向验证：导出目录名不是项目名", exportDirs[0] !== EXPORT.safeFileName("导出", "x"));
   const exportDir = join(G.mapProjectDir(p5.id), "export", exportDirs[0]);
   const files = await readdir(exportDir);
-  check("导出只有三个文件：map.png / map.json / manifest.json", files.slice().sort().join(",") === "manifest.json,map.json,map.png", files.join(" "));
-  check("没有分层 PNG / Tiled .tmj / .tsj / 图集拷贝", !files.some((name) => name.startsWith("layer-") || name.endsWith(".tmj") || name.endsWith(".tsj")), files.join(" "));
+  check(
+    "默认导出（png+json）给三个文件 + 一个 zip（多个产物自动打包）",
+    files.slice().sort().join(",") === ["manifest.json", "map.json", "map.png", expectedZip].sort().join(","),
+    files.join(" ")
+  );
+  check("没有分层 PNG / Tiled .tmj / .tsj", !files.some((name) => name.startsWith("layer-") || name.endsWith(".tmj") || name.endsWith(".tsj")), files.join(" "));
+
+  /**
+   * zip 要**真解一遍**：条目、内容、CRC 全部对得上才算数。
+   * 反向验证在下面单独一节（只勾一项时不许有 zip）。
+   */
+  const zipBytes = await readFile(join(exportDir, expectedZip));
+  const zipEntries = readZip(zipBytes);
+  check("zip 里只有用户勾的产物（map.png + map.json），不含 manifest.json", [...zipEntries.keys()].sort().join(",") === "map.json,map.png", [...zipEntries.keys()].join(" "));
+  check("zip 里的 map.png 与盘上那份逐字节一致", zipEntries.get("map.png")?.equals(await readFile(join(exportDir, "map.png"))) === true);
+  check("zip 里的 map.json 与盘上那份逐字节一致", zipEntries.get("map.json")?.equals(await readFile(join(exportDir, "map.json"))) === true);
+
 
   const mapPng = await decodeFile(join(exportDir, "map.png"));
   check("map.png 尺寸 = 网格脚印（8×32 = 256）", mapPng.width === 256 && mapPng.height === 256, `${mapPng.width}×${mapPng.height}`);
@@ -837,7 +939,7 @@ try {
   );
 
   const ownJson = JSON.parse(await readFile(join(exportDir, "map.json"), "utf8"));
-  check("map.json：格式标识 dsh-gem-map@2", ownJson.format === EXPORT.OWN_JSON_FORMAT && ownJson.format === "dsh-gem-map@2", ownJson.format);
+  check("map.json：格式标识 dsh-gem-map@3", ownJson.format === EXPORT.OWN_JSON_FORMAT && ownJson.format === "dsh-gem-map@3", ownJson.format);
   check("map.json：grid 三个字段齐（tileWidth / tileHeight / wrap）", ownJson.grid.tileWidth === 32 && ownJson.grid.tileHeight === 32 && ownJson.grid.wrap === true, JSON.stringify(ownJson.grid));
   check("map.json：cols / rows 与文档一致", ownJson.cols === 8 && ownJson.rows === 8);
   check("map.json：tilesets[].shape / cell / tileCount 齐", ownJson.tilesets[0].shape === "plain" && ownJson.tilesets[0].cell.width === 32 && ownJson.tilesets[0].tileCount === 16, JSON.stringify(ownJson.tilesets[0]));
@@ -847,24 +949,57 @@ try {
     const expectedY = Math.floor(index / 4) * 32;
     return entry.index === index + 1 && entry.rect.x === expectedX && entry.rect.y === expectedY && entry.rect.width === 32 && entry.rect.height === 32;
   }), JSON.stringify(ownJson.legend[5]));
-  check("map.json：每层 data 长度 = cols×rows（默认两层都在）", ownJson.layers.length === 2 && ownJson.layers.every((layer) => layer.data.length === 64), JSON.stringify(ownJson.layers.map((l) => [l.name, l.data.length])));
+  check("map.json：每层 data 长度 = cols×rows（默认三层都在）", ownJson.layers.length === 3 && ownJson.layers.every((layer) => layer.data.length === 64), JSON.stringify(ownJson.layers.map((l) => [l.name, l.data.length])));
   check("map.json：data 存的是语义序号（1-based 全局图块序号，0 = 空）", ownJson.layers[0].data[0] === 1 && ownJson.layers[0].data[1 * 8 + 2] === 8 && ownJson.layers[0].data[20] === 0, JSON.stringify([ownJson.layers[0].data[0], ownJson.layers[0].data[1 * 8 + 2], ownJson.layers[0].data[20]]));
   check("map.json：data 里的每个非零值都能在 legend 里找到", ownJson.layers[0].data.filter((value) => value > 0).every((value) => ownJson.legend.some((entry) => entry.index === value)));
   check("map.json：tilesets[].image 是相对项目目录的路径（导出目录里没有拷图集）", ownJson.tilesets[0].image === fiveSheet.file && !existsSync(join(exportDir, fiveSheet.file.replace(/^tilesets\//, ""))));
   const manifest = JSON.parse(await readFile(join(exportDir, "manifest.json"), "utf8"));
-  check("manifest.json：列出产物、mapPng/mapJson 命名对得上", manifest.mapPng === "map.png" && manifest.mapJson === "map.json" && ["map.png", "map.json", "manifest.json"].every((name) => manifest.files.some((file) => file.path === name)), manifest.files.map((f) => f.path).join(" "));
+  check("manifest.json：列出产物、mapPng/mapJson 命名对得上", manifest.mapPng === "map.png" && manifest.mapJson === "map.json" && manifest.mapZip === expectedZip && ["map.png", "map.json", "manifest.json"].every((name) => manifest.files.some((file) => file.path === name)), manifest.files.map((f) => f.path).join(" "));
   check("manifest.json：bounds 与网格脚印一致", manifest.bounds.width === 256 && manifest.bounds.height === 256, JSON.stringify(manifest.bounds));
   const pngA = await readFile(join(exportDir, "map.png"));
   await G.runExportStage(p5.id, { scale: 1 });
   await waitIdle(p5.id);
   const pngB = await readFile(join(exportDir, "map.png"));
   check("同一份文档两次导出：map.png 逐字节一致", pngA.length > 0 && pngA.equals(pngB), `${pngA.length} vs ${pngB.length}`);
+  /**
+   * zip 的确定性靠**写死时间戳**（见 `zip.ts` 文件头）：用真实时间的话这条会挂，
+   * 而「导出可复现」正是它能进版本库 / 能对比回归的前提。
+   */
+  check("同一份文档两次导出：zip 逐字节一致（时间戳写死）", (await readFile(join(exportDir, expectedZip))).equals(zipBytes), `${zipBytes.length} 字节`);
+
+  /**
+   * 反向验证：**只勾一项**不许打包（一个文件再套一层 zip 纯属添乱），
+   * 而且这次导出会把上一轮的产物清掉 —— 目录内容永远等于「这次选的东西」。
+   */
+  await G.runExportStage(p5.id, { scale: 1, formats: { png: true, json: false } });
+  await waitIdle(p5.id);
+  const pngOnly = await readdir(exportDir);
+  check("只勾 PNG：目录里只剩 map.png + manifest.json（没有 zip、上一轮的 map.json 被清掉）", pngOnly.slice().sort().join(",") === "manifest.json,map.png", pngOnly.join(" "));
+  const pngOnlyView = await G.mapView(await G.readMapProject(p5.id));
+  check("只勾 PNG 的视图：exportFiles 只有两个、exportPath 是本机绝对路径", pngOnlyView.exportFiles.slice().sort().join(",") === "manifest.json,map.png" && pngOnlyView.exportPath === exportDir, `${pngOnlyView.exportFiles.join(" ")} / ${pngOnlyView.exportPath}`);
+
+  // 素材原图：勾了才拷，拷进去的相对路径与 map.json 里的引用同形（整包自包含）
+  await G.runExportStage(p5.id, { scale: 1, formats: { png: true, json: true, tilesets: true } });
+  await waitIdle(p5.id);
+  const withAssets = await readdir(exportDir);
+  check("勾「素材原图」：素材图拷进 tilesets/（zip 里也有）", withAssets.includes("tilesets") && (await readdir(join(exportDir, "tilesets"))).length === 1, withAssets.join(" "));
+  const assetsZip = readZip(await readFile(join(exportDir, expectedZip)));
+  check(
+    "带素材的 zip：条目路径与 map.json 的 tilesets[].image 同形（搬到别处也能用）",
+    [...assetsZip.keys()].sort().join(",") === ["map.json", "map.png", `tilesets/${fiveSheet.file.split("/").pop()}`].sort().join(","),
+    [...assetsZip.keys()].join(" ")
+  );
+  check(
+    "带素材的 zip：拷进去的素材图与项目里那张逐字节一致",
+    assetsZip.get(`tilesets/${fiveSheet.file.split("/").pop()}`)?.equals(await readFile(G.mapAssetPath(p5.id, fiveSheet.file))) === true
+  );
+
   const view5 = await G.mapView(await G.readMapProject(p5.id));
   const view6b = await G.mapView(await G.readMapProject(p6.id));
   check("视图：preview 给的是相对路径（界面自己拼 assetBase）", view6b.preview.join(",") === "preview/map.png", view6b.preview.join(" "));
   check("视图：还没跑过预览的项目 preview 是空数组（不是伪造一条路径）", view5.preview.length === 0, view5.preview.join(" "));
   check("视图：exportBase 指向按地图名取的目录", view5.exportBase === `export/${expectedDir}/`, view5.exportBase);
-  check("视图：exportFiles 只列三个文件", view5.exportFiles.slice().sort().join(",") === "manifest.json,map.json,map.png", view5.exportFiles.join(" "));
+  check("视图：exportFiles 列出这一轮的全部产物（含 zip 与拷进来的素材）", view5.exportFiles.slice().sort().join(",") === ["manifest.json", "map.json", "map.png", expectedZip, `tilesets/${fiveSheet.file.split("/").pop()}`].sort().join(","), view5.exportFiles.join(" "));
   check("视图：legend 覆盖全部块，layers 带 filled 计数", view5.legend.length === 16 && view5.layers[0].filled === 2 && view5.filled === 2, JSON.stringify(view5.layers));
   check("视图：stages 四阶段 + busy/canUndo/maxChunks 字段齐", Object.keys(view5.stages).join(",") === "assets,rules,paint,export" && typeof view5.busy === "boolean" && typeof view5.canUndo === "boolean" && view5.maxChunks > 0);
   check("视图：素材带识别说明与调色板", view5.tilesets[0].reason.includes("正方形网格") && view5.tilesets[0].palette.length === 16, view5.tilesets[0].reason);
@@ -872,11 +1007,98 @@ try {
   const listing = await G.readExportListing(p5.id, "http://127.0.0.1:9999");
   check("readExportListing：base 与 files 都是可点的绝对 URL", listing.base === `http://127.0.0.1:9999/dsh-game-material-master/map-assets/${p5.id}/export/${expectedDir}/` && listing.files.every((url) => url.startsWith("http://127.0.0.1:9999/")), listing.base);
   const listingRelative = await G.mapSnapshot(await G.readMapProject(p5.id), "http://127.0.0.1:9999");
-  check("mapSnapshot：绝对 URL 与预览/导出清单齐", listingRelative.previewUrls.every((url) => url.includes("/preview/")) && listingRelative.exportBaseUrl.includes("/export/") && listingRelative.exportFiles.length === 3, listingRelative.exportFiles.join(" "));
+  check("mapSnapshot：绝对 URL 与预览/导出清单齐", listingRelative.previewUrls.every((url) => url.includes("/preview/")) && listingRelative.exportBaseUrl.includes("/export/") && listingRelative.exportFiles.length === view5.exportFiles.length, listingRelative.exportFiles.join(" "));
+  check("mapSnapshot：带上导出目录的本机绝对路径（模型要能直接报给用户）", listingRelative.exportPath === exportDir, listingRelative.exportPath);
+  check("readExportListing 里 zip 也是可点的绝对 URL", listing.files.some((url) => url.endsWith(expectedZip)), listing.files.join(" "));
   check("mapSnapshot：给出下一步动作", listingRelative.nextActions.length > 0, listingRelative.nextActions[0].step);
 
-  // ══ 16. 删除 ════════════════════════════════════════════════════════════
-  section("16) 删除项目");
+  // ══ 16. 标记点 ══════════════════════════════════════════════════════════
+  section("16) 标记点：op / 连续编号 / 撤销 / 环绕 / 计划 / 导出");
+  const pMark = await newProject("标记点", { cols: 8, rows: 8 });
+  const markA = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "add", r: 1, c: 1 }]);
+  await G.applyMapOps(pMark.id, [{ kind: "marker", op: "add", r: 2, c: 5, name: "宝箱" }]);
+  const markDoc = await G.readTheDoc(pMark.id);
+  check("标记：落进文档，id 由宿主分配、位置与名字都对", markDoc.markers.length === 2 && markDoc.markers[0].id === "m1" && markDoc.markers[1].name === "宝箱" && markDoc.markers[1].r === 2, JSON.stringify(markDoc.markers));
+  check("标记：改动返回脏块（界面据此重拉那一块）", Array.isArray(markA.dirtyChunks) && markA.dirtyChunks.length > 0, JSON.stringify(markA.dirtyChunks));
+  const dupMark = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "add", r: 1, c: 1 }]);
+  check("标记：同一格再放被拒，且说清是第几个", dupMark.changed === 0 && dupMark.skipped.some((text) => text.includes("这一格已经有标记了（第 1 个）")), dupMark.skipped.join(" | "));
+  const wrapMark = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "add", r: -1, c: 8 }]);
+  const afterWrap = await G.readTheDoc(pMark.id);
+  check("标记：环绕打开时负数 / 越界格取模落到图内", wrapMark.changed === 1 && afterWrap.markers.length === 3 && afterWrap.markers[2].r === 7 && afterWrap.markers[2].c === 0, JSON.stringify(afterWrap.markers[2]));
+
+  const viewMark = await G.mapView(await G.readMapProject(pMark.id));
+  check("视图：编号 = 下标 + 1（圆圈里那个数字就是它）", viewMark.markers.map((marker) => marker.n).join(",") === "1,2,3", JSON.stringify(viewMark.markers));
+
+  const planMark = await G.mapPlan(pMark.id, { view: { x: 0, y: 0, width: 8 * 32, height: 8 * 32 } });
+  const firstMark = planMark.markers.find((marker) => marker.id === "m1");
+  check("计划：标记带圆心 / 半径 / 字号 / 数字（界面一个数都不用自己推）", planMark.markers.length === 3 && firstMark.x === 1 * 32 + 16 && firstMark.y === 1 * 32 + 16 && firstMark.radius > 0 && firstMark.font > 0 && firstMark.n === 1, JSON.stringify(firstMark));
+  const seamMark = await G.mapPlan(pMark.id, { view: { x: 192, y: 128, width: 128, height: 128 } });
+  check(
+    "计划：视口跨右边界时同一个标记以另一个像素位置再发一条（界面不需要懂环绕）",
+    seamMark.markers.some((marker) => marker.c === 1 && marker.x === 9 * 32 + 16) && !seamMark.markers.some((marker) => marker.c === 1 && marker.x === 1 * 32 + 16),
+    JSON.stringify(seamMark.markers.map((marker) => [marker.c, marker.x]))
+  );
+  /**
+   * 视口比地图大（地图只占画布一角）：必须给整张地图 —— 8×8 的地图上，
+   * 收口若从视口左上角的 -1 起算一整轮，最后一行 / 最后一列会被挤出去，
+   * 只剩画布外那份副本（x / y 为负）。夹具里 (7,0) 那个标记正好落在最后一行。
+   */
+  const wideMark = await G.mapPlan(pMark.id, { view: { x: 0, y: 0, width: 8 * 32 * 3, height: 8 * 32 * 3 } });
+  const lastRowMark = wideMark.markers.find((marker) => marker.r === 7 && marker.c === 0);
+  check(
+    "计划：视口比地图大时给整张地图（最后一行的标记也在图内，不是画布外那份副本）",
+    lastRowMark !== undefined && lastRowMark.y === 7 * 32 + 16 && wideMark.markers.every((marker) => marker.x >= 0 && marker.y >= 0),
+    JSON.stringify(wideMark.markers.map((marker) => [marker.r, marker.c, marker.x, marker.y]))
+  );
+
+  const renamedMark = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "rename", id: "m1", name: "起点" }]);
+  check("标记改名：生效，但不脏任何格子（名字不上画布）", renamedMark.changed === 0 && renamedMark.dirtyChunks.length === 0 && (await G.readTheDoc(pMark.id)).markers[0].name === "起点", `changed=${renamedMark.changed} dirty=${renamedMark.dirtyChunks.length}`);
+  const movedMark = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "move", id: "m1", r: 4, c: 4 }]);
+  const movedDoc = await G.readTheDoc(pMark.id);
+  check("标记挪位置：老格子与新格子都标脏", movedMark.changed === 2 && movedDoc.markers[0].r === 4 && movedDoc.markers[0].c === 4, `changed=${movedMark.changed}`);
+  const blockedMark = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "move", id: "m1", r: 2, c: 5 }]);
+  check("标记挪到已占的格子：拒绝并说清", blockedMark.changed === 0 && blockedMark.skipped.some((text) => text.includes("已经有标记")), blockedMark.skipped.join(" | "));
+  const unknownMark = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "remove", id: "nope" }]);
+  check("标记 op 认不出 id 时只跳过、不抛", unknownMark.changed === 0 && unknownMark.skipped.some((text) => text.includes("标记不存在")), unknownMark.skipped.join(" | "));
+
+  const removedMark = await G.applyMapOps(pMark.id, [{ kind: "marker", op: "remove", id: "m2" }]);
+  const viewMarkb = await G.mapView(await G.readMapProject(pMark.id));
+  check("删掉第 2 个：后面的编号自动往前顶（连续编号）", viewMarkb.markers.length === 2 && viewMarkb.markers.map((marker) => marker.n).join(",") === "1,2" && viewMarkb.markers[1].id === "m3", JSON.stringify(viewMarkb.markers));
+  check("删掉第 2 个：它后面那些标记的格子一并标脏（圆圈里的数字变了）", removedMark.dirtyChunks.length > 0, JSON.stringify(removedMark.dirtyChunks));
+
+  await G.undoMap(pMark.id);
+  const afterUndoRemove = await G.readTheDoc(pMark.id);
+  check("撤销删除：标记回到**原来的位置**（编号顺序也回来了）", afterUndoRemove.markers.length === 3 && afterUndoRemove.markers[1].id === "m2", JSON.stringify(afterUndoRemove.markers.map((marker) => marker.id)));
+  await G.redoMap(pMark.id);
+  check("重做：又删掉", (await G.readTheDoc(pMark.id)).markers.length === 2);
+  await G.undoMap(pMark.id);
+  await G.undoMap(pMark.id);
+  const afterUndoMove = await G.readTheDoc(pMark.id);
+  check("撤销挪位置：回到原来的格", afterUndoMove.markers[0].r === 1 && afterUndoMove.markers[0].c === 1, JSON.stringify(afterUndoMove.markers[0]));
+  await G.undoMap(pMark.id);
+  check("撤销改名：名字回到改之前（不占格的改动也撤得回来）", (await G.readTheDoc(pMark.id)).markers[0].name === "");
+  await G.undoMap(pMark.id);
+  await G.undoMap(pMark.id);
+  await G.undoMap(pMark.id);
+  check("全部撤销：标记一个都不剩", (await G.readTheDoc(pMark.id)).markers.length === 0);
+
+  await G.applyMapOps(pMark.id, [{ kind: "marker", op: "add", r: 7, c: 7, name: "角落" }]);
+  const shrinkMark = await G.saveMapDocStructure(pMark.id, { cols: 4, rows: 4 });
+  check("缩小地图：界外的标记一起丢掉并给 warning", shrinkMark.doc.markers.length === 0 && shrinkMark.warnings.some((text) => text.includes("标记")), shrinkMark.warnings.join(" | "));
+  await G.saveMapDocStructure(pMark.id, { cols: 8, rows: 8 });
+  await G.applyMapOps(pMark.id, [{ kind: "marker", op: "add", r: 3, c: 3, name: "出口" }]);
+  // 导出要求「有素材 + 地图不空」，所以先装内置素材、铺一格 —— 标记本身不算内容。
+  await G.importSampleTileset(pMark.id);
+  await G.applyMapOps(pMark.id, [{ kind: "paint", layerId: "l0", cells: [{ r: 0, c: 0, tile: 1 }] }]);
+  await G.runExportStage(pMark.id, { formats: { png: false, json: true, zip: false } });
+  await waitIdle(pMark.id);
+  const exportMarkDirs = await readdir(join(G.mapProjectDir(pMark.id), "export"));
+  const ownMark = JSON.parse(await readFile(join(G.mapProjectDir(pMark.id), "export", exportMarkDirs[0], "map.json"), "utf8"));
+  check("导出：map.json 顶层带 markers（编号 + 名字 + 格坐标）", ownMark.markers.length === 1 && ownMark.markers[0].n === 1 && ownMark.markers[0].name === "出口" && ownMark.markers[0].r === 3 && ownMark.markers[0].c === 3, JSON.stringify(ownMark.markers));
+  check("导出：标记不占图层数据（同一格在图层里还是空的）", ownMark.layers[0].data[3 * 8 + 3] === 0 && ownMark.layers[0].data[0] === 1, `marker格=${ownMark.layers[0].data[3 * 8 + 3]} 画的格=${ownMark.layers[0].data[0]}`);
+
+  // ══ 17. 删除 ════════════════════════════════════════════════════════════
+  section("17) 删除项目");
   for (const id of created.slice()) {
     const existed = existsSync(G.mapProjectDir(id));
     await G.deleteMapProject(id);

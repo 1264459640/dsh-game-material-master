@@ -21,7 +21,12 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 序列帧生成 | `sequence` | 正式 |
 | 骨骼动画生成 | `rig` | **实验性**（页签带角标、进入弹窗、模块内常驻提示条） |
 | 45°地图地块生成 | `tile` | **实验性**（45° 等距地块 → 拼成地图；AI 生成地块） |
-| 地图编辑器 | `map` | **实验性**（参照 AsLib 的 RPG Map Maker：一屏、纯图标、零术语；素材列表 + 新增（属性一次定死）、内置素材默认在列表且可删可恢复、地图环绕、自动连接、动画地块（翻页图）、一键生成；**全本地零计费**） |
+| 地图编辑器 | `map` | 正式（参照 AsLib 的 RPG Map Maker：一屏、纯图标、零术语；素材列表 + 新增（属性一次定死）、内置素材默认在列表且可删可恢复、地图环绕、自动连接、动画地块（翻页图）、一键生成；默认三层「地理层 / 装饰层 / 建筑层」且图层可改名换序；**标记层**（每格一个标记、可命名、地图上画成圆圈里的数字、编号连续删了重排）；导出是「内容多选 → 一个「导出」按钮 → 一个 zip 下载 / 另存为」；**全本地零计费**） |
+
+生图后端是可切换的：默认火山方舟 Seedream，也可以换成用户自己的服务
+（OpenAI 兼容 / ComfyUI / Stable Diffusion WebUI 三种协议；
+`src/imageprovider.ts` 分发、`src/customimage.ts` 实现三种协议）。
+所有生图调用点都必须走 `imageprovider.generateImageWithProvider`，**不要在模块里自己判 `imageProvider`**。
 
 ---
 
@@ -35,6 +40,8 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | **没有任何运行时依赖** | `zod` / `cordis` / dsh-typert-protocol 等一律从 DSH 自身安装树解析；`node_modules` 与 lock 文件不入库 |
 | `lib/` **入库**（不是构建产物目录） | 包直接以 `main: lib/index.js` 发布，`npm publish` 不触发构建 |
 | 生成类调用必须带 loading 反馈，批量任务要按 `job.targets` 盖住**还没轮到**的方向 | 不盖遮罩时界面看着完全正常，只是「点了没反应」，用户会反复点——每次点击都真实计费。`verify-client.mjs` / `verify-feedback.mjs` 会拦 |
+| 本地自选视频必须与远端生成的产物**同形**，且导入时作废该槽位已有的下游产物 | 两条路只差 `origin` / `originalName` 两个字段，阶段③④才不用改。不作废（尤其是 `frames/<方向>/raw.bin`）就会拿上一段视频的帧去合成——界面看着完全正常，只是动作 / 朝向对不上；同理，导入时要摘掉在跑的远端 `taskId`，否则它稍后会把本地视频覆盖掉。`verify-host.mjs` 的 9d 段逐条钉住这几条 |
+| 生图一律走 `imageprovider.generateImageWithProvider`，模块里不许自己判 `imageProvider` | 分发只在一个地方，漏掉的那一处**不报错**，只是偷偷继续用另一家模型（用户以为换成了自己的服务，其实还在扣火山方舟的钱）。`verify-custom-image.mjs` 会打一台本地假服务端核对端点真的换了 |
 | 新增产物子目录时，`SERVABLE_DIRS`（`src/index.ts`）必须同步加一条 | 静态资源路由按**第一段路径**比对白名单，漏掉就 403。界面只表现为「图裂了」、不报错——转圈截帧的 `turn/` 就踩过。模块六是**四处**同步：`SERVABLE_MAP_DIRS` / `AssetScope` 类型 / `resolveAssetTarget` 分支 / `SCOPES` 数组，`verify-map-gateway.mjs` 会真调一遍路由 |
 | 模块六：**客户端只能执行宿主下发的绘制计划**，不许自己算变体 / 形状 / chunk / 坐标变换 | 界面里唯一允许复刻的是 `MAP_pointToCell` / `MAP_cellAnchor` / `MAP_cellTopLeft` / `MAP_lineCells` 四个坐标函数（命中测试必需），且有黄金对照盯着；**连「哪些 chunk 可见」都由宿主算**（`mapPlan({view})` 回 `visibleKeys`）。多写一套口径就是旧模块「预览好看、导出位移」的老路，`verify-map-client.mjs` 会扫源码拦 |
 | 模块六：**环绕（wrap）是默认行为**，凡涉及「邻居」的地方都必须先取模 | 网格、命中测试、绘制范围、脏块、自动连接的邻域判断都要 wrap。漏掉一处的表现是「接缝处形状不对 / 撤销后画面花掉」，只在贴边时看得出来 —— `verify-map.mjs` 里有「画第 0 行必须连带弄脏最后一行」这条断言，且配了非环绕的反向验证 |
@@ -64,23 +71,24 @@ npm run typecheck    # 只做类型检查
 纯本地自检（不联网、不花钱），改完代码**至少跑这几个**：
 
 ```bash
-node scripts/verify-host.mjs       # 宿主全链路（340 项）
-node scripts/verify-client.mjs     # 浏览器半区契约（348 项）
-node scripts/verify-tools.mjs      # 对话调用面（147 项）
+node scripts/verify-host.mjs       # 宿主全链路（385 项）
+node scripts/verify-client.mjs     # 浏览器半区契约（352 项）
+node scripts/verify-tools.mjs      # 对话调用面（153 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
-node scripts/verify-feedback.mjs   # 浏览器半区真渲染（161 项，含功能管理、侧栏菜单与语义保存错误）
+node scripts/verify-feedback.mjs   # 浏览器半区真渲染（203 项，含功能管理、侧栏菜单、生图后端设置页与语义保存错误）
 node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
 node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（124 项，自起 mock ComfyUI，纯本地、不用装 ComfyUI）
+node scripts/verify-custom-image.mjs  # 自定义生图后端三协议（68 项：起本地假服务端，离线、零计费）
 node scripts/verify-rig-runtime.mjs  # 骨骼改动：官方 Spine 4.2 实际加载/IK/Path/FFD/顶点求值（开发依赖）
 node scripts/verify-tile.mjs       # 地图地块几何内核（147 项，含反向验证）
 node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115 项；⚠️ 需要先跑过 e2e-tile-live 生成过地块，否则会在拼图阶段直接抛）
 node scripts/verify-tile-gateway.mjs   # 地图地块走真实网关（81 项：payload / 验收 / 作废边界 / 建筑 / 布局冻住 / 保存往返）
 node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项，拦「遮罩没出现」「地图不显示」这类静默问题）
 
-node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接内核（113 项，含反向验证与术语黑名单）
-node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（235 项，含 A2 每格 4 条 op、动画循环、dropKeys、导出逐字段）
-node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（153 项，含资源路由 403 / 目录穿越 / 并发提交）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（220 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划）
+node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点内核（123 项，含反向验证与术语黑名单）
+node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（274 项，含 A2 每格 4 条 op、动画循环、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
+node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（160 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（263 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字，以及「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证）
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的
@@ -134,40 +142,21 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 | `0.2.1` | 2026-09-30 14:18 | 合并 PR #2（来自 qiufl）：适配新版 DSH 的 strict codec `create()` 契约（`fix(typert)`，含 revert 后修正版）；阶段①「提取序列帧」新增**手动选帧**功能，15 文件 +1387 行 |
 | `0.3.0` | 2026-10-05 12:56 | 新增**多语言支持**（界面文案与内置提示词跟随 DSH 语言设置，中 / 英，`feat(i18n)`，README 增加英文版）；新增模块五「**45°地图地块生成**」（实验性：等距地块 → 拼成整张地图，`feat(tile)`）；另有 `fix(tools)` 工具返回值统一过 `jsonSafe`、`fix(scripts)` verify-live-bundle 兼容 |
 | `0.4.0` | 2026-10-09 14:12 | 设置页新增「**功能管理**」（`feat(settings)`）：逐个开关五个模块，隐藏后界面上不再出现它的页签与侧栏菜单项，**对话工具面同样拒绝调用**（`game_material_call` / `status` / `intake` / `upload` / `wait` / `review` / `approve`），且可见性只能由用户在设置页里改；侧栏「游戏素材大师」入口上新增**快捷菜单按钮**，点击直接弹出五个功能 |
+| `0.6.0` | 2026-10-15 08:50 | **模块六「地图编辑器」推倒重做**（`feat(map)`，实验性，**全本地零计费**）：参照 [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) 的 **RPG Map Maker** 改成**一屏、纯图标、零术语**（左侧素材调色板 + 12 个图标按钮，右侧画布，选一张素材图就能开画）；素材形态（RPG Maker A2 拼块 / 整格 16 块 / 普通图块）由尺寸**自动识别**；**地图四周环绕**（相机 / 命中 / 绘制范围 / 脏块 / 邻域判断全部取模）；一格的 A2 自动连接由宿主展开成 **4 条象限 op**（客户端仍只 `drawImage`）；**动画地块**走 op 上的 `cycle` + 全局帧号；自带**程序化生成的内置素材**（4 张 A2 + 1 张道具，水有 2 帧动画；AsLib 的 pipo 素材是第三方版权，不打包）；新增**一键生成**（随机铺满 / 迷宫 / 大陆，同种子逐字节可复现）；编辑协议新增 **`dropKeys`**（界面把缓存 chunk key 报上来，宿主只回真正失效的那几个），`mapPlan` 改成按视口查询（`view` + `have`）；「**翻页图**」给自己的普通素材开逐行动画；**导出窗口按正常操作逻辑重做**（内容三只复选框多选 / 只有一个「导出」/ 多产物自动打一个 `<地图名>.zip`，`src/zip.ts` 手写且时间戳写死所以可复现 / 卡片写出本机绝对路径、「另存为…」走浏览器原生保存框）；**删除**：2:1 等距、多地图、图层高度 / 不透明度 / 类型 / 锁定、地形族与掩码编辑器、掩码覆盖率、Tiled `.tmj` `.tsj` 导出、带图例的自有 JSON、切片 contact sheet（`map-jobs/<id>/maps/` 目录消失，单张地图直接落 `map.json`）；wire 方法删 4 个（`saveMapFamilies` / `createMapDoc` / `deleteMapDoc` / `duplicateMapDoc`）、加 2 个（`runMapGenerate` / `importSampleTileset`）；自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。⚠️ 改完必须重启 DSH（宿主半区）。（`0.5.0` 从未发布，其模块六实现已被本次重做整体取代） |
 
 下一次发布请**在表中追加一行**，写明版本、UTC 时间与内容。
 
-### ⏳ 已改好版本号、**尚未发布**：`0.6.0`
+### ⏳ 尚未发布：`0.7.0`
 
-`package.json` 已是 `0.6.0`，但**还没有** `npm publish`（发布由用户决定）。
-（`0.5.0` 从未发布；它当初的模块六实现已被下面这次重做整体取代，所以这里只写 0.6.0 的内容。）内容：
-
-> **模块六「地图编辑器」推倒重做**（`feat(map)`，实验性，**全本地零计费**）：参照
-> [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) 的 **RPG Map Maker** 改成**一屏、纯图标、零术语** ——
-> 左侧素材调色板 + 12 个图标按钮，右侧画布，选一张素材图就能开画。
-> 素材形态（RPG Maker A2 拼块 / 整格 16 块 / 普通图块）由尺寸**自动识别**，识别错了一个下拉改；
-> **地图四周环绕**（相机、命中、绘制范围、脏块、邻域判断全部取模）；一格的 A2 自动连接由宿主
-> 展开成 **4 条象限 op**（客户端仍然只 `drawImage`）；**动画地块**走 op 上的 `cycle` + 全局帧号；
-> 自带一套**程序化生成的内置素材**（4 张 A2 + 1 张道具，水有 2 帧动画；AsLib 的 pipo 素材是第三方
-> 版权，不打包）；新增**一键生成**（随机铺满 / 迷宫 / 大陆，同种子逐字节可复现）。
-> 编辑协议新增 **`dropKeys`**：界面把缓存的 chunk key 报上来，宿主只回「真正失效的那几个」，
-> 于是界面里连 chunk 计算都没有；`mapPlan` 改成按视口查询（`view` + `have`）。
-> **删除**：2:1 等距、多地图、图层高度 / 不透明度 / 类型 / 锁定、地形族与掩码编辑器、掩码覆盖率、
-> Tiled `.tmj`/`.tsj` 导出、带图例的自有 JSON、切片 contact sheet；`map-jobs/<id>/maps/` 目录消失
-> （单张地图直接落 `map.json`）。wire 方法删 4 个（`saveMapFamilies` / `createMapDoc` /
-> `deleteMapDoc` / `duplicateMapDoc`）、加 2 个（`runMapGenerate` / `importSampleTileset`）。
-> 自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。
-> ⚠️ **改完必须重启 DSH**（宿主半区），且对话面方法枚举会在重启后更新。
->
-> **另含本地 ComfyUI 视频后端**（`feat(comfy)`，可选、不影响默认链路）：设置页新增「本地 ComfyUI
-> （图生视频）」，勾选后**只有「图生视频」这一步**改走本机 ComfyUI（替代 MiniMax）——工作流用
-> JSON（**API 格式**直通，编辑器里保存的界面格式会先自动转成 API 格式），注入点（提示词 / 宽高 / 时长 / 种子 / 首尾帧）自动探测，工作流里没连的 optional
-> `IMAGE` 输入按 `/object_info` 的节点定义自动补一个 `LoadImage`，内置模板就是 FreeVideo 那条链路；
-> 新增 `src/comfy.ts`（客户端）、`src/videogen.ts`（后端分派，按**节点上记的** `backend` 查任务）、
-> `scripts/verify-comfy.mjs`（124 项，自起 mock ComfyUI）、配置项 `comfy*` 十一个（多出的 `comfyCookies` 专供鉴权反代，不进 `directKeys`），wire 新增 `testComfy`
-> （manifest 方法数 130 → 131）。生图 / 抠像 / 抽帧 / 合图不变。
->
-> 两块内容一起发时版本按 minor 提（`0.7.0`）；只发模块六就仍是 `0.6.0`。
+`package.json` 目前仍是 `0.6.0`（发布由用户决定）。相对已发布的 0.6.0，还多出一个**本地 ComfyUI 视频后端**
+（`feat(comfy)`，可选、不影响默认链路）：设置页新增「本地 ComfyUI（图生视频）」，勾选后**只有「图生视频」这一步**
+改走 ComfyUI（替代 MiniMax）——工作流收 JSON（**API 格式**直通，编辑器里保存的界面格式会先自动转成 API 格式），
+注入点（提示词 / 宽高 / 时长 / 种子 / 首尾帧）自动探测，工作流里没连的 optional `IMAGE` 输入按 `/object_info`
+的节点定义自动补一个 `LoadImage`，内置模板就是 FreeVideo 那条链路；新增 `src/comfy.ts`（客户端）、
+`src/videogen.ts`（后端分派，按**节点上记的** `backend` 查任务）、`scripts/verify-comfy.mjs`（124 项，自起 mock
+ComfyUI）、配置项 `comfy*` 十一个（多出的 `comfyCookies` 专供鉴权反代，不进 `directKeys`），wire 新增 `testComfy`。
+同批还包括：候选帧上限 64 → 512、换源图后作废由旧源图派生的产物、转圈首帧的时间兜底、
+ffmpeg / ffprobe 的路径查找（Windows 上读注册表与常见安装位置）。生图 / 抠像 / 抽帧 / 合图不变。
 
 发布时按下面的流程走，并**把这段挪进上面的「已发布版本」表**（补上 UTC 时间）。
 
@@ -224,7 +213,7 @@ npm view dsh-game-material-master dist-tags
   代价是仓库内改图后要跟着改 URL，别写成相对路径「图方便」。
 - **截图不进 npm tarball。** `files` 白名单只有 `lib` / `README.md` / `README.en.md` /
   `cordis.patch.yml`，`docs/` 不发布——这也是上一条必须用绝对 URL 的原因。
-  tarball 约 415 kB / 32 个文件。
+  tarball 约 665 kB / 46 个文件（0.6.0 实测；0.1.1 时是 415 kB / 32 个文件）。
 - **两份 README 要成对改。** `README.md` 是中文原文，`README.en.md` 是英文版，
   两边顶部各有一条指向对方的**绝对**链接（npm 包页面解析不了相对路径，理由同上一条）。
   改了结构或数字（自检项数、tarball 大小等）就两边一起改。

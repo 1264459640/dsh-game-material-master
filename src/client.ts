@@ -131,6 +131,23 @@
       "更换源图": "Replace source image",
       "刷新状态": "Refresh status",
       "在访达中打开项目目录": "Open the project directory in Finder",
+      "保存全部图片（zip）": "Save all images (zip)",
+      "正在打包全部图片…": "Packing all images…",
+      "已打包 {n0} 张图片": "Packed {n0} images",
+      "已打包 {n0} 张图片（另有 {n1} 张读不到，已跳过）": "Packed {n0} images ({n1} unreadable files were skipped)",
+      "选择本地视频": "Choose a local video",
+      "正在导入本地视频…": "Importing the local video…",
+      "已选用本地视频，正在抽候选帧并切出八个方向…": "Local video selected - extracting candidate frames and cutting the eight directions…",
+      "已选用本地视频（抽帧没有自动开始，点「抽取候选帧」即可）": "Local video selected (extraction did not start automatically - click \"Extract candidate frames\")",
+      "已选用「{n0}」的本地视频，接着到第 3 步抽取序列帧": "Local video selected for \"{n0}\" - extract the sequence frames in step 3",
+      "本地视频：{n0}（不花远程调用）": "Local video: {n0} (no remote call)",
+      "保存条带": "Save strip",
+      "保存视频": "Save video",
+      "保存预览带": "Save preview strip",
+      "手上已经有这样一段视频（自己电脑上的文件）时，点「选择本地视频」直接用它即可，不必走远程生成。": "If you already have such a video as a file on this computer, click \"Choose a local video\" and use it directly - no remote generation needed.",
+      "某一个方向已经有现成的行走视频（自己电脑上的文件）时，点那一格的「选择本地视频」直接用它，不必走远程生成。": "If you already have a walking video for a direction as a file on this computer, click \"Choose a local video\" in that cell and use it directly - no remote generation needed.",
+      "用自己电脑上的一段原地转圈视频（绿幕）顶替远程生成；导入后会自动抽候选帧并切出八个方向": "Use a chroma-key video of the character turning in place from this computer instead of remote generation; after the import the candidate frames are extracted and the eight directions are cut out automatically",
+      "用自己电脑上的一段「固定镜头 + 原地走」视频顶替这一方向的远程生成；之后照旧到第 3 步抽帧": "Use a fixed-camera walking-in-place video from this computer instead of remote generation for this direction; frames are still extracted in step 3",
       "先生成一段「角色原地匀速转一整圈」的绿幕视频，再按时间截出八个方向的帧；下面时间轴上的八个圆圈就是各自的截帧位置，拖动即可改。": "First generate a chroma-key video of the character turning a full circle in place at a constant speed, then cut frames for the eight directions by time. The eight circles on the timeline below mark each direction's frame position; drag them to change it.",
       "转圈截帧": "Turn-frame capture",
       "先生成一段「原地匀速转一整圈」的视频，再按时间截出八个方向（默认，一致性最好）": "Generate one video of a full turn in place at a constant speed, then cut the eight directions from it by time (default, best consistency)",
@@ -862,7 +879,40 @@
       "导入 DragonBones：把 export/dragonbones/skeleton_ske.json 与 atlas/skeleton_tex.json、atlas/skeleton.png 放同一目录后加载 .json 数据与纹理。": "Importing into DragonBones: put export/dragonbones/skeleton_ske.json in the same folder as atlas/skeleton_tex.json and atlas/skeleton.png, then load the .json data and textures.",
       "正在载入配置…": "Loading configuration…",
       "配置已保存": "Configuration saved",
-      "配置两家模型的 API Key 与整条流水线的默认参数。Key 只保存在本机 DSH 数据目录下的 game-material-master/config.json（真实路径见文末「数据位置」），界面里始终脱敏显示。": "Configure the API keys for both models and the default parameters for the whole pipeline. Keys are stored only in game-material-master/config.json under your local DSH data directory (see \"Data location\" at the end for the real path) and are always masked in the UI.",
+      "配置生图 / 生视频的模型与整条流水线的默认参数。Key 只保存在本机 DSH 数据目录下的 game-material-master/config.json（真实路径见文末「数据位置」），界面里始终脱敏显示。": "Configure the image/video models and the default parameters for the whole pipeline. Keys are stored only in game-material-master/config.json under your local DSH data directory (see \"Data location\" at the end for the real path) and are always masked in the UI.",
+      "生图后端": "Image backend",
+      "八方向图、图片生成、骨骼动画、45°地图地块的生图都走这里选的后端；图生视频（MiniMax）不受影响。": "Sprite sheets, image generation, rigged animation and 45° map tiles all generate images through the backend selected here; image-to-video (MiniMax) is unaffected.",
+      "当前使用": "In use",
+      "火山方舟 Seedream（云端，开箱即用）": "Volcengine Ark Seedream (cloud, works out of the box)",
+      "自定义生图模型（OpenAI / ComfyUI / SD WebUI）": "Custom image model (OpenAI / ComfyUI / SD WebUI)",
+      "当前生效：{n0}": "Currently active: {n0}",
+      "还不能开跑：{n0}": "Not ready yet: {n0}",
+      "后端已就绪，可以开跑。": "The backend is ready to use.",
+      "自定义生图模型": "Custom image model",
+      "填「主机根地址」即可，具体端点由插件按协议拼；本地服务通常不需要 API Key。": "Just the host root URL — the plugin appends the protocol-specific endpoint. Local servers usually need no API key.",
+      "协议": "Protocol",
+      "模型名（SD WebUI 忽略，模型由服务端决定）": "Model name (ignored by SD WebUI; the server decides the model)",
+      "模型名": "Model name",
+      "可不填，由工作流决定": "Optional; the workflow decides",
+      "输出尺寸（宽x高）": "Output size (width x height)",
+      "请求端点：{n0}": "Endpoint: {n0}",
+      "（未配置，本地服务可以留空）": "(not configured; local servers can leave it blank)",
+      "粘贴 API Key（A1111 的 user:pass 也认）": "Paste the API key (A1111's user:pass is also accepted)",
+      "自定义后端 Key 已保存": "Custom backend key saved",
+      "已清除自定义后端 Key": "Custom backend key cleared",
+      "负面提示词": "Negative prompt",
+      "走 {{negative_prompt}} 占位符": "Filled via the {{negative_prompt}} placeholder",
+      "采样步数": "Sampling steps",
+      "CFG / 引导强度": "CFG / guidance scale",
+      "采样器": "Sampler",
+      "图生图重绘强度（0~1）": "Image-to-image denoising strength (0–1)",
+      "随机种子（-1 = 每次随机）": "Seed (-1 = random each time)",
+      "请求超时（毫秒，本地模型建议给足）": "Request timeout (ms; give local models plenty)",
+      "工作流（在 ComfyUI 里点「导出（API）」，把那份 JSON 整段粘贴）。可用占位符：{{prompt}} {{negative_prompt}} {{width}} {{height}} {{seed}} {{steps}} {{cfg}} {{sampler}} {{denoising}} {{model}} {{image}}；一个都不写就原样跑你保存的工作流。": "Workflow (click \"Export (API)\" in ComfyUI and paste the whole JSON). Placeholders: {{prompt}} {{negative_prompt}} {{width}} {{height}} {{seed}} {{steps}} {{cfg}} {{sampler}} {{denoising}} {{model}} {{image}}. With no placeholder at all, your saved workflow runs as-is.",
+      "工作流已保存": "Workflow saved",
+      "保存工作流": "Save workflow",
+      "清空": "Clear",
+      "测试连接（会真实生成 1 张测试图，产生少量费用）": "Test connection (generates one real test image, small charge)",
       "火山方舟（生图）": "Volcengine Ark (image generation)",
       "ffmpeg 可用：{n0}": "ffmpeg available: {n0}",
       "ffmpeg 不可用：{n0}": "ffmpeg unavailable: {n0}",
@@ -1091,24 +1141,13 @@
       "任务进行中…":
         "A job is running…",
 
-      // ── 地图编辑器：实验性说明弹窗 ──────────────────────────────────────
-
-      "界面上看到的地图与导出的 PNG 执行的是同一份绘制计划，所以不会有「预览好看、导出位移」这种事。":
-        "The map you see and the exported PNG execute the same draw plan, so \"looks right in the preview but shifts on export\" cannot happen.",
-      "地图编辑器仍在开发中":
-        "The map editor is still in development",
-      "地图编辑器（实验性）":
-        "Map editor (experimental)",
+      // 模块⑥「地图编辑器」已经是正式功能：这里不再需要它的实验性说明词条。
 
       "已删除项目": "Project deleted",
       "已改地图尺寸": "Map resized",
       "换一组": "Roll again",
 
       // ── 地图编辑器（模块六）：一屏零术语，AsLib RPG Map Maker 同款 ────────
-      "这条路是全本地的：导入素材图、自动连接、画地图、导出 PNG 都在本机算，一次模型调用都没有，所以不花钱。":
-        "This path is fully local: importing the image, auto-connecting, painting and exporting the PNG all run on this machine - not a single model call, so nothing is billed.",
-      "与模块⑤不同：它不生成素材，只把你自己的素材图切成一块一块，铺图、接边和导出都由本地代码完成。":
-        "Unlike module 5 it generates no artwork: it cuts your own tile image into pieces, and the placing, edge matching and export are all done by local code.",
       "导入自己的素材图 → 自动连接 → 直接画 → 导出 PNG":
         "Import your own tile image → auto-connect → paint → export PNG",
       "先在左边点一块图当笔刷。":
@@ -1219,10 +1258,6 @@
         "Pick up the tile used in this cell and make it the current brush",
       "拖动平移画布；空格拖或中键拖也行":
         "Drag to pan the canvas; space-drag or middle-drag works too",
-      "只显示当前这一层，底铺绿色":
-        "Show only the current layer on a green backdrop",
-      "上半换上一层、下半换下一层；中间的数字是当前层号":
-        "Click the upper half for the layer above, the lower half for the one below; the number in the middle is the current layer",
       "显示或隐藏格线，方便数格子":
         "Show or hide the grid lines so cells are easier to count",
       "随机铺满 / 迷宫 / 大陆：用选中的图块一键铺满整层":
@@ -1247,8 +1282,6 @@
         "Paint bucket",
       "抓手":
         "Hand",
-      "单层预览":
-        "Single layer",
       "上一层":
         "Layer up",
       "下一层":
@@ -1279,10 +1312,48 @@
         "How this image is used",
       "动画速度":
         "Animation speed",
-      "导出图片 PNG":
-        "Export image PNG",
-      "导出存档 JSON":
-        "Export save JSON",
+      "导出内容":
+        "What to export",
+      "地图图片 PNG":
+        "Map image (PNG)",
+      "地图长什么样，直接能放进游戏":
+        "How the map looks - ready to drop into a game",
+      "存档数据 JSON":
+        "Save data (JSON)",
+      "每一格是什么，给引擎和工具读":
+        "Which tile sits in each cell, for engines and tools",
+      "素材原图":
+        "Source tilesets",
+      "把素材图一起拷进包里，换台机器也能用":
+        "Copy the tileset images in too, so the package works on another machine",
+      "产出不止一个文件时自动打成一个 ZIP；只有一个文件时就直接给你那个文件。":
+        "More than one file is packed into a single ZIP; a single file is handed to you as it is.",
+      "至少勾一项要导出的内容。":
+        "Choose at least one thing to export.",
+      "最近一次导出：{n0} 个文件":
+        "Last export: {n0} files",
+      "下载 {n0}":
+        "Download {n0}",
+      "打包，含全部内容":
+        "Bundle with everything",
+      "另存为…":
+        "Save as…",
+      "下载走浏览器（默认进它的下载目录）；想自己挑位置就点「另存为…」。":
+        "Downloads go through the browser (its download folder by default); use \"Save as…\" to pick the location yourself.",
+      "下载走浏览器：文件会进它的下载目录（想每次都自己挑位置，在浏览器里打开「下载前询问保存位置」）。":
+        "Downloads go through the browser: files land in its download folder (turn on \"Ask where to save each file\" in the browser to choose every time).",
+      "这个浏览器不支持「另存为」，请用下载（位置由浏览器的下载设置决定）。":
+        "This browser does not support \"Save as\" - use the download link instead (the browser decides the location).",
+      "已保存到 {n0}":
+        "Saved to {n0}",
+      "另存为失败：{n0}":
+        "Save as failed: {n0}",
+      "还没有导出过，先点「导出」。现在打开的是项目目录。":
+        "Nothing has been exported yet - press \"Export\" first. The project folder is open for now.",
+      "已打开 {n0}":
+        "Opened {n0}",
+      "文件都在 {n0}":
+        "All files are in {n0}",
       "倍率":
         "Scale",
       "只影响 PNG 的尺寸，不影响存档数据":
@@ -1297,16 +1368,46 @@
         "Layer added",
       "加一层":
         "Add layer",
-      "至少要留一层":
-        "At least one layer must remain",
       "删掉当前这一层":
         "Delete the current layer",
       "已删掉这一层":
         "Layer deleted",
-      "删一层":
-        "Delete layer",
       "清空当前图层":
         "Clear current layer",
+      "标记":
+        "Marker",
+      "地图上点一格放一个标记；点已有标记可以改名、按住拖动可以挪位置；右键删掉它":
+        "Click a cell to drop a marker; click an existing marker to rename it, drag it to move it; right-click deletes it",
+      "标记层":
+        "Marker layer",
+      "还没有标记。选「标记」工具，在地图上点一格。":
+        "No markers yet. Pick the Marker tool and click a cell on the map.",
+      "{n0} 个标记":
+        "{n0} markers",
+      "标记 {n0}":
+        "Marker {n0}",
+      "定位":
+        "Go to",
+      "删掉":
+        "Delete",
+      "已重命名这一层":
+        "Layer renamed",
+      "图层名字不能为空":
+        "A layer name cannot be empty",
+      "上移一层":
+        "Move layer up",
+      "下移一层":
+        "Move layer down",
+      "只看这一层":
+        "Only this layer",
+      "点名字可以改名，右边可以换顺序或删掉":
+        "Click a name to rename it; on the right you can reorder or delete it",
+      "标记名字":
+        "Marker name",
+      "点中间的数字打开图层列表（改名 / 换顺序 / 删掉）；上半换上一层、下半换下一层":
+        "Click the number in the middle to open the layer list (rename / reorder / delete); the top half switches up a layer, the bottom half switches down",
+      "已换图层顺序":
+        "Layer order updated",
       "帮助":
         "Help",
       "左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝橡皮。":
@@ -1351,8 +1452,6 @@
       "时长（秒，0 = 用工作流里的值）": "Duration (seconds, 0 = use the workflow value)",
       "种子（0 = 每次随机）": "Seed (0 = random each run)",
       "工作流 JSON（ComfyUI 菜单里的「导出（API 格式）」）": "Workflow JSON (ComfyUI menu: Export (API format))",
-      "工作流已保存": "Workflow saved",
-      "保存工作流": "Save workflow",
       "已恢复内置模板": "Built-in template restored",
       "恢复内置模板": "Restore built-in template",
       "正在连接…": "Connecting…",
@@ -1391,9 +1490,6 @@
       },
       () => {
         TILE_STAGES = make_TILE_STAGES();
-      },
-      () => {
-        MAP_EXPERIMENTAL_POINTS = make_MAP_EXPERIMENTAL_POINTS();
       },
       () => {
         STAGES = make_STAGES();
@@ -1538,6 +1634,7 @@
       ["getConfig", false],
       ["saveConfig", true],
       ["testArk", false],
+      ["testCustomImage", false],
       ["testMinimax", false],
       ["testComfy", false],
       ["listProjects", false],
@@ -1552,6 +1649,9 @@
       ["setReviewMode", true],
       ["reportClientOrigin", true],
       ["revealProject", true],
+      // 本地自选视频（转圈 / 某个方向）与中间图片打包。
+      ["uploadVideo", true],
+      ["exportImages", true],
       ["runImage", true],
       ["runImages", true],
       ["setImageMode", true],
@@ -1803,17 +1903,10 @@
     }
     let TILE_EXPERIMENTAL_POINTS = make_TILE_EXPERIMENTAL_POINTS();
 
-    /** 进入模块⑥时的实验性说明要点（导入自己的素材图那条路）。 */
-    function make_MAP_EXPERIMENTAL_POINTS() {
-      return [
-      T("这条路是全本地的：导入素材图、自动连接、画地图、导出 PNG 都在本机算，一次模型调用都没有，所以不花钱。"),
-      T("与模块⑤不同：它不生成素材，只把你自己的素材图切成一块一块，铺图、接边和导出都由本地代码完成。"),
-      T("界面上看到的地图与导出的 PNG 执行的是同一份绘制计划，所以不会有「预览好看、导出位移」这种事。"),
-      T("发现问题或有改进想法，欢迎到 GitHub 仓库一起开发。")
-    ];
-    }
-    let MAP_EXPERIMENTAL_POINTS = make_MAP_EXPERIMENTAL_POINTS();
-
+    // 模块⑥「地图编辑器」**已经不再是实验性功能**：链路全本地、零计费，几何与导出
+    // 都有像素级自检兜底（`verify-map*` 四件），界面上与导出的 PNG 执行同一份绘制计划。
+    // 所以它没有实验性角标、没有进入弹窗、模块内也没有常驻提示条
+    // —— 留下任何一条都会让「正式」这个说法名不副实。
 
     /** 六个功能模块。插件是「大师」，每个模块管一类素材。 */
     function make_MODULES() {
@@ -1823,7 +1916,7 @@
       { key: "sequence", title: T("序列帧生成"), hint: T("图/视频参考生成视频 → 抽帧 → 抠像 → 合成与播放预览") },
       { key: "rig", title: T("骨骼动画生成"), hint: T("拆件 → 装配定位 → 推骨骼与动画 → 打包 Spine 图集"), experimental: true },
       { key: "tile", title: T("45°地图地块生成"), hint: T("45° 等距地块 → 拼成地图：几何交给代码，内容交给 AI"), experimental: true },
-      { key: "map", title: T("地图编辑器"), hint: T("导入自己的素材图 → 自动连接 → 直接画 → 导出 PNG"), experimental: true }
+      { key: "map", title: T("地图编辑器"), hint: T("导入自己的素材图 → 自动连接 → 直接画 → 导出 PNG") }
     ];
     }
     let MODULES = make_MODULES();
@@ -2234,7 +2327,28 @@
 .SPR_mapEdLayerHalf{flex:1;width:100%;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;color:#4a3416;background:transparent;border:none;border-radius:3px}
 .SPR_mapEdLayerHalf:hover:not(:disabled){background:rgba(255,255,255,.28)}
 .SPR_mapEdLayerHalf:disabled{opacity:.3;cursor:default}
-.SPR_mapEdLayerNum{font-size:10px;line-height:1;font-weight:700;color:#4a3416;font-variant-numeric:tabular-nums}
+.SPR_mapEdLayerNum{width:100%;padding:0;border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:10px;line-height:1;font-weight:700;color:#4a3416;font-variant-numeric:tabular-nums}
+.SPR_mapEdLayerNum:hover{background:rgba(255,255,255,.28);border-radius:3px}
+/* 图层卡：一行一层（点名字就地改名，右边换顺序 / 删掉）。
+   最上面一行固定是「标记层」，它不是图层数组里的成员 —— 标记有自己的位置与名字。 */
+.SPR_mapEdLayerList{display:flex;flex-direction:column;gap:3px;margin:6px 0}
+.SPR_mapEdLayerRow{display:flex;align-items:center;gap:5px;padding:3px 5px;border:1px solid #6b4a22;border-radius:4px;background:rgba(0,0,0,.18)}
+.SPR_mapEdLayerRow[data-on="true"]{border-color:#e6bd7d;background:rgba(230,189,125,.18)}
+.SPR_mapEdLayerIdx{width:15px;flex:none;text-align:center;font-size:11px;color:#c9bda8;font-variant-numeric:tabular-nums}
+.SPR_mapEdLayerName{flex:1;min-width:0;text-align:left;padding:2px 4px;border:1px dashed transparent;border-radius:3px;background:transparent;color:#f3e7d3;font-family:inherit;font-size:12px;cursor:text;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.SPR_mapEdLayerName:hover{border-color:#6b4a22}
+.SPR_mapEdLayerNameInput{flex:1;min-width:0;padding:2px 4px;border:1px solid #e6bd7d;border-radius:3px;background:#1f1f1f;color:#f3e7d3;font-family:inherit;font-size:12px;outline:none}
+.SPR_mapEdMiniBtn{padding:1px 5px;border:1px solid #6b4a22;border-radius:3px;background:rgba(0,0,0,.25);color:#e8d7bb;font-family:inherit;font-size:11px;line-height:16px;cursor:pointer}
+.SPR_mapEdMiniBtn:hover:not(:disabled){background:rgba(230,189,125,.25)}
+.SPR_mapEdMiniBtn:disabled{opacity:.35;cursor:default}
+.SPR_mapEdMarkerRow{display:flex;align-items:center;gap:6px;padding:3px 5px;border:1px solid #6b4a22;border-radius:4px;background:rgba(0,0,0,.18)}
+.SPR_mapEdMarkerRow[data-on="true"]{border-color:#e23b2b;background:rgba(226,59,43,.14)}
+.SPR_mapEdMarkerDot{width:18px;height:18px;flex:none;display:flex;align-items:center;justify-content:center;border:1.5px solid #f0c040;border-radius:50%;background:#14161e;color:#fff;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.SPR_mapEdMarkerName{flex:1;min-width:0;padding:2px 4px;border:1px solid transparent;border-radius:3px;background:transparent;color:#f3e7d3;font-family:inherit;font-size:12px;outline:none}
+.SPR_mapEdMarkerName:hover{border-color:#6b4a22}
+.SPR_mapEdMarkerName:focus{border-color:#e6bd7d;background:#1f1f1f}
+.SPR_mapEdMarkerAt{flex:none;font-size:11px;color:#b9b3a8;font-variant-numeric:tabular-nums}
+.SPR_mapEdMarkerList{display:flex;flex-direction:column;gap:3px;max-height:216px;overflow:auto;margin-top:4px}
 /* 画布：铺满右列，像素画不糊 */
 .SPR_mapEdStage{position:relative;flex:1;min-width:0;min-height:360px;background:#3a3a3a;overflow:hidden}
 .SPR_mapEdCanvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none;cursor:crosshair}
@@ -2261,7 +2375,6 @@
 .SPR_mapEdTsMeta{flex:none;font-size:11px;color:#9a9a9a}
 .SPR_mapEdTsBadge{flex:none;padding:0 4px;border-radius:3px;background:#4a4a4a;font-size:10px;color:#e8d7bb}
 .SPR_mapEdTsBadge[data-anim="true"]{background:#2f4a2f;color:#bfe6bf}
-.SPR_mapEdCard .SPR_btn[data-approved="true"]{border-color:#4d7a4d;color:#bfe6bf}
 .SPR_mapEdPair{display:flex;align-items:center;gap:6px}
 .SPR_mapEdTimes{color:#9a9a9a;font-size:12px}
 .SPR_mapEdSeg{display:flex;gap:4px;flex-wrap:wrap}
@@ -2279,7 +2392,10 @@
 .SPR_mapEdRadios{display:flex;gap:12px;flex-wrap:wrap}
 .SPR_mapEdRadio{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#e6e1d8;cursor:pointer}
 .SPR_mapEdFiles{margin:0;padding-left:18px;font-size:12px;line-height:1.9;color:#c9c4bb}
+.SPR_mapEdFiles li{display:flex;align-items:center;gap:6px}
 .SPR_mapEdFiles a{color:var(--dsw-alias-state-business-primary, #8ab4f8)}
+/* 导出结果区：把「导完了、文件在哪、怎么拿走」圈在一起，与上面的选择区分开 */
+.SPR_mapEdExportResult{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid #4a4a4a;border-radius:8px;background:#383838}
 .SPR_mapEdMark{color:var(--dsw-alias-state-success-primary, #7ee08a);font-weight:700}
 .SPR_mapEdWarnings{margin:0;padding-left:18px;font-size:11px;line-height:1.7;color:#d8d2c8}
 .SPR_mapEdFoot{display:flex;align-items:center;gap:10px;padding:5px 10px;background:#383838;border-top:1px solid #232323;flex:none;flex-wrap:wrap}
@@ -2329,6 +2445,11 @@
 .SPR_btn[data-primary=true]{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:var(--dsw-alias-state-business-on-primary, #fff)}
 .SPR_btn[data-on=true]{border-color:var(--dsw-alias-state-success-primary);color:var(--dsw-alias-state-success-primary)}
 .SPR_btn[data-danger=true]{color:var(--dsw-alias-state-error-primary)}
+/* 标签当按钮用：包着隐藏 <input type=file> 的 label（选择本地视频）与下载链接。
+   label 默认是行内元素，直接套 .SPR_btn 的对齐会跟旁边的按钮错开一行。 */
+.SPR_fileBtn{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.SPR_fileBtn[data-disabled=true]{cursor:default;opacity:.5}
+.SPR_fileBtn[data-disabled=true] input{pointer-events:none}
 .SPR_btnRow{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
 .SPR_area{width:100%;box-sizing:border-box;min-height:96px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,Menlo,monospace;font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-markdown-code-block, var(--dsw-alias-bg-layer-1));border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:8px 10px}
 .SPR_input{box-sizing:border-box;font:inherit;font-size:12px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:5px 9px;width:100%}
@@ -3653,6 +3774,38 @@
         return result;
       };
 
+      /**
+       * 「保存全部图片（zip）」：宿主按**当前项目状态**现打一个 zip 落到 `out/` 下，
+       * 这里再触发一次浏览器下载。
+       *
+       * 为什么不直接摆一个 `<a href>`：包里有哪些图（以及文件名）只有宿主知道，
+       * 没有固定地址可指，所以只能「先请求、拿到相对路径再下载」。
+       */
+      const exportAllImages = () =>
+        void start(
+          async () => {
+            const pack = await api.exportImages({ projectId: project.id });
+            const url = `${pack?.assetBase ?? project.assetBase ?? ""}${pack?.file ?? ""}`;
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = fileLabel(pack?.file);
+            anchor.style.display = "none";
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setNotice({
+              kind: "ok",
+              text:
+                Number(pack?.skipped ?? 0) > 0
+                  ? T("已打包 {n0} 张图片（另有 {n1} 张读不到，已跳过）", { n0: pack?.count ?? 0, n1: pack?.skipped ?? 0 })
+                  : T("已打包 {n0} 张图片", { n0: pack?.count ?? 0 })
+            });
+            return pack;
+          },
+          { reload: true },
+          { key: KEY_EXPORT_IMAGES, label: T("正在打包全部图片…") }
+        );
+
       if (api === undefined) {
         return h("div", { className: "SPR_root" }, h("p", { className: "SPR_empty" }, T("正在挂载游戏素材大师…")));
       }
@@ -3911,6 +4064,18 @@
                     "div",
                     { className: "SPR_toolbar" },
                     h(Btn, { onClick: () => void loadProject(project.id) }, T("刷新状态")),
+                    // 中间图片（绿幕图 / 转圈候选帧与条带 / 各方向原始帧与抠像帧 / 整图）
+                    // 一次打成一个 zip：转圈模式的候选帧一抽就是 32~64 张，一张一个链接
+                    // 既点不完也看不清。放在这条**各阶段共用**的工具栏上，任何阶段都能存。
+                    h(
+                      BusyBtn,
+                      {
+                        busy: tasks.has(KEY_EXPORT_IMAGES),
+                        busyText: T("正在打包…"),
+                        onClick: () => void exportAllImages()
+                      },
+                      T("保存全部图片（zip）")
+                    ),
                     h(Btn, { onClick: () => void withApi(() => api.revealProject({ projectId: project.id })) }, T("在访达中打开项目目录"))
                   )
                 )
@@ -3970,6 +4135,15 @@
     const KEY_TURN_VIDEO = "turn:*video";
     const KEY_TURN_FRAMES = "turn:*frames";
     const KEY_TURN_PICK = (key) => `turn:pick:${key}`;
+    /**
+     * 本地自选视频的 pending key（转圈与每个方向各一条）。
+     *
+     * 前缀刻意和 `turn:*` / `video:*` 错开：那两个前缀被「这个阶段有没有在跑」
+     * 的判定用着（`tasks.any("video:*")`），混进去会把不相干的按钮一起禁用。
+     */
+    const KEY_LOCAL_VIDEO = (key) => `local-video:${key}`;
+    /** 「保存全部图片（zip）」的 pending key（这条工具栏是各阶段共用的）。 */
+    const KEY_EXPORT_IMAGES = "images:*zip";
     // 与宿主 src/directions.ts 的 TURN_FRAME_COUNT_MIN / _MAX 保持一致：
     // 上限是条带（单行拼图，一格 96px）的物理极限，不是产品偏好。
     const TURN_FRAME_MIN = 8;
@@ -4194,7 +4368,8 @@
         h(
           "p",
           { className: "SPR_hint" },
-          T("先生成一段「角色原地匀速转一整圈」的视频（绿幕、保持原图风格、除旋转外不做任何动作），再按时间截出八个方向的帧。八个方向出自同一段视频，一致性比逐方向生图好得多；下面时间轴上的八个圆圈就是各自的截帧位置，随便拖。")
+          T("先生成一段「角色原地匀速转一整圈」的视频（绿幕、保持原图风格、除旋转外不做任何动作），再按时间截出八个方向的帧。八个方向出自同一段视频，一致性比逐方向生图好得多；下面时间轴上的八个圆圈就是各自的截帧位置，随便拖。") +
+            T("手上已经有这样一段视频（自己电脑上的文件）时，点「选择本地视频」直接用它即可，不必走远程生成。")
         ),
         h("textarea", {
           className: "SPR_area",
@@ -4241,6 +4416,15 @@
                 ? T("转圈视频生成中…")
                 : T("重新生成转圈视频（计费一次）")
           ),
+          // 和远程生成**并列**的一条路：手上已经有一段原地转圈的绿幕视频时，
+          // 直接选它就行——不用花那一次视频调用，导入后同样自动抽帧、切八个方向。
+          h(LocalVideoPick, {
+            label: T("选择本地视频"),
+            title: T("用自己电脑上的一段原地转圈视频（绿幕）顶替远程生成；导入后会自动抽候选帧并切出八个方向"),
+            disabled: videoRunning,
+            testId: "turn-local-video",
+            onFile: (file) => pickLocalVideo({ start, setNotice, api, project, key: "turn", file })
+          }),
           h(
             BusyBtn,
             {
@@ -4290,6 +4474,12 @@
             },
             T("重置八个圆圈")
           ),
+          // 条带本身就是「整圈候选帧」那张中间图，值得能单独存下来（对着它挑帧/发给别人看）。
+          h(SaveLink, {
+            url: frames.strip === undefined ? undefined : assetUrl(project, frames.strip, frames.updatedAt),
+            name: `${project.name}-turn-strip.png`,
+            label: T("保存条带")
+          }),
           h(
             Btn,
             {
@@ -4337,11 +4527,27 @@
               videoRunning ? T("正在生成转圈视频…") : T("还没有转圈视频：点上面的「生成转圈视频」")
             ),
         video.error !== undefined ? h("p", { className: "SPR_error" }, video.error) : null,
+        // 这一栏在界面上是「这段视频的来路」：本地选的视频没有输入首帧，
+        // 照旧印「首帧用的是源图」会把人指向一张跟它无关的图。
         h(
           "div",
           { className: "SPR_refRow" },
-          T("首帧用的是{n0}：{n1}", { n0: video.firstFrame !== undefined && String(video.firstFrame).startsWith("images/") ? T("已生成的正面绿幕图") : T("上传的源图"), n1: video.firstFrame ?? "—" })
+          video.origin === "local"
+            ? T("本地视频：{n0}（不花远程调用）", { n0: video.originalName ?? fileLabel(video.file) })
+            : T("首帧用的是{n0}：{n1}", { n0: video.firstFrame !== undefined && String(video.firstFrame).startsWith("images/") ? T("已生成的正面绿幕图") : T("上传的源图"), n1: video.firstFrame ?? "—" })
         ),
+        // 视频本身也是中间产物（远程生成的那次是真金白银），得能存下来。
+        video.file !== undefined
+          ? h(
+              "div",
+              { className: "SPR_btnRow", style: { marginTop: 0 } },
+              h(SaveLink, {
+                url: assetUrl(project, video.file, video.updatedAt),
+                name: `${project.name}-turn.mp4`,
+                label: T("保存视频")
+              })
+            )
+          : null,
         total > 0
           ? h(TurnAxis, {
               project,
@@ -4410,7 +4616,13 @@
                         }), { reload: true })
                   },
                   node?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                h(SaveLink, {
+                  url: node?.file === undefined ? undefined : assetUrl(project, node.file, node.updatedAt ?? project.updatedAt),
+                  name: `${project.name}-${key}.png`,
+                  label: T("保存"),
+                  busy: nodeBusy
+                })
               )
             );
           })
@@ -4634,7 +4846,14 @@
                         }), { reload: true })
                   },
                   node?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                // 绿幕图是这一阶段唯一看得见的产物，直接存下来（拖进别的工具 / 存档）。
+                h(SaveLink, {
+                  url: node?.file === undefined ? undefined : assetUrl(project, node.file, node.updatedAt ?? project.updatedAt),
+                  name: `${project.name}-${direction.key}.png`,
+                  label: T("保存"),
+                  busy: nodeBusy
+                })
               )
             );
           })
@@ -4664,7 +4883,7 @@
       return h(
         React.Fragment,
         null,
-        h("p", { className: "SPR_hint" }, T("提示词要求「固定镜头、固定背景、原地走三步」。Hailuo 一段通常要 1~6 分钟，提交后可以离开这个页面。")),
+        h("p", { className: "SPR_hint" }, T("提示词要求「固定镜头、固定背景、原地走三步」。Hailuo 一段通常要 1~6 分钟，提交后可以离开这个页面。") + T("某一个方向已经有现成的行走视频（自己电脑上的文件）时，点那一格的「选择本地视频」直接用它，不必走远程生成。")),
         h("textarea", {
           className: "SPR_area",
           value: videoPromptDraft,
@@ -4766,7 +4985,11 @@
                     )
                   : h("div", { className: "SPR_thumbEmpty" }, T("还没有绿幕图")),
               nodeBusy || waiting ? h(BusyBadge, { show: true, text: overlayText }) : null,
-              video?.remoteStatus !== undefined ? h("span", { className: "SPR_refRow" }, T("远端状态：{n0}", { n0: video.remoteStatus })) : null,
+              video?.origin === "local"
+                ? h("span", { className: "SPR_refRow" }, T("本地视频：{n0}（不花远程调用）", { n0: video.originalName ?? fileLabel(video.file) }))
+                : video?.remoteStatus !== undefined
+                  ? h("span", { className: "SPR_refRow" }, T("远端状态：{n0}", { n0: video.remoteStatus }))
+                  : null,
               video?.error !== undefined ? h("p", { className: "SPR_error" }, video.error) : null,
               h(
                 "div",
@@ -4799,6 +5022,15 @@
                   },
                   video?.file === undefined ? T("生成视频") : T("重新生成")
                 ),
+                // 本地自选视频：和「生成视频」并列，落在**这一格**的槽位上。
+                h(LocalVideoPick, {
+                  label: T("选择本地视频"),
+                  title: T("用自己电脑上的一段「固定镜头 + 原地走」视频顶替这一方向的远程生成；之后照旧到第 3 步抽帧"),
+                  disabled: nodeBusy === true,
+                  testId: `local-video-${direction.key}`,
+                  onFile: (file) =>
+                    pickLocalVideo({ start, setNotice, api, project, key: direction.key, file, label: direction.label })
+                }),
                 h(
                   Btn,
                   {
@@ -4814,7 +5046,13 @@
                         }), { reload: true })
                   },
                   video?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                h(SaveLink, {
+                  url: video?.file === undefined ? undefined : assetUrl(project, video.file, video.updatedAt ?? project.updatedAt),
+                  name: `${project.name}-${direction.key}.mp4`,
+                  label: T("保存视频"),
+                  busy: nodeBusy
+                })
               )
             );
           })
@@ -5243,7 +5481,15 @@
                         }), { reload: true })
                   },
                   node?.approved === true ? T("已通过") : T("通过")
-                )
+                ),
+                // 预览带就是这一段的全部帧（绿幕原帧）；要一张一张地拿，用底部的
+                // 「保存全部图片（zip）」——那里连抠像帧和候选帧一起打进去。
+                h(SaveLink, {
+                  url: node?.strip === undefined ? undefined : assetUrl(project, node.strip, node.updatedAt),
+                  name: `${project.name}-${direction.key}-strip.png`,
+                  label: T("保存预览带"),
+                  busy: nodeBusy
+                })
               )
             ),
             pickKey === direction.key
@@ -5915,6 +6161,97 @@
       );
     }
 
+    /**
+     * 「选择本地视频」：一个包着隐藏 `<input type="file">` 的标签按钮。
+     *
+     * 为什么是 `<label>` 而不是 button + ref：文件选择框必须由**用户手势**打开，
+     * 而 label 天然把点击转给内部的 input，不需要 useRef / useState——少一个 Hook
+     * 就少一处「渲染顺序变了」的坑（这个模块的界面测试按住 Hook 顺序）。
+     */
+    function LocalVideoPick({ label, title, onFile, disabled, testId }) {
+      return h(
+        "label",
+        {
+          className: "SPR_btn SPR_fileBtn",
+          "data-disabled": disabled === true ? "true" : undefined,
+          title,
+          "data-testid": testId
+        },
+        label,
+        h("input", {
+          type: "file",
+          accept: "video/*",
+          disabled: disabled === true,
+          style: { display: "none" },
+          "data-testid": testId === undefined ? undefined : `${testId}-input`,
+          onChange: (event) => {
+            const file = event.target.files?.[0];
+            // 先清空 value：同一个文件连选两次也要能触发 change。
+            event.target.value = "";
+            if (file !== undefined && file !== null) void onFile(file);
+          }
+        })
+      );
+    }
+
+    /** `download` 属性要的是**文件名**：带上目录浏览器会当非法名丢掉。 */
+    function fileLabel(relative) {
+      const name = String(relative ?? "").split("/").pop() ?? "";
+      return name === "" ? "asset.png" : name;
+    }
+
+    /**
+     * 一张中间产物的「保存」。
+     *
+     * 用 `<a download>` 而不是按钮：下载本来就是浏览器的事（同源静态路由直接给文件），
+     * 宿主不必为它多开一个方法；产物就在眼前时，「保存」应该是一个链接而不是又一次调用。
+     */
+    function SaveLink({ url, name, label, busy, title }) {
+      if (url === undefined || url === null) return null;
+      return h(
+        "a",
+        {
+          className: "SPR_btn SPR_fileBtn",
+          href: url,
+          download: name,
+          title,
+          style: { textDecoration: "none" },
+          "aria-disabled": busy === true ? "true" : undefined,
+          onClick: busy === true ? (event) => event.preventDefault() : undefined
+        },
+        label ?? T("保存")
+      );
+    }
+
+    /**
+     * 选用一段本地视频（「选择本地视频」/ 拖进来之后走这里）。
+     *
+     * 两条链路共用：`key === "turn"` 是转圈视频（宿主导入后会**立刻**抽候选帧并切出
+     * 八个方向），其余 key 是某个方向的行走视频（之后照旧到第 3 步抽帧）。
+     * 文件字节走和源图同一条 base64 通道——插件零运行时依赖，不为它另开上传接口。
+     */
+    function pickLocalVideo({ start, setNotice, api, project, key, file, label }: any) {
+      if (project === null || file === undefined || file === null) return;
+      void start(
+        async () => {
+          const data = await readFileBase64(file);
+          const result = await api.uploadVideo({ projectId: project.id, key, name: file.name, data });
+          setNotice({
+            kind: "ok",
+            text:
+              key === "turn"
+                ? result?.extractStarted === true
+                  ? T("已选用本地视频，正在抽候选帧并切出八个方向…")
+                  : T("已选用本地视频（抽帧没有自动开始，点「抽取候选帧」即可）")
+                : T("已选用「{n0}」的本地视频，接着到第 3 步抽取序列帧", { n0: label ?? key })
+          });
+          return result;
+        },
+        { reload: true },
+        { key: KEY_LOCAL_VIDEO(key), label: T("正在导入本地视频…") }
+      );
+    }
+
     /** 抠像参数表单（三个模块共用同一套字段）。 */
     function KeyingFields({ draft, onChange }) {
       return h(
@@ -6094,6 +6431,15 @@
       }
       if (name === "up") return h("svg", { viewBox: "0 0 10 6", width: 11, height: 7, "aria-hidden": "true", fill: "currentColor" }, path("M5 0 10 6H0z"));
       if (name === "down") return h("svg", { viewBox: "0 0 10 6", width: 11, height: 7, "aria-hidden": "true", fill: "currentColor" }, path("M0 0h10L5 6z"));
+      // 标记：圆圈里一个数字（画布上标记点就是长这样的，工具图标照它画，用户一眼能对上）。
+      if (name === "marker") {
+        return h(
+          "svg",
+          box,
+          h("circle", { cx: 12, cy: 12, r: 8.4, fill: "none", stroke: "currentColor", strokeWidth: 2 }),
+          h("text", { x: 12, y: 16.1, textAnchor: "middle", fontSize: 11.5, fontWeight: 700, fill: "currentColor" }, "1")
+        );
+      }
       return null;
     }
 
@@ -6126,6 +6472,14 @@
       /** 计划缓存：key → 绘制条目。`have` 直接由它派发。 */
       const planRef = React.useRef(new Map());
       const [planOps, setPlanOps] = React.useState(new Map());
+      /**
+       * 视口里的标记点（宿主每次查询整份回）。
+       *
+       * ⚠️ **故意不进 `planRef` 那份按块缓存**：编号是连续的，删掉第 2 个之后第 3 个
+       * 就变成第 2 个 —— 缓存住的号码会留在屏幕上。所以它是独立的一份状态，
+       * 每次查询覆盖（数量级是几十个）。
+       */
+      const [planMarkers, setPlanMarkers] = React.useState([]);
       const [visibleKeys, setVisibleKeys] = React.useState([]);
       const visibleRef = React.useRef([]);
       /** 自增一次＝「重新问一遍宿主缺哪些块」（补拉用）。 */
@@ -6168,11 +6522,25 @@
       const [single, setSingle] = React.useState(false);
       const [showGrid, setShowGrid] = React.useState(false);
       const [hover, setHover] = React.useState(null);
+      /** 选中 / 正在改名的标记 id（画布上那个圈描红、标记卡里高亮）。 */
+      const [markerSel, setMarkerSel] = React.useState(null);
+      /** 图层改名的就地草稿：`{ id, value }`；null = 没有在改。 */
+      const [layerDraft, setLayerDraft] = React.useState(null);
+      /** 标记改名的就地草稿：`{ id, value }`。 */
+      const [markerDraft, setMarkerDraft] = React.useState(null);
 
       // ── 保存状态 / 生成草稿 / 导出 ────────────────────────────────────────
       const [genKind, setGenKind] = React.useState("random");
       const [genSeed, setGenSeed] = React.useState(20261005);
       const [exportScale, setExportScale] = React.useState(1);
+      /**
+       * 导出内容（三个复选框），与宿主的 `formats` 一一对应。
+       *
+       * ⚠️ 这里刻意**只存选择、不执行**：以前是「点哪个按钮就导哪一份」，于是
+       * 「导出图片 PNG」看起来像个被选中的页签、「导出存档 JSON」却是立即执行的动作 ——
+       * 同一行里两个按钮一半是选择一半是提交。现在选择归复选框、执行归唯一的「导出」。
+       */
+      const [exportFormats, setExportFormats] = React.useState({ png: true, json: true, tilesets: false });
 
       const imageRefs = React.useRef({});
       const canvasRef = React.useRef(null);
@@ -6274,14 +6642,6 @@
       const fittedRef = React.useRef(null);
       const spaceRef = React.useRef(false);
       const intent = useStudioIntent();
-      /**
-       * 实验性进入提示。
-       *
-       * ⚠️ Hook 必须在**任何提前 return 之前**：下面 `view === null` 那条早返回
-       * 会绕过它，顺序一变就是 React error #310，整块白屏。
-       */
-      const [gateOpen, setGateOpen] = React.useState(experimentalGateMuted.map !== true);
-      const closeGate = React.useCallback(() => setGateOpen(false), []);
 
       const viewId = view === null ? null : view.id;
       const layers = view === null ? [] : view.layers || [];
@@ -6377,6 +6737,7 @@
         staleRef.current = new Set();
         visibleRef.current = [];
         setPlanOps(new Map());
+        setPlanMarkers([]);
         setVisibleKeys([]);
       }, []);
 
@@ -6386,11 +6747,22 @@
        * `keep` = 保留画布上的选择（图层 / 面板 / 缩放）：验收打勾、导出回读这类
        * 「只是刷新一下状态」的调用不该把用户正在画的层顶掉。
        */
+      const loadSeq = React.useRef(0);
       const loadProject = React.useCallback(
         async (id, keep) => {
           if (api === undefined || id === null || id === undefined || id === "") return;
+          /**
+           * ⚠️ 并发读盘要**按最后一次发起的请求收口**（丢弃迟到的旧响应）。
+           *
+           * 同一个项目可能同时在读好几次（挂载时那次、点导出后那次、`busy` 期间的 1.5s 轮询、
+           * 打勾后的回读）。它们各自 await 一次读盘，**回来的顺序不保证与发出的一致** ——
+           * 迟到的旧响应会把新状态顶回去。真机上的表现是「导出完了、文件也在盘上，
+           * 但导出卡片一直写着『还没有导出过』」，而且重新点一次才好 —— 查起来像随机。
+           */
+          const seq = ++loadSeq.current;
           try {
             const next = await api.getMapProject({ projectId: id, lang: activeLang() });
+            if (seq !== loadSeq.current) return;
             if (keep !== true) {
               clearPlan();
               setLayerIndex(0);
@@ -6459,6 +6831,8 @@
         planRef.current = next;
         visibleRef.current = keys;
         setPlanOps(next);
+        // 标记**整份覆盖**（不进那份按块缓存）：编号会随删除整体前移，缓存住的号码会留在屏幕上。
+        setPlanMarkers(Array.isArray(result?.markers) ? result.markers : []);
         setVisibleKeys(keys);
         const fps = Number(result?.fps);
         const frames = Number(result?.frameCount);
@@ -6662,6 +7036,27 @@
             count++;
           }
         }
+        /**
+         * 标记点：圆 + 圆圈里的数字。
+         *
+         * 圆心、半径、字号、数字**全在宿主给的计划里** —— 界面只负责 `arc` 与 `fillText`。
+         * 绘制放在图块与格线**之后**，所以标记永远压在地图上；环绕接缝处同一个标记会出现
+         * 多份（宿主按像素位置各发一条），这里照单全画。
+         */
+        for (const marker of planMarkers) {
+          ctx.beginPath();
+          ctx.arc(marker.x, marker.y, marker.radius, 0, Math.PI * 2);
+          ctx.fillStyle = marker.id === markerSel ? "rgba(210,59,44,0.92)" : "rgba(20,22,30,0.86)";
+          ctx.fill();
+          ctx.lineWidth = Math.max(1, marker.radius * 0.16);
+          ctx.strokeStyle = "#f0c040";
+          ctx.stroke();
+          ctx.fillStyle = "#ffffff";
+          ctx.font = `700 ${marker.font}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(marker.n), marker.x, marker.y);
+        }
         // 悬停格：2px 红框（四条细矩形，不用 stroke，免得被 DPR 影响粗细）
         // ⚠️ 用**未取模**的坐标定位：环绕时同一格在屏幕上有多份，红框必须画在指针
         // 所在的那一份上。拿取模后的 r/c 去算，指针在地图外那一份时红框会跳一整张地图。
@@ -6678,6 +7073,41 @@
           ctx.fillRect(topLeft.x, topLeft.y + thickness, thickness, hh - thickness * 2);
           ctx.fillRect(topLeft.x + w - thickness, topLeft.y + thickness, thickness, hh - thickness * 2);
         }
+        /**
+         * 悬停到标记上：把**名字**写在圆圈旁边。
+         *
+         * 名字不常驻画布（几十个名字会糊成一片），只有指针停上去才出现。
+         * 「停到了哪个」按**指针到圆心的距离**判：环绕时同一个标记在屏幕上有好几份，
+         * 只看格号会挑到地图另一头那一份（红框当年就是这个坑）。圆心与半径都是宿主给的。
+         */
+        if (hover !== null && hover !== undefined) {
+          let found: any = undefined;
+          let best = Infinity;
+          for (const marker of planMarkers) {
+            const distance = Math.hypot(marker.x - hover.x, marker.y - hover.y);
+            if (distance <= marker.radius * 2.5 && distance < best) {
+              best = distance;
+              found = marker;
+            }
+          }
+          if (found !== undefined) {
+            const label = found.name === "" ? T("标记 {n0}", { n0: String(found.n) }) : `${found.n} · ${found.name}`;
+            // 缩得很小时文字会跟着变小到看不清，所以字号有个下限（只影响这个浮层，不影响圆）。
+            const font = Math.max(12 / zoom, found.font * 0.85);
+            ctx.font = `600 ${font}px sans-serif`;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            const padding = 4 / zoom;
+            const boxWidth = ctx.measureText(label).width + padding * 2;
+            const boxHeight = font + padding * 2;
+            const left = found.x + found.radius + 3 / zoom;
+            const top = found.y - boxHeight / 2;
+            ctx.fillStyle = "rgba(20,22,30,0.9)";
+            ctx.fillRect(left, top, boxWidth, boxHeight);
+            ctx.fillStyle = "#f3e7d3";
+            ctx.fillText(label, left + padding, found.y);
+          }
+        }
         if (stats !== null && typeof window !== "undefined") {
           stats.frame = frame;
           (window as any).__mapDrawStats = stats;
@@ -6690,7 +7120,7 @@
            */
           (window as any).__mapCamera = { pan: { x: pan.x, y: pan.y }, zoom, viewport: { w: viewport.w, h: viewport.h } };
         }
-      }, [layout, viewport, zoom, pan, planOps, legend, legendMap, single, showGrid, hover, frame]);
+      }, [layout, viewport, zoom, pan, planOps, planMarkers, markerSel, legend, legendMap, single, showGrid, hover, frame]);
 
       React.useEffect(() => {
         draw();
@@ -6984,6 +7414,21 @@
           strokeRef.current = { mode: "pan", clientX: event.clientX, clientY: event.clientY, pan: { ...pan } };
           return;
         }
+        if (tool === "marker") {
+          const existing = markerAtCell(hit.r, hit.c);
+          if (event.button === 2) {
+            if (existing !== undefined) void markerOp({ kind: "marker", op: "remove", id: existing.id }, true);
+            return;
+          }
+          if (existing !== undefined) {
+            // 点已有标记 = 选中它（图层卡里就能改名）；按住拖到别的格就是挪位置。
+            setMarkerSel(existing.id);
+            strokeRef.current = { mode: "marker", id: existing.id, from: { r: hit.r, c: hit.c } };
+            return;
+          }
+          void markerOp({ kind: "marker", op: "add", r: hit.r, c: hit.c }, true);
+          return;
+        }
         if (event.button === 2 || tool === "eraser") {
           currentStroke.current = null;
           strokeRef.current = { mode: "paint", from: hit, tile: 0 };
@@ -7039,6 +7484,14 @@
          * 红框是按格对齐的，格号没变画面就没变，返回同一个对象让 React 直接跳过这次渲染。
          */
         setHover((prev) => (prev !== null && prev.r === hit.r && prev.c === hit.c ? prev : hit));
+        if (stroke !== null && stroke !== undefined && stroke.mode === "marker") {
+          // 每跨一格提交一次（挪位置不改编号，所以**不重读视图**；松手时补一次）。
+          if (stroke.from.r !== hit.r || stroke.from.c !== hit.c) {
+            stroke.from = { r: hit.r, c: hit.c };
+            void markerOp({ kind: "marker", op: "move", id: stroke.id, r: hit.r, c: hit.c }, false);
+          }
+          return;
+        }
         if (stroke !== null && stroke !== undefined && stroke.mode === "paint") {
           if (stroke.from.r !== hit.r || stroke.from.c !== hit.c) {
             paintCells(stroke.from, hit, stroke.tile);
@@ -7051,9 +7504,14 @@
         const pointerId = event.pointerId === undefined ? 1 : event.pointerId;
         pointersRef.current.delete(pointerId);
         if (pointersRef.current.size < 2) delete pointersRef.current.pinch;
+        const stroke = strokeRef.current;
         strokeRef.current = null;
         currentStroke.current = null;
         void flushOps();
+        // 拖完标记补读一次视图：拖动期间刻意没读（每格读一次太吵），列表里的坐标要跟上。
+        if (stroke !== null && stroke !== undefined && stroke.mode === "marker" && api !== undefined && viewId !== null) {
+          void loadProject(viewId, true);
+        }
       };
 
       // 快捷键：B/E/G/I/H/V 与撤销重做；焦点在输入框里时全部失效
@@ -7087,6 +7545,7 @@
           else if (key === "g") setTool("bucket");
           else if (key === "i") setTool("pipette");
           else if (key === "h") setTool("hand");
+          else if (key === "m") setTool("marker");
           else if (key === "v") setSingle((value) => value !== true);
         };
         const onKeyUp = (event) => {
@@ -7524,6 +7983,58 @@
         await saveDoc({ clearLayerId: activeLayer.id }, T("已清空这一层"));
       };
 
+      // ── 标记点：放 / 改名 / 挪走 / 删掉 ──────────────────────────────────
+      /**
+       * 标记改动走的是**和画笔同一条 op 通道**：撤销栈、脏块（`dropKeys`）全是现成的，
+       * 界面不需要自己算「这一下让哪几块失效」。
+       *
+       * `refresh`：增删会改变编号（删掉第 2 个，第 3 个就变成第 2 个），所以要把视图
+       * 重读一遍让列表跟上；拖动挪位置不影响编号，拖完再读一次就够。
+       */
+      const markerOp = async (op, refresh) => {
+        if (api === undefined || viewId === null) return;
+        try {
+          applyResult(await api.applyMapOps({ projectId: viewId, ops: [op], have: [...planRef.current.keys()] }));
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+          return;
+        }
+        if (refresh === true) await loadProject(viewId, true);
+      };
+
+      /** 这一格的标记（没有就 undefined）。格号是**规范坐标**，与命中测试同一套。 */
+      const markerAtCell = (r, c) => {
+        const list = view === null || view.markers === undefined ? [] : view.markers;
+        return list.find((marker) => marker.r === r && marker.c === c);
+      };
+
+      /** 把视图挪到某一格（标记列表里的「定位」）。用允许复刻的那份坐标函数，不新算几何。 */
+      const centerOnCell = (r, c) => {
+        if (layout === null) return;
+        const topLeft = MAP_cellTopLeft(layout, r, c, layout.grid.tileWidth, layout.grid.tileHeight);
+        const center = { x: topLeft.x + layout.grid.tileWidth / 2, y: topLeft.y + layout.grid.tileHeight / 2 };
+        setPan(clampPan({ x: center.x - viewport.w / (2 * zoom), y: center.y - viewport.h / (2 * zoom) }));
+      };
+
+      /** 图层改名：空名字**本地就拦住**（宿主对空名字是静默 no-op，会让人以为改成功了）。 */
+      const commitLayerName = async (id, value) => {
+        setLayerDraft(null);
+        const name = String(value ?? "").trim();
+        if (name === "") {
+          setNotice({ kind: "error", text: T("图层名字不能为空") });
+          return;
+        }
+        const current = layers.find((layer) => layer.id === id);
+        if (current !== undefined && current.name === name) return;
+        await saveDoc({ layers: [{ id, name }] }, T("已重命名这一层"));
+      };
+
+      /** 标记改名：空名字是合法的（界面按「标记 N」显示）。 */
+      const commitMarkerName = async (id, value) => {
+        setMarkerDraft(null);
+        await markerOp({ kind: "marker", op: "rename", id, name: String(value ?? "") }, true);
+      };
+
       const runGenerate = async () => {
         if (view === null || api === undefined) return;
         const tiles = multi.length > 0 ? multi : brush === null ? [] : [brush.index];
@@ -7556,11 +8067,25 @@
         }
       };
 
-      const runExport = async (formats) => {
+      /**
+       * 导出：**按当前勾选导一次**。
+       *
+       * 打不打 zip 由宿主决定（产物超过一个就自动打），界面不自己判断 ——
+       * 「几个文件算多」只有一处口径，免得界面显示的和盘上的对不上。
+       */
+      const runExport = async () => {
         if (view === null || api === undefined) return;
+        if (exportFormats.png !== true && exportFormats.json !== true && exportFormats.tilesets !== true) {
+          setNotice({ kind: "error", text: T("至少勾一项要导出的内容。") });
+          return;
+        }
         setBusyKey("export");
         try {
-          const started = await api.runMapExport({ projectId: view.id, scale: exportScale, formats });
+          const started = await api.runMapExport({
+            projectId: view.id,
+            scale: exportScale,
+            formats: { png: exportFormats.png === true, json: exportFormats.json === true, tilesets: exportFormats.tilesets === true }
+          });
           if (started !== undefined && started.started !== true && typeof started.reason === "string") {
             setNotice({ kind: "info", text: started.reason });
           }
@@ -7572,14 +8097,67 @@
         }
       };
 
-      /** 打勾 / 取消勾。`stage` 省略＝「整个模块看过了」（宿主按四步全打处理）。 */
-      const toggleApproved = async (stage) => {
+      /** 导出产物的可点 URL（同源静态路由；zip 与单文件走同一条）。 */
+      const exportUrlOf = (file) => `${assetBase}${view.exportBase}${file}`;
+      /** `download` 属性要的是文件名，不是路径（`tilesets/x.png` 直接写上去浏览器会当非法文件名）。 */
+      const baseNameOf = (file) => String(file).split("/").pop() ?? file;
+      const isZip = (file) => /\.zip$/i.test(String(file));
+
+      /**
+       * 「另存为…」：浏览器原生的保存位置选择框（File System Access API）。
+       *
+       * ⚠️ 顺序不能反：`showSaveFilePicker` 必须在**用户手势**里调用，先 `await fetch`
+       * 下载大文件会把手势耗掉，Chromium 直接抛「Must be handling a user gesture」。
+       * 所以是「先弹框拿句柄 → 再取字节 → 再写盘」；用户取消（AbortError）什么都不提示。
+       */
+      const saveAsExport = async (file) => {
+        /**
+         * ⚠️ 用 `any` 取这个 API：它是 File System Access 的较新成员，
+         * TS 自带的 `Window` 类型里不一定有；而它**存在与否必须运行时判**（Electron 壳、
+         * 老浏览器、跨源 iframe 里都没有），写进类型当成一定有会在真机上直接抛。
+         */
+        const picker = typeof window === "undefined" ? undefined : (window as any).showSaveFilePicker;
+        if (typeof picker !== "function") {
+          setNotice({ kind: "info", text: T("这个浏览器不支持「另存为」，请用下载（位置由浏览器的下载设置决定）。") });
+          return;
+        }
+        try {
+          const handle: any = await picker({ suggestedName: baseNameOf(file) });
+          const response = await fetch(exportUrlOf(file));
+          if (response.ok !== true) throw new Error(`HTTP ${response.status}`);
+          const writable = await handle.createWritable();
+          await writable.write(await response.blob());
+          await writable.close();
+          setNotice({ kind: "ok", text: T("已保存到 {n0}", { n0: String(handle.name ?? baseNameOf(file)) }) });
+        } catch (error) {
+          // 用户在保存框里按了取消：不是错误，不要弹红字
+          if (error !== null && typeof error === "object" && (error as any).name === "AbortError") return;
+          setNotice({ kind: "error", text: T("另存为失败：{n0}", { n0: msg(error) }) });
+        }
+      };
+
+      /** 「打开导出目录」：打开**导出目录本身**（宿主按与导出同一处口径算路径，没导出过就退回项目目录）。 */
+      const openExportFolder = async () => {
         if (view === null || api === undefined) return;
-        const node = stage === undefined ? undefined : (view.stages || {})[stage];
-        const next = !(node !== undefined && node.approved === true);
-        const done = await withApi(() =>
-          stage === undefined ? api.setMapApproved({ projectId: view.id, approved: next }) : api.setMapApproved({ projectId: view.id, stage, approved: next })
-        );
+        const result = await withApi(() => api.revealMapProject({ projectId: view.id, target: "export" }));
+        if (result === undefined) return;
+        if (result.fallback === true) {
+          setNotice({ kind: "info", text: T("还没有导出过，先点「导出」。现在打开的是项目目录。") });
+          return;
+        }
+        setNotice({ kind: "ok", text: T("已打开 {n0}", { n0: String(result.dir ?? "") }) });
+      };
+
+      /**
+       * 「整个模块看过了」：一次把四步全打（宿主按「`stage` 省略 = 四阶段全打」处理）。
+       *
+       * 界面上**只剩这一条**改阶段标记的路 —— 卡片里那颗「确定」已经删掉了（用户：
+       * 「和右上角的 x 没区别」），单阶段的标记仍可由验收流程 / 对话面 `setMapApproved` 改。
+       * 已经打过再点一次是幂等的（宿主那边只是把 approved 再写成 true）。
+       */
+      const markWholeModuleSeen = async () => {
+        if (view === null || api === undefined) return;
+        const done = await withApi(() => api.setMapApproved({ projectId: view.id, approved: true }));
         if (done === undefined) return;
         await loadProject(view.id, true);
       };
@@ -7632,7 +8210,6 @@
         h(
           "div",
           { className: "SPR_moduleBody", "data-module": "map" },
-          gateOpen ? h(MapExperimentalDialog, { onClose: closeGate }) : null,
           inner,
           fileInput,
           addFileInput,
@@ -7871,13 +8448,13 @@
         toolButton("bucket", T("油漆桶"), T("同色的连通区一次填满"), { icon: "bucket", shortcut: "G", on: tool === "bucket", onClick: () => setTool("bucket") }),
         toolButton("pipette", T("吸管"), T("吸取这一格用的图块，变成当前笔刷"), { icon: "pipette", shortcut: "I", on: tool === "pipette", onClick: () => setTool("pipette") }),
         toolButton("hand", T("抓手"), T("拖动平移画布；空格拖或中键拖也行"), { icon: "hand", shortcut: "H", on: tool === "hand", onClick: () => setTool("hand") }),
-        toolButton("single", T("单层预览"), T("只显示当前这一层，底铺绿色"), { icon: "single", shortcut: "V", on: single === true, onClick: () => setSingle(single !== true) }),
+        toolButton("marker", T("标记"), T("地图上点一格放一个标记；点已有标记可以改名、按住拖动可以挪位置；右键删掉它"), { icon: "marker", shortcut: "M", on: tool === "marker", onClick: () => setTool("marker") }),
         h(
           "div",
           {
             key: "layer",
             className: "SPR_mapEdTool SPR_mapEdLayerBtn",
-            onMouseEnter: showToolTip(T("图层"), T("上半换上一层、下半换下一层；中间的数字是当前层号"), null),
+            onMouseEnter: showToolTip(T("图层"), T("点中间的数字打开图层列表（改名 / 换顺序 / 删掉）；上半换上一层、下半换下一层"), null),
             onMouseLeave: hideToolTip
           },
           h(
@@ -7892,7 +8469,17 @@
             },
             h(MapToolIcon, { name: "up" })
           ),
-          h("span", { className: "SPR_mapEdLayerNum" }, String(safeLayerIndex + 1)),
+          h(
+            "button",
+            {
+              type: "button",
+              className: "SPR_mapEdLayerNum",
+              "aria-label": T("图层"),
+              "data-testid": "map-open-layers",
+              onClick: () => setOpenCard(openCard === "layers" ? null : "layers")
+            },
+            String(safeLayerIndex + 1)
+          ),
           h(
             "button",
             {
@@ -7939,24 +8526,16 @@
         );
 
       /**
-       * 阶段的「确定」：标记这一步看过了，**并把这个卡片关掉**。
+       * ⚠️ 卡片里**不再有「确定」按钮**（它曾经是「标记这一步看过了 + 收起卡片」）。
        *
-       * ⚠️ 用户的原话：「确认后应该关闭窗口，目前就素材来说根本没有『取消确认』这一说」。
-       * 所以它既不做成勾选式（曾经是 `data-on` + `✓`），也不提供反向操作 ——
-       * 按一下就是「看完了，收工」，卡片收起、回到画布。（阶段标记本身仍可由验收流程改，
-       * 界面上不暴露。）
+       * 用户的判断很直接：「确定键可以删了，和右上角的 x 没区别」。这是对的 ——
+       * 阶段标记在界面上**完全不可见**（上一版为了去掉「取消确认」把它做成了普通按钮，
+       * 于是按与不按看起来一模一样），那么这颗按钮对用户就只剩「关掉卡片」这一个作用，
+       * 和右上角那个 × 重复。
+       *
+       * 所以：关卡片只剩 ×；阶段标记仍可由验收流程 / 对话面（`setMapApproved`）改；
+       * 界面上唯一还暴露它的地方是设置卡片里的「整个模块看过了」（那是一颗有状态按钮）。
        */
-      const confirmStage = async (stage) => {
-        if (view === null || api === undefined) return;
-        setOpenCard(null); // 先收起卡片：这是「看完了」的动作，反馈要立刻
-        if (approvedOf(stage) === true) return; // 已经标过就不用再发一次
-        const done = await withApi(() => api.setMapApproved({ projectId: view.id, stage, approved: true }));
-        if (done === undefined) return;
-        await loadProject(view.id, true);
-      };
-
-      const confirmButton = (stage) =>
-        h(Btn, { primary: true, "data-testid": `map-confirm-${stage}`, onClick: () => void confirmStage(stage) }, T("确定"));
 
       const speedOptions = [
         ["0.5", T("慢")],
@@ -8023,50 +8602,264 @@
                 )
               )
             ),
-        h("p", { className: "SPR_mapEdHint" }, T("素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。")),
-        h(
-          "div",
-          { className: "SPR_mapEdCardRow" },
-          confirmButton("assets")
-        )
+        h("p", { className: "SPR_mapEdHint" }, T("素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。"))
       );
+
+      /**
+       * 导出卡片 = **一次选完 → 一次导出 → 一次下载**。
+       *
+       * 老版本的坏处（用户原话：「导出功能窗口意味不明」）：两个按钮并排，一个看着像
+       * 页签、另一个点下去却是立即执行；导完给一堆文件链接却没有「存到哪」这件事；
+       * 三个文件还得一个一个点。现在：
+       *
+       * 1. 内容用复选框选（勾几项都行），倍率只在勾了 PNG 时出现；
+       * 2. 唯一的「导出」按钮执行；多份产物由宿主打成一个 zip，一次下载；
+       * 3. 结果区写清「文件在哪」（本机绝对路径）+ 下载 / 另存为 / 打开导出目录。
+       */
+      const exportRows = [
+        ["png", T("地图图片 PNG"), T("地图长什么样，直接能放进游戏")],
+        ["json", T("存档数据 JSON"), T("每一格是什么，给引擎和工具读")],
+        ["tilesets", T("素材原图"), T("把素材图一起拷进包里，换台机器也能用")]
+      ];
+      const exportNothingChosen = exportFormats.png !== true && exportFormats.json !== true && exportFormats.tilesets !== true;
+      const zipFile = exportFiles.find((file) => isZip(file));
+      const mainFile = zipFile ?? exportFiles.find((file) => file === "map.png") ?? exportFiles[0];
+      // 排一下序：zip 在最前（它是「一次拿走全部」那一个），其余按产出顺序
+      const listedFiles = exportFiles.slice().sort((a, b) => (isZip(a) === isZip(b) ? 0 : isZip(a) ? -1 : 1));
+      const canSaveAs = typeof window !== "undefined" && typeof (window as any).showSaveFilePicker === "function";
 
       const exportCard = h(
         "div",
-        { className: "SPR_mapEdCard" },
+        { className: "SPR_mapEdCard", "data-testid": "map-export-card" },
         cardHead(T("导出")),
+        h("span", { className: "SPR_mapEdLabel" }, T("导出内容")),
+        h(
+          "div",
+          { className: "SPR_mapEdRows" },
+          exportRows.map(([key, label, hint]) =>
+            h(
+              "label",
+              { key, className: "SPR_mapEdCheck", "data-testid": `map-export-row-${key}` },
+              h("input", {
+                type: "checkbox",
+                "data-testid": `map-export-${key}`,
+                checked: exportFormats[key] === true,
+                onChange: (event) => setExportFormats((current) => ({ ...current, [key]: event.target.checked }))
+              }),
+              label,
+              h("span", { className: "SPR_mapEdTsMeta" }, hint)
+            )
+          )
+        ),
+        exportFormats.png === true
+          ? row(
+              T("倍率"),
+              h(
+                "select",
+                {
+                  className: "SPR_mapEdSelect",
+                  "data-testid": "map-export-scale",
+                  value: String(exportScale),
+                  onChange: (event) => setExportScale(Number(event.target.value))
+                },
+                [1, 2, 3, 4].map((value) => h("option", { key: value, value: String(value) }, `${value}×`))
+              ),
+              T("只影响 PNG 的尺寸，不影响存档数据")
+            )
+          : null,
+        h("p", { className: "SPR_mapEdHint" }, T("产出不止一个文件时自动打成一个 ZIP；只有一个文件时就直接给你那个文件。")),
         h(
           "div",
           { className: "SPR_mapEdCardRow" },
-          h(Btn, { primary: true, busy: busyKey === "export", onClick: () => void runExport({ png: true, json: false }) }, T("导出图片 PNG")),
-          h(Btn, { busy: busyKey === "export", onClick: () => void runExport({ png: false, json: true }) }, T("导出存档 JSON"))
-        ),
-        row(
-          T("倍率"),
           h(
-            "select",
+            Btn,
             {
-              className: "SPR_mapEdSelect",
-              value: String(exportScale),
-              onChange: (event) => setExportScale(Number(event.target.value))
+              primary: true,
+              busy: busyKey === "export",
+              disabled: exportNothingChosen,
+              "data-testid": "map-export-run",
+              onClick: () => void runExport()
             },
-            [1, 2, 3, 4].map((value) => h("option", { key: value, value: String(value) }, `${value}×`))
+            T("导出")
           ),
-          T("只影响 PNG 的尺寸，不影响存档数据")
-        ),
-        h(
-          "div",
-          { className: "SPR_mapEdCardRow" },
-          h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("打开导出目录")),
-          confirmButton("export")
+          h(Btn, { onClick: () => void openExportFolder() }, T("打开导出目录"))
         ),
         exportFiles.length === 0
-          ? h("p", { className: "SPR_mapEdHint" }, T("还没有导出过。"))
+          ? h("p", { className: "SPR_mapEdHint", "data-testid": "map-export-empty" }, T("还没有导出过。"))
           : h(
-              "ul",
-              { className: "SPR_mapEdFiles" },
-              exportFiles.map((file) => h("li", { key: file }, h("a", { href: `${assetBase}${view.exportBase}${file}`, target: "_blank", rel: "noreferrer" }, file)))
+              "div",
+              { className: "SPR_mapEdExportResult", "data-testid": "map-export-result" },
+              h("span", { className: "SPR_mapEdLabel" }, T("最近一次导出：{n0} 个文件", { n0: String(exportFiles.length) })),
+              mainFile === undefined
+                ? null
+                : h(
+                    "div",
+                    { className: "SPR_mapEdCardRow" },
+                    h(
+                      "a",
+                      {
+                        className: "SPR_btn",
+                        "data-primary": "true",
+                        "data-testid": "map-export-download",
+                        href: exportUrlOf(mainFile),
+                        download: baseNameOf(mainFile),
+                        // 与别处的「下载」按钮同款：`<a>` 当按钮用，去掉下划线
+                        style: { textDecoration: "none" }
+                      },
+                      T("下载 {n0}", { n0: baseNameOf(mainFile) })
+                    ),
+                    canSaveAs
+                      ? h(
+                          Btn,
+                          { "data-testid": "map-export-save-as", onClick: () => void saveAsExport(mainFile) },
+                          T("另存为…")
+                        )
+                      : null
+                  ),
+              h(
+                "p",
+                { className: "SPR_mapEdHint" },
+                canSaveAs
+                  ? T("下载走浏览器（默认进它的下载目录）；想自己挑位置就点「另存为…」。")
+                  : T("下载走浏览器：文件会进它的下载目录（想每次都自己挑位置，在浏览器里打开「下载前询问保存位置」）。")
+              ),
+              h(
+                "ul",
+                { className: "SPR_mapEdFiles", "data-testid": "map-export-files" },
+                listedFiles.map((file) =>
+                  h(
+                    "li",
+                    { key: file },
+                    h("a", { href: exportUrlOf(file), download: baseNameOf(file), "data-testid": `map-export-file-${baseNameOf(file)}` }, file),
+                    isZip(file) ? h("span", { className: "SPR_mapEdTsBadge", "data-anim": "true" }, T("打包，含全部内容")) : null
+                  )
+                )
+              ),
+              h("p", { className: "SPR_mapEdHint", "data-testid": "map-export-path" }, T("文件都在 {n0}", { n0: view.exportPath === "" ? "—" : String(view.exportPath) }))
             )
+      );
+
+      /**
+       * 图层卡：一张列表管三件事 —— 改名字、换顺序、删掉；最上面一行固定是「标记层」。
+       *
+       * 名字是宿主的字段（`saveMapDoc({ layers: [{ id, name }] })`），所以改名走一次结构补丁、
+       * 回来重读视图。标记列表放在同一张卡里：点一行就能改名 / 定位 / 删掉。
+       *
+       * 列表**从上往下列**（最后添加的层在最上）：画布上就是这个叠放顺序，反向列会让人点错。
+       */
+      const layerRows = [...layers].map((layer, index) => ({ layer, index })).reverse();
+      const markers = view === null || view.markers === undefined ? [] : view.markers;
+      const smallBtn = (key, label, title, onClick, disabled) =>
+        h(
+          "button",
+          { key, type: "button", className: "SPR_mapEdMiniBtn", title, "aria-label": title, disabled: disabled === true, onClick },
+          label
+        );
+      const layersCard = h(
+        "div",
+        { className: "SPR_mapEdCard", "data-testid": "map-layers-card" },
+        cardHead(T("图层")),
+        h("p", { className: "SPR_mapEdHint" }, T("点名字可以改名，右边可以换顺序或删掉")),
+        h(
+          "div",
+          { className: "SPR_mapEdLayerList" },
+          h(
+            "div",
+            { className: "SPR_mapEdLayerRow", "data-testid": "map-marker-layer-row" },
+            h("span", { className: "SPR_mapEdLayerIdx" }, "●"),
+            h("span", { className: "SPR_mapEdLayerName", style: { cursor: "default" } }, T("标记层")),
+            h("span", { className: "SPR_mapEdMarkerAt" }, T("{n0} 个标记", { n0: String(markers.length) })),
+            smallBtn("marker", T("标记"), T("标记"), () => setTool("marker"), false)
+          ),
+          layerRows.map(({ layer, index }) => {
+            const editing = layerDraft !== null && layerDraft.id === layer.id;
+            return h(
+              "div",
+              { key: layer.id, className: "SPR_mapEdLayerRow", "data-on": index === safeLayerIndex ? "true" : undefined },
+              h("span", { className: "SPR_mapEdLayerIdx" }, String(index + 1)),
+              editing
+                ? h("input", {
+                    className: "SPR_mapEdLayerNameInput",
+                    autoFocus: true,
+                    value: layerDraft.value,
+                    "data-testid": `map-layer-name-${index}`,
+                    onChange: (event) => setLayerDraft({ id: layer.id, value: event.target.value }),
+                    onBlur: () => void commitLayerName(layer.id, layerDraft.value),
+                    onKeyDown: (event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      } else if (event.key === "Escape") {
+                        setLayerDraft(null);
+                      }
+                    }
+                  })
+                : h(
+                    "button",
+                    {
+                      type: "button",
+                      className: "SPR_mapEdLayerName",
+                      "data-testid": `map-layer-pick-${index}`,
+                      title: T("点名字可以改名，右边可以换顺序或删掉"),
+                      onClick: () => setLayerIndex(index),
+                      onDoubleClick: () => setLayerDraft({ id: layer.id, value: layer.name })
+                    },
+                    layer.name
+                  ),
+              smallBtn("up", "↑", T("上移一层"), () => void saveDoc({ moveLayer: { id: layer.id, toIndex: index + 1 } }, T("已换图层顺序")), index >= layers.length - 1),
+              smallBtn("down", "↓", T("下移一层"), () => void saveDoc({ moveLayer: { id: layer.id, toIndex: index - 1 } }, T("已换图层顺序")), index <= 0),
+              smallBtn("remove", "×", T("删掉当前这一层"), () => void saveDoc({ removeLayerId: layer.id }, T("已删掉这一层")), layers.length <= 1)
+            );
+          })
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdCardRow" },
+          h(Btn, { onClick: () => void saveDoc({ addLayer: { name: T("图层 {n0}", { n0: String(layers.length + 1) }) } }, T("已加一层")) }, T("加一层")),
+          h(Btn, { onClick: () => void clearLayer() }, T("清空当前图层")),
+          h(
+            "label",
+            { className: "SPR_mapEdCheck" },
+            h("input", { type: "checkbox", "data-testid": "map-single-layer", checked: single === true, onChange: (event) => setSingle(event.target.checked) }),
+            T("只看这一层")
+          )
+        ),
+        h(
+          "div",
+          { className: "SPR_mapEdMarkerList", "data-testid": "map-marker-list" },
+          markers.length === 0
+            ? h("p", { className: "SPR_mapEdHint" }, T("还没有标记。选「标记」工具，在地图上点一格。"))
+            : markers.map((marker) =>
+                h(
+                  "div",
+                  { key: marker.id, className: "SPR_mapEdMarkerRow", "data-on": marker.id === markerSel ? "true" : undefined, "data-testid": `map-marker-${marker.n}` },
+                  h("span", { className: "SPR_mapEdMarkerDot" }, String(marker.n)),
+                  h("input", {
+                    className: "SPR_mapEdMarkerName",
+                    "aria-label": T("标记名字"),
+                    placeholder: T("标记 {n0}", { n0: String(marker.n) }),
+                    value: markerDraft !== null && markerDraft.id === marker.id ? markerDraft.value : marker.name,
+                    onFocus: () => setMarkerSel(marker.id),
+                    onChange: (event) => setMarkerDraft({ id: marker.id, value: event.target.value }),
+                    onBlur: () => {
+                      if (markerDraft !== null && markerDraft.id === marker.id) void commitMarkerName(marker.id, markerDraft.value);
+                    },
+                    onKeyDown: (event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      }
+                    }
+                  }),
+                  h("span", { className: "SPR_mapEdMarkerAt" }, `(${marker.r},${marker.c})`),
+                  smallBtn("go", T("定位"), T("定位"), () => {
+                    setMarkerSel(marker.id);
+                    centerOnCell(marker.r, marker.c);
+                  }, false),
+                  smallBtn("drop", T("删掉"), T("删掉"), () => void markerOp({ kind: "marker", op: "remove", id: marker.id }, true), false)
+                )
+              )
+        )
       );
 
       const settingsCard = h(
@@ -8099,21 +8892,6 @@
           T("只影响会动的素材（水、翻页图这类）")
         ),
         h(
-          "div",
-          { className: "SPR_mapEdCardRow" },
-          h(Btn, { onClick: () => void saveDoc({ addLayer: { name: T("图层 {n0}", { n0: String(layers.length + 1) }) } }, T("已加一层")) }, T("加一层")),
-          h(
-            Btn,
-            {
-              disabled: layers.length <= 1,
-              title: layers.length <= 1 ? T("至少要留一层") : T("删掉当前这一层"),
-              onClick: () => void saveDoc({ removeLayerId: activeLayer.id }, T("已删掉这一层"))
-            },
-            T("删一层")
-          ),
-          h(Btn, { onClick: () => void clearLayer() }, T("清空当前图层"))
-        ),
-        h(
           "label",
           { className: "SPR_mapEdCheck" },
           h("input", { type: "checkbox", checked: showGrid === true, onChange: (event) => setShowGrid(event.target.checked) }),
@@ -8131,7 +8909,7 @@
           "div",
           { className: "SPR_mapEdCardRow" },
           h(Btn, { onClick: () => void withApi(() => api.revealMapProject({ projectId: view.id })) }, T("在访达中打开项目目录")),
-          h(Btn, { primary: true, on: approvedAll === true, onClick: () => void toggleApproved(undefined) }, T("整个模块看过了"))
+          h(Btn, { primary: true, on: approvedAll === true, onClick: () => void markWholeModuleSeen() }, T("整个模块看过了"))
         )
       );
 
@@ -8182,7 +8960,17 @@
       );
 
       const openCardNode =
-        openCard === "assets" ? assetsCard : openCard === "export" ? exportCard : openCard === "settings" ? settingsCard : openCard === "gen" ? genCard : null;
+        openCard === "assets"
+          ? assetsCard
+          : openCard === "export"
+            ? exportCard
+            : openCard === "layers"
+              ? layersCard
+              : openCard === "settings"
+                ? settingsCard
+                : openCard === "gen"
+                  ? genCard
+                  : null;
 
       const canvas = h("canvas", {
         ref: bindCanvas,
@@ -10434,7 +11222,7 @@
                     h(
                       "div",
                       { className: "SPR_fields" },
-                      h(GlobalModelField, { label: T("生图模型"), value: globalConfig?.arkModel ?? settingsDraft.model }),
+                      h(GlobalModelField, { label: T("生图模型"), value: globalConfig?.imageModel ?? globalConfig?.arkModel ?? settingsDraft.model }),
                       h(
                         "label",
                         { className: "SPR_field" },
@@ -13906,8 +14694,11 @@
      * ⚠️ 必须**按模块分开**：共用一个标志的话，用户在骨骼动画那边勾了
      * 「不再提示」，进 45° 地图地块时弹窗就再也不出现了 —— 两个模块的
      * 实验性说明内容完全不同，那样等于静默漏掉一次告知。
+     *
+     * 只有 `rig` / `tile` 两格：模块⑥「地图编辑器」已经不是实验性功能，
+     * 它没有弹窗，也就不需要这一格。
      */
-    const experimentalGateMuted = { rig: false, tile: false, map: false };
+    const experimentalGateMuted = { rig: false, tile: false };
 
     /**
      * 实验性说明弹窗（模块④ / ⑤ 共用）。
@@ -14014,16 +14805,7 @@
       });
     }
 
-    /** 进入模块⑥时的实验性说明弹窗（地图编辑器）。 */
-    function MapExperimentalDialog({ onClose }) {
-      return h(ExperimentalDialog, {
-        moduleKey: "map",
-        title: T("地图编辑器仍在开发中"),
-        ariaLabel: T("地图编辑器（实验性）"),
-        points: MAP_EXPERIMENTAL_POINTS,
-        onClose
-      });
-    }
+    // 模块⑥「地图编辑器」已经没有实验性弹窗了（它不是实验性功能）。
 
     /**
      * 模块④的主体界面。
@@ -14261,7 +15043,7 @@
           "div",
           { className: "SPR_toolbar" },
           h("span", { className: "SPR_refRow" }, T("生图模型")),
-          h("span", { className: "SPR_badge" }, globalConfig?.arkModel ?? job?.settings?.model ?? T("未配置")),
+          h("span", { className: "SPR_badge" }, globalConfig?.imageModel ?? globalConfig?.arkModel ?? job?.settings?.model ?? T("未配置")),
           h("span", { className: "SPR_refRow" }, T("（模型在「设置 → 游戏素材大师」里改）")),
           h("span", { className: "SPR_spacer" }),
           headerButtons
@@ -14715,11 +15497,20 @@
       const api = props?.api;
       const [config, setConfig] = React.useState(null);
       const [arkKey, setArkKey] = React.useState("");
+      const [customKey, setCustomKey] = React.useState("");
       const [minimaxKey, setMinimaxKey] = React.useState("");
       const [notice, setNotice] = React.useState(null);
       const [testing, setTesting] = React.useState(null);
-      // ComfyUI 的工作流 JSON 很长，逐键 patch 会每敲一个字存一次配置；
-      // 这里留成草稿（null = 跟随配置），点「保存工作流」才提交。
+      /**
+       * ComfyUI 工作流草稿。
+       *
+       * ⚠️ 不能像别的文本框那样「每敲一个字就 patch 一次」：一份工作流 JSON 几 KB，
+       * 每个字符都往返一次会明显卡；而且中途的**非法 JSON** 存进去之后，
+       * 下一次生成要在几十秒后才报错。所以用本地草稿，失焦 / 点保存才提交。
+       */
+      const [workflowDraft, setWorkflowDraft] = React.useState(null);
+      // 本地 ComfyUI 视频后端的工作流 JSON 也很长，逐键 patch 会每敲一个字存一次配置；
+      // 这里同样留成草稿（null = 跟随配置），点「保存工作流」才提交。
       const [comfyWorkflowDraft, setComfyWorkflowDraft] = React.useState(null);
       const [comfyProbe, setComfyProbe] = React.useState(null);
       // Cookie 也是凭据：已配置时输入框留空 = 不修改，点「保存 Cookie」才覆盖。
@@ -14798,11 +15589,37 @@
       };
       const usingCompshare = compshareModelId !== undefined && config.minimaxModel === compshareModelId;
 
+      /**
+       * 生图后端。`ark` 与 `custom` 互斥，两组配置同时保留、只由这个开关决定用哪一组
+       * —— 来回切不会丢任何一边的 Key 和参数。
+       */
+      const imageProvider = config.imageProvider === "custom" ? "custom" : "ark";
+      const protocols = config.customProtocols ?? [];
+      const protocolInfo = protocols.find((entry) => entry.id === config.customProtocol);
+      const customProtocol = config.customProtocol ?? "openai";
+      const workflowNow = workflowDraft === null ? config.customWorkflow ?? "" : workflowDraft;
+      const workflowDirty = workflowDraft !== null && workflowDraft !== (config.customWorkflow ?? "");
+      /**
+       * 切换协议时顺手换地址：只有当**当前地址还停在另一个协议的默认值**时才换，
+       * 手动改过的地址一律不动（与 MiniMax 切「优云智算版」同一套判断）。
+       * 不这么做的话，用户从 OpenAI 切到 ComfyUI 会得到一个指向 api.openai.com 的
+       * ComfyUI 配置 —— 点测试才报「连不上」，中间没有任何提示。
+       */
+      const onProtocolChange = (nextProtocol) => {
+        const values: Record<string, unknown> = { customProtocol: nextProtocol };
+        const knownDefaults = protocols.map((entry) => entry.baseUrl);
+        const target = protocols.find((entry) => entry.id === nextProtocol);
+        if (target !== undefined && (config.customBaseUrl === "" || knownDefaults.includes(config.customBaseUrl))) {
+          values.customBaseUrl = target.baseUrl;
+        }
+        void patch(values);
+      };
+
       return h(
         "section",
         { className: "SPR_settings" },
         h("h2", { style: { margin: 0, fontSize: 15 } }, T("游戏素材大师")),
-        h("p", { className: "SPR_hint" }, T("配置两家模型的 API Key 与整条流水线的默认参数。Key 只保存在本机 DSH 数据目录下的 game-material-master/config.json（真实路径见文末「数据位置」），界面里始终脱敏显示。")),
+        h("p", { className: "SPR_hint" }, T("配置生图 / 生视频的模型与整条流水线的默认参数。Key 只保存在本机 DSH 数据目录下的 game-material-master/config.json（真实路径见文末「数据位置」），界面里始终脱敏显示。")),
 
         notice !== null
           ? h("div", { className: "SPR_note", "data-kind": notice.kind }, notice.text)
@@ -14811,7 +15628,38 @@
         h(
           "div",
           { className: "SPR_settingsGroup" },
-          h("h3", null, T("火山方舟（生图）")),
+          h("h3", null, T("生图后端")),
+          h("p", null, T("八方向图、图片生成、骨骼动画、45°地图地块的生图都走这里选的后端；图生视频（MiniMax）不受影响。")),
+          h(
+            "div",
+            { className: "SPR_fields" },
+            h(
+              "label",
+              { className: "SPR_field" },
+              h("span", { className: "SPR_fieldLabel" }, T("当前使用")),
+              h(
+                "select",
+                {
+                  className: "SPR_input",
+                  "data-testid": "cfg-image-provider",
+                  value: imageProvider,
+                  onChange: (event) => void patch({ imageProvider: event.target.value })
+                },
+                h("option", { value: "ark" }, T("火山方舟 Seedream（云端，开箱即用）")),
+                h("option", { value: "custom" }, T("自定义生图模型（OpenAI / ComfyUI / SD WebUI）"))
+              )
+            )
+          ),
+          h("p", { className: "SPR_hint" }, T("当前生效：{n0}", { n0: config.imageProviderSummary ?? "" })),
+          config.imageProviderBlocker
+            ? h("div", { className: "SPR_note", "data-kind": "error" }, T("还不能开跑：{n0}", { n0: config.imageProviderBlocker }))
+            : h("div", { className: "SPR_note", "data-kind": "ok" }, T("后端已就绪，可以开跑。"))
+        ),
+
+        h(
+          "div",
+          { className: "SPR_settingsGroup" },
+          h("h3", null, T("火山方舟（生图）"), imageProvider === "ark" ? h("span", { className: "SPR_badge" }, T("当前使用")) : null),
           h("p", null, config.ffmpeg?.ok === true ? T("ffmpeg 可用：{n0}", { n0: config.ffmpeg.version }) : T("ffmpeg 不可用：{n0}", { n0: config.ffmpeg?.error ?? T("未知") })),
           h(
             "div",
@@ -14915,6 +15763,237 @@
                 }
               },
               T("测试连接（会真实生成 1 张 1K 小图，产生少量费用）")
+            )
+          )
+        ),
+
+        /**
+         * 自定义生图后端。
+         *
+         * 三种协议共用一套表单，只有「高级参数」和「工作流」按协议显示——
+         * 每个协议单独一块的话，用户切换协议时会看到完全换了一套界面，
+         * 反而不知道哪些是共通的。
+         */
+        h(
+          "div",
+          { className: "SPR_settingsGroup" },
+          h("h3", null, T("自定义生图模型"), imageProvider === "custom" ? h("span", { className: "SPR_badge" }, T("当前使用")) : null),
+          h("p", null, T("填「主机根地址」即可，具体端点由插件按协议拼；本地服务通常不需要 API Key。")),
+          h(
+            "div",
+            { className: "SPR_fields" },
+            h(
+              "label",
+              { className: "SPR_field" },
+              h("span", { className: "SPR_fieldLabel" }, T("协议")),
+              h(
+                "select",
+                {
+                  className: "SPR_input",
+                  "data-testid": "cfg-custom-protocol",
+                  value: customProtocol,
+                  onChange: (event) => onProtocolChange(event.target.value)
+                },
+                protocols.length > 0
+                  ? protocols.map((entry) => h("option", { key: entry.id, value: entry.id }, entry.label))
+                  : [
+                      h("option", { key: "openai", value: "openai" }, "OpenAI API"),
+                      h("option", { key: "comfyui", value: "comfyui" }, "ComfyUI API"),
+                      h("option", { key: "sdwebui", value: "sdwebui" }, "Stable Diffusion WebUI API")
+                    ]
+              )
+            ),
+            h(
+              "label",
+              { className: "SPR_field" },
+              h("span", { className: "SPR_fieldLabel" }, "Base URL"),
+              h("input", {
+                className: "SPR_input",
+                "data-testid": "cfg-custom-base-url",
+                value: config.customBaseUrl ?? "",
+                placeholder: protocolInfo?.baseUrl ?? "",
+                onChange: (event) => void patch({ customBaseUrl: event.target.value })
+              })
+            ),
+            h(
+              "label",
+              { className: "SPR_field" },
+              h(
+                "span",
+                { className: "SPR_fieldLabel" },
+                customProtocol === "sdwebui" ? T("模型名（SD WebUI 忽略，模型由服务端决定）") : T("模型名")
+              ),
+              h("input", {
+                className: "SPR_input",
+                "data-testid": "cfg-custom-model",
+                value: config.customModel ?? "",
+                disabled: customProtocol === "sdwebui",
+                placeholder: customProtocol === "comfyui" ? T("可不填，由工作流决定") : "gpt-image-1",
+                onChange: (event) => void patch({ customModel: event.target.value })
+              })
+            ),
+            h(
+              "label",
+              { className: "SPR_field" },
+              h("span", { className: "SPR_fieldLabel" }, T("输出尺寸（宽x高）")),
+              h("input", {
+                className: "SPR_input",
+                "data-testid": "cfg-custom-size",
+                value: config.customSize ?? "",
+                placeholder: "1024x1024",
+                onChange: (event) => void patch({ customSize: event.target.value })
+              })
+            )
+          ),
+          h("p", { className: "SPR_hint" }, T("请求端点：{n0}", { n0: protocolInfo?.hint ?? "" })),
+          h(
+            "div",
+            { className: "SPR_keyRow" },
+            h(
+              "label",
+              { className: "SPR_field" },
+              h("span", { className: "SPR_fieldLabel" }, T("API Key {n0}", { n0: config.customApiKeySet ? T("（已配置 {n0}）", { n0: config.customApiKeyHint }) : T("（未配置，本地服务可以留空）") })),
+              h("input", {
+                className: "SPR_input",
+                type: "password",
+                placeholder: config.customApiKeySet ? T("留空表示不修改") : T("粘贴 API Key（A1111 的 user:pass 也认）"),
+                value: customKey,
+                onChange: (event) => setCustomKey(event.target.value)
+              })
+            ),
+            h(Btn, { onClick: () => run(async () => { await api.saveConfig({ customApiKey: customKey }); setCustomKey(""); }, T("自定义后端 Key 已保存")) }, T("保存 Key")),
+            h(Btn, { disabled: !config.customApiKeySet, onClick: () => run(() => api.saveConfig({ clearCustomApiKey: true }), T("已清除自定义后端 Key")) }, T("清除"))
+          ),
+
+          /**
+           * 高级参数：OpenAI 协议不认这些（它只有 prompt / size / n），
+           * 所以那一档不显示，免得用户以为调了有用。
+           */
+          customProtocol === "sdwebui" || customProtocol === "comfyui"
+            ? h(
+                "div",
+                { className: "SPR_fields" },
+                h("label", { className: "SPR_field" },
+                  h("span", { className: "SPR_fieldLabel" }, T("负面提示词")),
+                  h("input", {
+                    className: "SPR_input",
+                    value: config.customNegativePrompt ?? "",
+                    placeholder: customProtocol === "comfyui" ? T("走 {{negative_prompt}} 占位符") : "",
+                    onChange: (event) => void patch({ customNegativePrompt: event.target.value })
+                  })
+                ),
+                h(NumField, {
+                  label: T("采样步数"),
+                  value: config.customSteps ?? 28,
+                  min: 1,
+                  max: 150,
+                  onChange: (value) => void patch({ customSteps: value })
+                }),
+                h(NumField, {
+                  label: T("CFG / 引导强度"),
+                  value: config.customCfgScale ?? 7,
+                  min: 0,
+                  max: 30,
+                  onChange: (value) => void patch({ customCfgScale: value })
+                }),
+                h("label", { className: "SPR_field" },
+                  h("span", { className: "SPR_fieldLabel" }, T("采样器")),
+                  h("input", {
+                    className: "SPR_input",
+                    value: config.customSampler ?? "",
+                    placeholder: "DPM++ 2M Karras",
+                    onChange: (event) => void patch({ customSampler: event.target.value })
+                  })
+                ),
+                customProtocol === "sdwebui"
+                  ? h(NumField, {
+                      label: T("图生图重绘强度（0~1）"),
+                      value: config.customDenoising ?? 0.65,
+                      min: 0,
+                      max: 1,
+                      step: 0.05,
+                      onChange: (value) => void patch({ customDenoising: value })
+                    })
+                  : null,
+                h(NumField, {
+                  label: T("随机种子（-1 = 每次随机）"),
+                  value: config.customSeed ?? -1,
+                  min: -1,
+                  max: 2147483647,
+                  onChange: (value) => void patch({ customSeed: value })
+                })
+              )
+            : null,
+
+          // 超时对所有协议都有效（云端 OpenAI 也可能很慢），所以放在条件块外面。
+          h(NumField, {
+            label: T("请求超时（毫秒，本地模型建议给足）"),
+            value: config.customTimeoutMs ?? 300000,
+            min: 10000,
+            max: 3600000,
+            onChange: (value) => void patch({ customTimeoutMs: value })
+          }),
+
+          /**
+           * ComfyUI 的工作流。必须整段粘贴 API 格式的 JSON —— 从界面导出的
+           * 「工作流」格式（带 nodes / links 的那份）不是 API 格式，提交会直接 400。
+           */
+          customProtocol === "comfyui"
+            ? h(
+                "div",
+                null,
+                h("p", { className: "SPR_hint" }, T("工作流（在 ComfyUI 里点「导出（API）」，把那份 JSON 整段粘贴）。可用占位符：{{prompt}} {{negative_prompt}} {{width}} {{height}} {{seed}} {{steps}} {{cfg}} {{sampler}} {{denoising}} {{model}} {{image}}；一个都不写就原样跑你保存的工作流。")),
+                h("textarea", {
+                  className: "SPR_area",
+                  "data-testid": "cfg-custom-workflow",
+                  placeholder: '{"3":{"class_type":"KSampler","inputs":{"seed":"{{seed}}","steps":"{{steps}}","cfg":"{{cfg}}","sampler_name":"{{sampler}}","denoise":"{{denoising}}","model":["4",0],"positive":["6",0],"negative":["7",0],"latent_image":["5",0]}},"6":{"class_type":"CLIPTextEncode","inputs":{"text":"{{prompt}}","clip":["4",1]}}}',
+                  value: workflowNow,
+                  onChange: (event) => setWorkflowDraft(event.target.value)
+                }),
+                h(
+                  "div",
+                  { className: "SPR_toolbar" },
+                  h(
+                    Btn,
+                    {
+                      disabled: !workflowDirty,
+                      onClick: () => run(async () => {
+                        await api.saveConfig({ customWorkflow: workflowNow });
+                        setWorkflowDraft(null);
+                      }, T("工作流已保存"))
+                    },
+                    workflowDirty ? T("保存工作流") : T("工作流已保存")
+                  ),
+                  h(
+                    Btn,
+                    {
+                      onClick: () => {
+                        setWorkflowDraft("");
+                        void patch({ customWorkflow: "" });
+                      }
+                    },
+                    T("清空")
+                  )
+                )
+              )
+            : null,
+
+          h(
+            "div",
+            { className: "SPR_toolbar" },
+            h(
+              BusyBtn,
+              {
+                busy: testing === "custom",
+                busyText: T("正在生成测试图…"),
+                disabled: testing !== null || config.customImageBlocker != null,
+                onClick: async () => {
+                  setTesting("custom");
+                  await run(() => api.testCustomImage(), (value) => T("连接正常：{n0} 返回 {n1} 字节图片", { n0: value.provider, n1: value.bytes }));
+                  setTesting(null);
+                }
+              },
+              T("测试连接（会真实生成 1 张测试图，产生少量费用）")
             )
           )
         ),
@@ -15417,6 +16496,7 @@
         getConfig: () => call("getConfig"),
         saveConfig: (payload) => call("saveConfig", payload),
         testArk: () => call("testArk"),
+        testCustomImage: () => call("testCustomImage"),
         testMinimax: () => call("testMinimax"),
         testComfy: () => call("testComfy"),
         listProjects: () => call("listProjects"),
@@ -15432,6 +16512,8 @@
         saveSettings: (payload) => call("saveSettings", payload),
         setApproved: (payload) => call("setApproved", payload),
         revealProject: (payload) => call("revealProject", payload),
+        uploadVideo: (payload) => call("uploadVideo", payload),
+        exportImages: (payload) => call("exportImages", payload),
         runImage: (payload) => call("runImage", payload),
         runImages: (payload) => call("runImages", payload),
         setImageMode: (payload) => call("setImageMode", payload),
@@ -15634,7 +16716,7 @@
      * `mapgeom` / `mapdoc` 的真实现做黄金对照逐点比对 —— 界面复刻的那部分几何
      * 必须有守门的，否则「预览与导出错位」会以静默的方式回来。
      */
-    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, RigSemanticsPanel, MapModule, MapExperimentalDialog, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection };
+    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, RigSemanticsPanel, MapModule, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection };
     return bundleModule.exports;
   }
 });

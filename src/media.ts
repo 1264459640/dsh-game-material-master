@@ -368,6 +368,39 @@ export async function makeThumbnail(source: string, dest: string, maxEdge = 768)
   );
 }
 
+/**
+ * 按**文件头**认一段本地视频的容器（用户自选的本地视频走这条路）。
+ *
+ * 为什么不看扩展名：从手机 / 剪辑软件 / 聊天工具里拿到的文件经常被改名或根本
+ * 没有正确的后缀（`.mp4` 其实是 MOV、`.bin` 其实是 MP4）。这里只在本机交给
+ * ffmpeg 解码，容器认错了不会当场报错，而是**抽帧时**才失败——那时用户已经
+ * 以为「导入成功了」。
+ *
+ * 认三种，覆盖游戏素材的常见来源：
+ *   - ISO BMFF（MP4 / MOV / M4V）：第 4~8 字节是 `ftyp`，再按 brand 区分 MOV 与 MP4；
+ *   - Matroska / WebM：EBML 头 `1A 45 DF A3`（两者同族，统一按 webm 存）；
+ *   - AVI：`RIFF` + 第 8~12 字节 `AVI `。
+ *
+ * 返回的 `ext` 直接当落盘后缀，所以它必须是 ffmpeg 认得的容器名。
+ */
+export function sniffVideo(base64: string): { ext: string; mime: string; label: string } | undefined {
+  // 48 字节足够覆盖三种文件头里的判别字段。
+  const head = Buffer.from(base64.slice(0, 64), "base64");
+  if (head.length >= 12 && head.toString("ascii", 4, 8) === "ftyp") {
+    const brand = head.toString("ascii", 8, 12).trim().toLowerCase();
+    if (brand === "qt") return { ext: "mov", mime: "video/quicktime", label: "MOV" };
+    if (brand === "m4v" || brand === "m4vh") return { ext: "m4v", mime: "video/x-m4v", label: "M4V" };
+    return { ext: "mp4", mime: "video/mp4", label: "MP4" };
+  }
+  if (head.length >= 4 && head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3) {
+    return { ext: "webm", mime: "video/webm", label: "WebM / MKV" };
+  }
+  if (head.length >= 12 && head.toString("ascii", 0, 4) === "RIFF" && head.toString("ascii", 8, 12) === "AVI ") {
+    return { ext: "avi", mime: "video/x-msvideo", label: "AVI" };
+  }
+  return undefined;
+}
+
 /** 读取文件并组装成 data URI（Ark 参考图用）。 */
 export async function toDataUri(file: string, mime: string): Promise<string> {
   const bytes = await readFile(file);

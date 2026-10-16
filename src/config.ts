@@ -99,7 +99,91 @@ export async function migrateLegacyDataRoot(): Promise<boolean> {
   }
 }
 
+/**
+ * 生图后端。
+ *
+ * `ark` = 火山方舟 Seedream（默认，也是唯一「开箱即用」的云端选择）；
+ * `custom` = 用户自己的生图服务，协议再分 OpenAI / ComfyUI / Stable Diffusion WebUI。
+ * 换后端只改这一个字段：所有生图调用点都走 `imageprovider.generateImageWithProvider`。
+ */
+export const IMAGE_PROVIDERS = ["ark", "custom"] as const;
+export type ImageProvider = (typeof IMAGE_PROVIDERS)[number];
+
+/** 自定义生图服务的协议。 */
+export const CUSTOM_PROTOCOLS = ["openai", "comfyui", "sdwebui"] as const;
+export type CustomProtocol = (typeof CUSTOM_PROTOCOLS)[number];
+
+/**
+ * 各协议的默认地址。
+ *
+ * 设置页在**协议切换**时会拿它做「原来那个地址还是默认值吗」的判断，
+ * 是就顺手换成新协议的默认地址（和 MiniMax 切「优云智算版」同一套做法）——
+ * 手动改过地址的用户不会被覆盖。
+ */
+export const CUSTOM_PROTOCOL_DEFAULTS: Record<CustomProtocol, { baseUrl: string; label: string; hint: string }> = {
+  openai: {
+    baseUrl: "https://api.openai.com/v1",
+    label: "OpenAI API",
+    hint: "POST {base}/images/generations（带参考图时优先 POST {base}/images/edits）"
+  },
+  comfyui: {
+    baseUrl: "http://127.0.0.1:8188",
+    label: "ComfyUI API",
+    hint: "POST {base}/prompt + GET {base}/history/{id} + GET {base}/view（需要用 API 格式的工作流 JSON）"
+  },
+  sdwebui: {
+    baseUrl: "http://127.0.0.1:7860",
+    label: "Stable Diffusion WebUI API",
+    hint: "POST {base}/sdapi/v1/txt2img（带参考图时走 /sdapi/v1/img2img，需要启动时加 --api）"
+  }
+};
+
 export interface Config {
+  /**
+   * 生图后端：`ark`（默认）或 `custom`。
+   *
+   * ⚠️ 这个开关只影响**生图**。图生视频仍然只走 MiniMax。
+   */
+  imageProvider: ImageProvider;
+  /** 自定义后端协议。 */
+  customProtocol: CustomProtocol;
+  customBaseUrl: string;
+  customApiKey: string;
+  /** 自定义后端的模型名（SD WebUI 忽略它，模型由服务端自身决定）。 */
+  customModel: string;
+  /** 输出尺寸。OpenAI / ComfyUI 用 `宽x高` 或 `1K`/`2K`/`4K`；SD WebUI 只认 `宽x高`。 */
+  customSize: string;
+  /** 负面提示词（SD WebUI 直传；ComfyUI 走 `{{negative_prompt}}` 占位符）。 */
+  customNegativePrompt: string;
+  /** 采样步数（ComfyUI 走 `{{steps}}`）。 */
+  customSteps: number;
+  /** CFG / 提示词引导强度（ComfyUI 走 `{{cfg}}`）。 */
+  customCfgScale: number;
+  /** 采样器名（SD WebUI 直传；ComfyUI 走 `{{sampler}}`）。 */
+  customSampler: string;
+  /**
+   * 图生图重绘强度 0~1（SD WebUI 的 `denoising_strength`，ComfyUI 走 `{{denoising}}`）。
+   * 越低越贴参考图、越高越听提示词。
+   */
+  customDenoising: number;
+  /** 随机种子；`-1` = 每次都随机。 */
+  customSeed: number;
+  /**
+   * ComfyUI 的工作流（**API 格式**的 JSON 文本，`POST /prompt` 里那个 `prompt` 字段）。
+   *
+   * 支持占位符，宿主会**按 JSON 类型**替换（不是字符串拼 JSON）：
+   * `{{prompt}}` / `{{negative_prompt}}` / `{{width}}` / `{{height}}` / `{{seed}}` /
+   * `{{steps}}` / `{{cfg}}` / `{{sampler}}` / `{{denoising}}` / `{{model}}` / `{{image}}`。
+   * 一个占位符都不写时，就原样跑用户保存的工作流（合法用法：固定工作流）。
+   */
+  customWorkflow: string;
+  /**
+   * 自定义后端的请求超时（毫秒）。
+   *
+   * 默认给到 5 分钟：本地跑一张 SD 图经常要一两分钟，云端 3 分钟的超时在这里是常态失败。
+   */
+  customTimeoutMs: number;
+
   /** 火山方舟（Ark）API Key。 */
   arkApiKey: string;
   arkBaseUrl: string;
@@ -233,6 +317,21 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
+  imageProvider: "ark",
+  customProtocol: "openai",
+  customBaseUrl: CUSTOM_PROTOCOL_DEFAULTS.openai.baseUrl,
+  customApiKey: "",
+  customModel: "gpt-image-1",
+  customSize: "1024x1024",
+  customNegativePrompt: "",
+  customSteps: 28,
+  customCfgScale: 7,
+  customSampler: "DPM++ 2M Karras",
+  customDenoising: 0.65,
+  customSeed: -1,
+  customWorkflow: "",
+  customTimeoutMs: 300000,
+
   arkApiKey: "",
   arkBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
   /**
@@ -388,6 +487,25 @@ export function normalizeConfig(input: unknown): Config {
   const comfyWorkflow = comfyWorkflowRaw.trim() === "" ? DEFAULT_CONFIG.comfyWorkflow : comfyWorkflowRaw;
 
   return {
+    imageProvider: raw.imageProvider === "custom" ? "custom" : "ark",
+    customProtocol: (CUSTOM_PROTOCOLS as readonly string[]).includes(String(raw.customProtocol))
+      ? (raw.customProtocol as CustomProtocol)
+      : DEFAULT_CONFIG.customProtocol,
+    customBaseUrl: asString(raw.customBaseUrl, DEFAULT_CONFIG.customBaseUrl).replace(/\/+$/, ""),
+    customApiKey: asString(raw.customApiKey, DEFAULT_CONFIG.customApiKey),
+    customModel: asString(raw.customModel, DEFAULT_CONFIG.customModel),
+    customSize: asString(raw.customSize, DEFAULT_CONFIG.customSize),
+    customNegativePrompt: asString(raw.customNegativePrompt, DEFAULT_CONFIG.customNegativePrompt),
+    customSteps: asInt(raw.customSteps, DEFAULT_CONFIG.customSteps, 1, 150),
+    // 上限放到 30：有些后端把 CFG 当纯缩放用；下限 0 = 完全不看提示词（罕见但合法）。
+    customCfgScale: asNumber(raw.customCfgScale, DEFAULT_CONFIG.customCfgScale, 0, 30),
+    customSampler: asString(raw.customSampler, DEFAULT_CONFIG.customSampler),
+    customDenoising: asNumber(raw.customDenoising, DEFAULT_CONFIG.customDenoising, 0, 1),
+    // -1 是「随机」的约定值，其余收敛到 32 位无符号范围（ComfyUI 的 KSampler 是 int）。
+    customSeed: asInt(raw.customSeed, DEFAULT_CONFIG.customSeed, -1, 2147483647),
+    customWorkflow: asString(raw.customWorkflow, DEFAULT_CONFIG.customWorkflow),
+    customTimeoutMs: asInt(raw.customTimeoutMs, DEFAULT_CONFIG.customTimeoutMs, 10000, 3600000),
+
     arkApiKey: asString(raw.arkApiKey, DEFAULT_CONFIG.arkApiKey),
     arkBaseUrl: asString(raw.arkBaseUrl, DEFAULT_CONFIG.arkBaseUrl).replace(/\/+$/, ""),
     arkModel: asString(raw.arkModel, DEFAULT_CONFIG.arkModel),
@@ -467,17 +585,19 @@ export async function saveConfig(patch: Partial<Config>): Promise<Config> {
 }
 
 /** 回传给浏览器的脱敏视图：只说明 key 是否已配置，以及尾部 4 位。 */
-export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "comfyCookies"> {
+export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "comfyCookies"> {
   arkApiKeySet: boolean;
   arkApiKeyHint: string;
   minimaxApiKeySet: boolean;
   minimaxApiKeyHint: string;
+  customApiKeySet: boolean;
+  customApiKeyHint: string;
   comfyCookiesSet: boolean;
   comfyCookiesHint: string;
 }
 
 export function maskConfig(config: Config): ConfigView {
-  const { arkApiKey, minimaxApiKey, comfyCookies, ...rest } = config;
+  const { arkApiKey, minimaxApiKey, customApiKey, comfyCookies, ...rest } = config;
   const cookie = normalizeComfyCookies(comfyCookies);
   return {
     ...rest,
@@ -488,6 +608,8 @@ export function maskConfig(config: Config): ConfigView {
     arkApiKeyHint: hintOf(arkApiKey),
     minimaxApiKeySet: minimaxApiKey.trim() !== "",
     minimaxApiKeyHint: hintOf(minimaxApiKey),
+    customApiKeySet: customApiKey.trim() !== "",
+    customApiKeyHint: hintOf(customApiKey),
     // Cookie 也是凭据（反代鉴权），同样不回传明文：只说配没配、尾巴 4 位。
     comfyCookiesSet: cookie !== "",
     comfyCookiesHint: hintOf(cookie)
