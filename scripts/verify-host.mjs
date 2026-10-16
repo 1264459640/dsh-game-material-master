@@ -1567,7 +1567,7 @@ async function main() {
   console.log("13b) 换源图作废派生产物");
   {
     const { patchProject: patch, projectDir } = await import("../lib/store.js");
-    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { mkdir, utimes, writeFile } = await import("node:fs/promises");
     const { dirname } = await import("node:path");
     const fresh = await studio.createProject({ name: "换源图" });
     const freshId = fresh.projectId;
@@ -1645,6 +1645,50 @@ async function main() {
 
     const renamed = await studio.uploadSource({ projectId: freshId, name: "fourth.png", data: png.toString("base64") });
     check("再换一次仍然按新文件名落盘", renamed.file === "source/fourth.png", String(renamed.file));
+
+    // 首帧保险：正面绿幕图比源图旧 → 退回源图。换源图本来就会作废派生产物，
+    // 但历史项目 / 手工替换文件都可能带着「旧角色的正面图」，而首帧正是交给
+    // 模型的那一张图 —— 兜不住就是「新角色配旧脸」且不报错。
+    await mkdir(join(freshRoot, "images"), { recursive: true });
+    await writeFile(join(freshRoot, "images", "front.png"), png);
+    const anHourAgo = new Date(Date.now() - 3600 * 1000);
+    await utimes(join(freshRoot, "images", "front.png"), anHourAgo, anHourAgo);
+    await patch(freshId, (project) => {
+      project.images.front = { status: "ready", file: "images/front.png", approved: false };
+    });
+
+    const gateway = createServer((req, res) => {
+      req.resume();
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ base_resp: { status_code: 1004, status_msg: "invalid api key (verify)" } }));
+    });
+    await new Promise((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+    await studio.saveConfig({
+      minimaxApiKey: "fake-key-for-verification",
+      minimaxBaseUrl: `http://127.0.0.1:${gateway.address().port}`
+    });
+    try {
+      const kicked = await studio.runTurnVideo({ projectId: freshId });
+      check("转圈视频提交被接受（首帧保险）", kicked.started === true, JSON.stringify(kicked));
+      let guarded = null;
+      for (let i = 0; i < 40; i++) {
+        await sleep(500);
+        const snapshot = await studio.getProject({ projectId: freshId });
+        if (snapshot.turn.video.status === "error" || snapshot.turn.video.status === "ready") {
+          guarded = snapshot;
+          break;
+        }
+      }
+      check(
+        "正面绿幕图比源图旧时改用源图当首帧",
+        guarded?.turn.video.firstFrame === "source/fourth.png",
+        String(guarded?.turn.video.firstFrame)
+      );
+      check("并把原因写进日志", (guarded?.log ?? []).some((entry) => /正面绿幕图比源图旧/.test(entry.message)));
+    } finally {
+      await new Promise((resolve) => gateway.close(resolve));
+      await studio.saveConfig({ minimaxBaseUrl: "https://api.minimaxi.com", clearMinimaxApiKey: true });
+    }
     await studio.deleteProject({ projectId: freshId });
   }
 

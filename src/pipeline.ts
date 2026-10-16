@@ -18,7 +18,7 @@
  * 界面靠自己轮询 getState 看进度——一次 Hailuo 生成要几分钟，绝不能同步阻塞。
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { loadConfig, type Config } from "./config.js";
 import {
@@ -333,17 +333,51 @@ function clampInt(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+/** 取文件的修改时间；读不到（还没落盘 / 已经被删）时返回 null。 */
+async function fileMtimeMs(absolute: string): Promise<number | null> {
+  try {
+    return (await stat(absolute)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 转圈视频的首帧。
  *
  * 优先用已经有的正面绿幕图，没有就退回源图：源图不一定是绿幕，但提示词里
  * 已经明确要求「纯色绿幕 #00FF00」，模型会照着重画背景。把实际用的那张记进
  * `turn.video.firstFrame`，排查「第一帧就不是正面」时才有据可依。
+ *
+ * ⚠️ 正面绿幕图如果比源图还旧，说明源图是后来换的（换源图会作废派生产物，
+ * 但历史项目、手工替换文件、以及从前留下的旧数据都可能带着这种状态）：
+ * 那一张画的是**上一个角色**，用它当首帧就会「新角色配旧脸」——生成的图
+ * 看着没问题，只有肉眼看内容才发现。所以这里拿文件时间兜一道，宁可退回
+ * 源图（哪怕不是绿幕），也不拿旧角色的脸去生成。
  */
-function turnFirstFrame(project: Project): { file: string; label: string } | undefined {
+async function turnFirstFrame(
+  projectId: string,
+  project: Project
+): Promise<{ file: string; label: string; note?: string } | undefined> {
   const front = project.images["front"]?.file;
-  if (front !== undefined) return { file: front, label: "正面绿幕图" };
-  if (project.source !== null) return { file: project.source.file, label: "源图" };
+  const source = project.source?.file;
+  if (front !== undefined) {
+    if (source !== undefined) {
+      const [frontAt, sourceAt] = await Promise.all([
+        fileMtimeMs(assetPath(projectId, front)),
+        fileMtimeMs(assetPath(projectId, source))
+      ]);
+      if (frontAt !== null && sourceAt !== null && sourceAt > frontAt + 1000) {
+        return {
+          file: source,
+          label: "源图",
+          note: "正面绿幕图比源图旧（源图是后来换的），这次改用源图当首帧——否则会拿上一个角色的脸去生成。"
+        };
+      }
+    }
+    return { file: front, label: "正面绿幕图" };
+  }
+  if (source !== undefined) return { file: source, label: "源图" };
   return undefined;
 }
 
@@ -359,7 +393,7 @@ async function submitTurnVideo(projectId: string): Promise<void> {
   const config = await loadConfig();
   assertVideoBackendReady(config);
 
-  const first = turnFirstFrame(project);
+  const first = await turnFirstFrame(projectId, project);
   if (first === undefined) throw new Error("还没有源图，无法生成转圈视频");
 
   const base = (project.prompts.turn ?? DEFAULT_TURN_PROMPT).trim();
@@ -379,6 +413,7 @@ async function submitTurnVideo(projectId: string): Promise<void> {
     // 而不是直接清空——用户还能对着上一版继续调位置，直到新视频落地。
     if (current.turn.frames.frames.length > 0) current.turn.frames.stale = true;
     log(current, "info", `开始生成转圈视频（首帧：${first.label}）`);
+    if (first.note !== undefined) log(current, "warn", first.note);
   });
 
   const startedAt = Date.now();
