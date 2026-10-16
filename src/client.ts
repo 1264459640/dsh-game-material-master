@@ -2278,8 +2278,12 @@
 .SPR_mapEdTool:disabled{opacity:.4;cursor:default}
 .SPR_mapEdLayerBtn{flex-direction:column;gap:0;padding:1px;background:linear-gradient(#e6bd7d,#c9974f)}
 /* 工具格上方的小标签（名称 + 快捷键 + 介绍）。
-   position:fixed —— 祖先里有 overflow 容器，absolute 会被裁掉「按钮正上方」那一段。 */
-.SPR_mapEdTip{position:fixed;z-index:60;pointer-events:none;transform:translate(-50%,-100%);max-width:236px;padding:6px 8px;border-radius:6px;border:1px solid #6b4a22;background:#2b2b2b;color:#f3e7d3;box-shadow:0 6px 16px rgba(0,0,0,.4);font-size:11px;line-height:1.5;text-align:left}
+   position:fixed —— 祖先里有 overflow 容器，absolute 会被裁掉「按钮正上方」那一段。
+   z-index 必须**高于**对话框遮罩（.SPR_mapEdDlgMask = 70）与看图遮罩（.SPR_zoomMask = 80）：
+   「新增素材」对话框里的「用法 / 会动吗」按钮也挂这套小标签，而标签节点是遮罩的**兄弟**
+   （挂在面板根节点下、不在对话框里），z-index 比遮罩小就会被整片蒙层盖住 —— 真机表现是
+   「鼠标移上去说明跑到窗口后面去了」，而自检（jsdom 不算绘制顺序）全绿。 */
+.SPR_mapEdTip{position:fixed;z-index:90;pointer-events:none;transform:translate(-50%,-100%);max-width:236px;padding:6px 8px;border-radius:6px;border:1px solid #6b4a22;background:#2b2b2b;color:#f3e7d3;box-shadow:0 6px 16px rgba(0,0,0,.4);font-size:11px;line-height:1.5;text-align:left}
 .SPR_mapEdTip::after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-5px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #2b2b2b}
 .SPR_mapEdTipName{display:flex;align-items:center;gap:6px;font-weight:600}
 .SPR_mapEdTipKey{padding:0 4px;border-radius:3px;background:#4a4a4a;font-size:10px;font-weight:400;color:#e8d7bb}

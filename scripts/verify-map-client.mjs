@@ -1922,6 +1922,31 @@ try {
     /\.SPR_mapEdTip\{position:fixed[^}]*translate\(-50%,-100%\)/.test(clientSource)
   );
   check("工具小标签贴边时被夹在视口内", /Math\.max\(half, Math\.min\(center, viewWidth - half\)\)/.test(clientSource));
+  /**
+   * ⚠️ 真机踩过：小标签的 z-index 比自家的全屏遮罩**小**，于是「新增素材」对话框里
+   * 悬停「用法 / 会动吗」弹出的说明整片跑到窗口后面去了 —— 标签节点挂在面板根节点下、
+   * 是遮罩的**兄弟**而不是子节点，遮罩一动就把整屏蒙住，能救的只有 z-index。
+   * jsdom 不算绘制顺序，所以这条只能在 CSS 数值上钉住（配一条反向验证）。
+   */
+  const cssZIndex = (selector) => {
+    const rule = new RegExp(`${selector.replace(/[.\\]/g, "\\$&")}\\{([^}]*)\\}`).exec(clientSource);
+    const value = rule === null ? null : /z-index:(\d+)/.exec(rule[1]);
+    return value === null ? null : Number(value[1]);
+  };
+  const tipZ = cssZIndex(".SPR_mapEdTip");
+  const dlgZ = cssZIndex(".SPR_mapEdDlgMask");
+  const zoomZ = cssZIndex(".SPR_zoomMask");
+  check(
+    "工具小标签的 z-index 高于对话框遮罩（低了的真机表现：对话框里的说明被蒙层盖住）",
+    tipZ !== null && dlgZ !== null && tipZ > dlgZ,
+    `tip=${tipZ} 遮罩=${dlgZ}`
+  );
+  check("工具小标签的 z-index 也高于看图遮罩", tipZ !== null && zoomZ !== null && tipZ > zoomZ, `tip=${tipZ} 看图=${zoomZ}`);
+  check(
+    "反向验证：修复前的 60 判不过、而且没写 z-index 的选择器取不到数（提取器不是常量）",
+    !(60 > (dlgZ ?? 0)) && cssZIndex(".SPR_mapEdRoot") === null,
+    `旧值 60 vs 遮罩 ${dlgZ}`
+  );
   // 新建 / 重命名：不许再依赖原生 prompt（Electron 里它是坏的），两个入口都走同一个对话框。
   // 用剥掉注释的 mapCode：注释里正解释着「为什么不能用 window.prompt」。
   check("模块六不再调用 window.prompt", !/window\.prompt/.test(mapCode));

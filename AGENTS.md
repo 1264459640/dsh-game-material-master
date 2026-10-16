@@ -81,7 +81,7 @@ node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项�
 node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点内核（123 项，含反向验证与术语黑名单）
 node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（274 项，含 A2 每格 4 条 op、动画循环、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
 node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（160 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（263 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字，以及「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（266 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级，以及「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证）
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的
