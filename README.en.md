@@ -51,7 +51,10 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 > are then **fixed for good -- delete the image and add it again to change them**. Leave the cell size empty and
 > it is detected from the image. The built-in set (4 autotile sheets + 1 prop grid, the water animating on 2
 > frames) is in the list by default, can be deleted just like your own, and "Restore built-ins" brings it back;
-> its properties cannot be edited. To animate **your own plain sheets**, pick "**Flip-book**" when adding (one
+> its properties cannot be edited. Not sure how your own image should be laid out? The "**How to lay out an
+> image**" button at the top right of that dialog opens three illustrated pages -- plain tiles / full-cell
+> auto-connect / block auto-connect -- and the grid drawn over each example hides and reappears in a loop, so
+> the columns, the rows and which tile is which are obvious at a glance. To animate **your own plain sheets**, pick "**Flip-book**" when adding (one
 > row per page); autotile sheets need no setting -- their variants are the frames, and the list shows
 > "Animates: N frames". Map size and cell size are both free-form; the map **wraps around on all four sides** at
 > the data level (auto-tiling joins the top/bottom and left/right edges). The canvas cannot be dragged off the

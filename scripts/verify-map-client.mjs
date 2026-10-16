@@ -57,6 +57,7 @@ const G = await import("../lib/mapgen.js");
 const GEOM = await import("../lib/mapgeom.js");
 const DOC = await import("../lib/mapdoc.js");
 const TILES = await import("../lib/maptiles.js");
+const SAMPLES = await import("../lib/mapsamplegen.js");
 const { encodePng } = await import("../lib/png.js");
 
 // ══ 0. 夹具：宿主真跑一份数据，界面读同一份 ════════════════════════════════
@@ -1952,6 +1953,33 @@ try {
   );
   check("工具小标签贴边时被夹在视口内", /Math\.max\(half, Math\.min\(center, viewWidth - half\)\)/.test(clientSource));
   /**
+   * ⚠️ 「素材说明」里那层网格必须**循环**隐现 —— 用户要的就是「看几眼里就知道图是几块排的」，
+   * 一次性淡出等于没有。jsdom 不算动画，所以只能在 CSS 数值上钉住：
+   * 两条 `animation` + 两条网格各自的 `animation-delay`（一隐一现交替）+ 一条 `@keyframes`。
+   * 另外配一条反向验证：把 `infinite` 去掉就判不过（提取器不是常量）。
+   */
+  const gridLoop = /\.SPR_mapEdGuideGrid,\.SPR_mapEdGuideSubGrid\{[^}]*animation:SPR_mapEdGuidePulse 3\.6s ease-in-out infinite\}/.exec(clientSource);
+  check(
+    "说明图上的网格是循环的（animation + infinite，不是一次性淡出）",
+    gridLoop !== null && /@keyframes SPR_mapEdGuidePulse\{0%\{opacity:0\}[\s\S]{0,120}?100%\{opacity:0\}\}/.test(clientSource),
+    gridLoop === null ? "没找到循环动画" : gridLoop[0].slice(-60)
+  );
+  check(
+    "「一格」与「格内小块」两层网格错开半拍（一隐一现交替，不是两条线一起闪）",
+    /\.SPR_mapEdGuideGrid\{color:rgba\(255,255,255,\.62\)\}/.test(clientSource) && /\.SPR_mapEdGuideSubGrid\{color:rgba\(255,215,154,\.85\);animation-delay:1\.8s\}/.test(clientSource)
+  );
+  check(
+    "反向验证：把 infinite 去掉这条判不过（正则不是恒真）",
+    !/\.SPR_mapEdGuideGrid,\.SPR_mapEdGuideSubGrid\{[^}]*animation:SPR_mapEdGuidePulse 3\.6s ease-in-out infinite\}/.test(
+      ".SPR_mapEdGuideGrid,.SPR_mapEdGuideSubGrid{animation:SPR_mapEdGuidePulse 3.6s ease-in-out}"
+    )
+  );
+  check(
+    "网格动画尊重 prefers-reduced-motion（不想看动画的人不被动）",
+    /@media \(prefers-reduced-motion: reduce\)\{\.SPR_mapEdGuideGrid,\.SPR_mapEdGuideSubGrid\{animation:none;opacity:1\}\}/.test(clientSource)
+  );
+
+  /**
    * ⚠️ 真机踩过：小标签的 z-index 比自家的全屏遮罩**小**，于是「新增素材」对话框里
    * 悬停「用法 / 会动吗」弹出的说明整片跑到窗口后面去了 —— 标签节点挂在面板根节点下、
    * 是遮罩的**兄弟**而不是子节点，遮罩一动就把整屏蒙住，能救的只有 z-index。
@@ -2321,6 +2349,110 @@ try {
     collect(tree, (node) => node.props?.["data-testid"] === "map-add-cancel")[0].props.onClick();
     tree = await renderTree(() => MapModule({ api }));
     check("「取消」关掉对话框、什么都不改", collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog").length === 0 && rowCount() === beforeRows, `${rowCount()} 张`);
+
+    /**
+     * ── 「素材说明」：三页图文，图上盖一层循环隐现的网格 ────────────────────
+     *
+     * 这里**不拿我推的公式比**：示例图逐个字节等于宿主生成器 `renderGuideSheets()`
+     * 真产出的那张，网格线的位置等于真实列数 / 行数 / 每块再分的数推出来的百分比。
+     * 图换了、列数改了而界面没跟上，这几条就会红（而不是「说明图和实物不一样」）。
+     */
+    const guideSheets = new Map(SAMPLES.renderGuideSheets().map((sheet) => [sheet.shape, sheet]));
+    const guideIn = (current) => collect(current, (node) => node.props?.["data-testid"] === "map-guide-dialog")[0];
+    const guideTabs = (current) => collect(guideIn(current), (node) => typeof node.props?.["data-guide-tab"] === "string");
+    const guideImg = (current) => byClass(guideIn(current), "SPR_mapEdGuideImg")[0];
+    const guideGrid = (current) => byClass(guideIn(current), "SPR_mapEdGuideGrid")[0];
+    const guideSub = (current) => byClass(guideIn(current), "SPR_mapEdGuideSubGrid")[0];
+    /** 生成器真产出的那一张图的 data URI。 */
+    const guideSrc = (shape) => `data:image/png;base64,${guideSheets.get(shape).png.toString("base64")}`;
+    /** 网格线应当铺满一格的百分比（100 / 列数、100 / 行数）。 */
+    const guideCell = (shape) => `${100 / guideSheets.get(shape).cols}% ${100 / guideSheets.get(shape).rows}%`;
+    const clickGuideTab = async (shape) => {
+      guideTabs(tree).find((node) => node.props["data-guide-tab"] === shape).props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    };
+    const reopenAdd = async () => {
+      collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "新增素材")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+    };
+
+    await reopenAdd();
+    check("「新增素材」标题行里有「素材说明」按钮", collect(tree, (node) => node.props?.["data-testid"] === "map-guide-open")[0] !== undefined, textOf(byClass(tree, "SPR_mapEdDlgHead")[0] ?? null));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-guide-open")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check(
+      "点它弹出说明窗口，而且「新增素材」还开着（填了一半的表不用重来）",
+      guideIn(tree) !== undefined && collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog").length === 1
+    );
+    check(
+      "说明窗口是三页，页签与「用法」那三个选项同名",
+      guideTabs(tree).length === 3 && guideTabs(tree).map(textOf).join("/") === "普通图块/整格自动连接/拼块自动连接",
+      guideTabs(tree).map(textOf).join("/")
+    );
+    check("第一页（普通图块）的示例图就是生成器真产出的那张", guideImg(tree)?.props.src === guideSrc("plain"));
+    check("网格线按真实列数现算（4 列 × 2 行 → 25% / 50%）", guideGrid(tree)?.props.style.backgroundSize === guideCell("plain"), String(guideGrid(tree)?.props.style.backgroundSize));
+    check("普通图块那一页只有一层网格（没有「格内再分」）", guideSub(tree) === undefined);
+    check(
+      "图注里的列数 / 行数 / 块数 / 每块像素全是现算的（换了图不会留下旧数字）",
+      textOf(guideIn(tree)).includes("4 列 × 2 行，共 8 块，每块 32×32"),
+      textOf(guideIn(tree)).slice(0, 80)
+    );
+
+    await clickGuideTab("corner16");
+    check("第 2 页（整格自动连接）换成 4×4 那张示例图", guideImg(tree)?.props.src === guideSrc("corner16"));
+    check("第 2 页的网格是 25% / 25%（4 列 × 4 行）", guideGrid(tree)?.props.style.backgroundSize === guideCell("corner16"), String(guideGrid(tree)?.props.style.backgroundSize));
+    const cornerText = textOf(guideIn(tree));
+    check("第 2 页把顺序讲成人话：上 = 1、右 = 2、下 = 4、左 = 8", cornerText.includes("上 = 1、右 = 2、下 = 4、左 = 8"));
+    check("第 2 页说清「第 1 块四周都没有、最后一块四周都有」", cornerText.includes("第 1 块是四周都没有邻居") && cornerText.includes("最后一块是四周都有"));
+    check("第 2 页提醒块数不是 16 会怎样（否则用户看不出自己哪里错了）", cornerText.includes("块数不是 16"));
+    check("第 2 页也只有一层网格", guideSub(tree) === undefined);
+
+    await clickGuideTab("a2quad");
+    check("第 3 页（拼块自动连接）的示例图就是内置草地那张（说明与实物同源）", guideImg(tree)?.props.src === guideSrc("a2quad"));
+    check(
+      "第 3 页两层网格都按真实数字现算：一格 32×32（50% / 20%）+ 格内 16×16 的小块（25% / 10%）",
+      guideGrid(tree)?.props.style.backgroundSize === guideCell("a2quad") && guideSub(tree)?.props.style.backgroundSize === "25% 10%",
+      `${String(guideGrid(tree)?.props.style.backgroundSize)} / ${String(guideSub(tree)?.props.style.backgroundSize)}`
+    );
+    const a2Text = textOf(guideIn(tree));
+    check("第 3 页说清「一格里面再分成 2×2 个 16×16 的小块」与「竖着正好 5 行」", a2Text.includes("2×2 个 16×16 的小块") && a2Text.includes("竖着正好 5 行"));
+    check(
+      "翻页有页码，最后一页的「下一页」点不动（不会翻出第 4 页）",
+      textOf(guideIn(tree)).includes("第 3 页 / 共 3 页") && collect(guideIn(tree), (node) => node.props?.["data-testid"] === "map-guide-next")[0].props.disabled === true
+    );
+    collect(guideIn(tree), (node) => node.props?.["data-testid"] === "map-guide-prev")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("「上一页」退回第 2 页", textOf(guideIn(tree)).includes("第 2 页 / 共 3 页"));
+    /**
+     * 术语黑名单的**用户面**版本，对说明窗口再来一遍：这一页是纯文案，最容易被顺手
+     * 写成「掩码」「图集」这类词的地方。
+     */
+    check(
+      "说明窗口画到屏幕上的字里也没有旧术语",
+      JARGON.every((word) => !textOf(guideIn(tree)).includes(word)),
+      JARGON.filter((word) => textOf(guideIn(tree)).includes(word)).join("、")
+    );
+
+    // 点窗口外面：只关说明窗口，「新增素材」还在（草稿一个字都没丢）。
+    collect(guideIn(tree), (node) => node.props?.["data-testid"] === "map-guide-close")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check(
+      "「关闭」只关说明窗口，「新增素材」还开着（草稿没丢，不用重新选图）",
+      guideIn(tree) === undefined && collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog").length === 1
+    );
+    // 草稿里已经选了「整格」→ 打开说明就直接翻到那一页。
+    collect(tree, (node) => node.props?.["data-shape"] === "corner16")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-guide-open")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("草稿里已经选了「整格」，打开说明就直接翻到整格那一页", textOf(guideIn(tree)).includes("第 2 页 / 共 3 页"), textOf(guideIn(tree)).match(/第 \d 页[^。]*/)?.[0] ?? "");
+    // 关掉「新增素材」：说明窗口跟着一起没（它只跟着草稿存在，不需要在四处各写一次复位）。
+    collect(tree, (node) => node.props?.["data-testid"] === "map-add-cancel")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check(
+      "关掉「新增素材」时说明窗口一起消失（草稿没了，它也不该留着）",
+      guideIn(tree) === undefined && collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog").length === 0
+    );
     // 删除内置素材 → 列表少一张；恢复默认 → 回来了
     const builtinRow = byClass(tree, "SPR_mapEdTsRow").find((node) => textOf(node).includes("自带"));
     const builtinName = textOf(byClass(builtinRow, "SPR_mapEdTsName")[0]);

@@ -91,7 +91,7 @@ node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项�
 node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点内核（123 项，含反向验证与术语黑名单）
 node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（274 项，含 A2 每格 4 条 op、动画循环、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
 node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（160 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（272 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级，以及「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（298 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，以及「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证）
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的
@@ -100,6 +100,14 @@ node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金
 `scripts/make-map-sample-tileset.mjs` 是模块六**内置素材**的生成器：默认纯程序化、确定性
 （同一输入两次生成逐字节一致，`--check` 会断言形状/变体真的互不相同）；`--ark --yes` 会改用
 火山引擎生成纹理再本地合成，**这一步真实计费**，别顺手跑。
+
+`scripts/make-map-guide-art.mjs` 是模块六**「素材说明」窗口那三张示例图**的生成器：
+它把图写进 `src/client.ts` 的标记块 `MAP_GUIDE_ART`（base64 内联 —— 浏览器半区不能 import，
+宿主也没有「随便给个静态文件」的路由）。`--check` 断言确定性、`src/client.ts` 里那一份是最新的、
+已构建进 `lib/client.js`，并**把整格那张图解回来量一遍方向位序**（行优先第 i 块必须是
+「上=1 / 右=2 / 下=4 / 左=8 加起来等于 i」的那种接法 —— 说明窗口就照它教用户排图，画错了
+只会让照做的人排出一张连不上的图，不报任何错）。改了 `src/mapsamplegen.ts` 里的说明图就把
+它重跑一次、再 `npm run build`。
 
 其余脚本（`verify-rig*.mjs`、`e2e-*.mjs` 等）的覆盖范围见 ENGINEERING.md 的「自检脚本」表。
 `e2e-map.mjs` 是模块六的**真实链路端到端**（不联网、不花钱）：它会**故意把产物留在**
@@ -161,7 +169,14 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 `src/videogen.ts`（后端分派，按**节点上记的** `backend` 查任务）、`scripts/verify-comfy.mjs`（124 项，自起 mock
 ComfyUI）、配置项 `comfy*` 十一个（多出的 `comfyCookies` 专供鉴权反代，不进 `directKeys`），wire 新增 `testComfy`。
 同批还包括：候选帧上限 64 → 512、换源图后作废由旧源图派生的产物、转圈首帧的时间兜底、
-ffmpeg / ffprobe 的路径查找（Windows 上读注册表与常见安装位置）。生图 / 抠像 / 抽帧 / 合图不变。
+ffmpeg / ffprobe 的路径查找（Windows 上读注册表与常见安装位置）；以及模块六「新增素材」窗口里的
+**「素材说明」按钮**（`feat(map)`）：点开是一个三页的图文说明窗口，逐页讲清「普通图块 / 整格自动连接 /
+拼块自动连接」这三种素材图**该怎么排**（示例图、几列几行、第几块是哪一种接法），图上的网格按示例图
+真实的 cols / rows / sub **现算百分比**、两层网格错开半拍循环隐现。示例图不是手画的：普通 / 整格两张由
+`src/mapsamplegen.ts` 的 `renderGuideSheets()` 现画，拼块那张就是内置草地；生成器
+`scripts/make-map-guide-art.mjs` 把三张图 base64 内联进 `src/client.ts` 的 `MAP_GUIDE_ART` 标记块
+（**只改客户端，不用重启 DSH**），`--check` 会把整格那张图解回来量一遍方向位序。
+生图 / 抠像 / 抽帧 / 合图不变。
 
 发布时按下面的流程走，并**把这段挪进上面的「已发布版本」表**（补上 UTC 时间）。
 
