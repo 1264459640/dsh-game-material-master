@@ -12,7 +12,7 @@
 ## 这是什么
 
 DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出游戏素材。火山方舟 **Seedream** 生图、
-**MiniMax** 图生视频，抠像 / 抽帧 / 像素量化 / 合图全部在本机用 `ffmpeg` + 内置 JS 完成。
+**MiniMax**（或本机 **ComfyUI**）图生视频，抠像 / 抽帧 / 像素量化 / 合图全部在本机用 `ffmpeg` + 内置 JS 完成。
 
 | 模块 | key | 状态 |
 |---|---|---|
@@ -27,6 +27,9 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 （OpenAI 兼容 / ComfyUI / Stable Diffusion WebUI 三种协议；
 `src/imageprovider.ts` 分发、`src/customimage.ts` 实现三种协议）。
 所有生图调用点都必须走 `imageprovider.generateImageWithProvider`，**不要在模块里自己判 `imageProvider`**。
+
+图生视频默认走 MiniMax，也可以改走本机 / 远端 ComfyUI（`src/videogen.ts` 按**节点上记的** `backend`
+分派，`src/comfy.ts` 是 ComfyUI 客户端）。
 
 ---
 
