@@ -3787,59 +3787,6 @@
                   h(
                     "div",
                     { className: "SPR_card" },
-                    h("div", { className: "SPR_cardHead" }, h("h3", null, activeStage.title)),
-                    // 阶段①的说明跟着生成方式走：转圈截帧不是「八个方向各生成一次」，
-                    // 沿用逐方向生图那句话会让人以为走错了页面。
-                    h("p", { className: "SPR_hint" }, stageHint(project, stage, activeStage)),
-                    stage === "images"
-                      ? renderImageStage({
-                          project,
-                          api,
-                          promptDraft,
-                          setPromptDraft,
-                          promptOpen,
-                          setPromptOpen,
-                          savePrompts,
-                          start,
-                          setNotice,
-                          loadProject,
-                          tasks
-                        })
-                      : null,
-                    stage === "videos"
-                      ? renderVideoStage({
-                          project,
-                          api,
-                          videoPromptDraft,
-                          setVideoPromptDraft,
-                          savePrompts,
-                          start,
-                          setNotice,
-                          loadProject,
-                          tasks
-                        })
-                      : null,
-                    stage === "frames"
-                      ? renderFrameStage({ project, api, start, setNotice, loadProject, settingsDraft, saveSettings, tasks })
-                      : null,
-                    stage === "sheet"
-                      ? renderSheetStage({
-                          project,
-                          api,
-                          settingsDraft,
-                          setSettingsDraft,
-                          saveSettings,
-                          start,
-                          setNotice,
-                          loadProject,
-                          tasks
-                        })
-                      : null,
-                    stage === "preview" ? h(WalkPreview, { project, tasks }) : null
-                  ),
-                  h(
-                    "div",
-                    { className: "SPR_card" },
                     h("div", { className: "SPR_cardHead" }, h("h3", null, T("源图"))),
                     h("p", { className: "SPR_hint" }, T("上传角色的原始设定图。第一步的正面绿幕图会以它为唯一参考。")),
                     h(
@@ -3899,6 +3846,59 @@
                         })
                       )
                     )
+                  ),
+                  h(
+                    "div",
+                    { className: "SPR_card" },
+                    h("div", { className: "SPR_cardHead" }, h("h3", null, activeStage.title)),
+                    // 阶段①的说明跟着生成方式走：转圈截帧不是「八个方向各生成一次」，
+                    // 沿用逐方向生图那句话会让人以为走错了页面。
+                    h("p", { className: "SPR_hint" }, stageHint(project, stage, activeStage)),
+                    stage === "images"
+                      ? renderImageStage({
+                          project,
+                          api,
+                          promptDraft,
+                          setPromptDraft,
+                          promptOpen,
+                          setPromptOpen,
+                          savePrompts,
+                          start,
+                          setNotice,
+                          loadProject,
+                          tasks
+                        })
+                      : null,
+                    stage === "videos"
+                      ? renderVideoStage({
+                          project,
+                          api,
+                          videoPromptDraft,
+                          setVideoPromptDraft,
+                          savePrompts,
+                          start,
+                          setNotice,
+                          loadProject,
+                          tasks
+                        })
+                      : null,
+                    stage === "frames"
+                      ? renderFrameStage({ project, api, start, setNotice, loadProject, settingsDraft, saveSettings, tasks })
+                      : null,
+                    stage === "sheet"
+                      ? renderSheetStage({
+                          project,
+                          api,
+                          settingsDraft,
+                          setSettingsDraft,
+                          saveSettings,
+                          start,
+                          setNotice,
+                          loadProject,
+                          tasks
+                        })
+                      : null,
+                    stage === "preview" ? h(WalkPreview, { project, tasks }) : null
                   ),
                   renderLog(project),
                   h(
