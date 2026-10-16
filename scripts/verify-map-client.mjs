@@ -1064,6 +1064,35 @@ try {
     tree = await renderTree(() => MapModule({ api }));
     const active = byClass(tree, "SPR_mapEdTile").filter((node) => node.props["data-on"] === "true");
     check("点调色板一块能选中（恰好一块带 data-on，红框由 CSS 画）", active.length === 1 && active[0].props["data-index"] === chosenIndex, `${active.length} 块选中`);
+    /**
+     * 悬停一块素材要讲人话。
+     *
+     * ⚠️ 这里原来是原生 `title: "第 N 块"`：新手看到的是一格草地，不是「第 33 块」——
+     * 等了 1 秒才出来，还什么都没说。现在和工具格同一张自绘标签，且必须讲出
+     * 「点它能干什么」；自动连接 / 会动这两件看不见的事也要在这里说。
+     */
+    const tileForTip = byClass(tree, "SPR_mapEdTile")[0];
+    check("调色板条目不再挂原生 title（说明走自绘小标签）", tileForTip.props.title === undefined, String(tileForTip.props.title));
+    check("调色板条目的 aria-label 是「名称：说明」", /：/.test(String(tileForTip.props["aria-label"])) && String(tileForTip.props["aria-label"]).includes("按住鼠标左键"), String(tileForTip.props["aria-label"]).slice(0, 40));
+    tileForTip.props.onMouseEnter({ currentTarget: { getBoundingClientRect: () => ({ left: 120, top: 400, width: 32, height: 32 }) } });
+    tree = await renderTree(() => MapModule({ api }));
+    const paletteTip = byClass(tree, "SPR_mapEdTip")[0];
+    const paletteTipText = textOf(paletteTip ?? null);
+    const paletteOwner = hostView.tilesets.find((ts) => ts.palette.some((item) => String(item.index) === String(tileForTip.props["data-index"])));
+    check("悬停调色板条目弹出小标签：先说这是什么，再说点了怎么用", paletteTip !== undefined && paletteTipText.includes(paletteOwner.name) && paletteTipText.includes("点一下选中它"), paletteTipText.replace(/\s+/g, " ").slice(0, 60));
+    /**
+     * 多选那几块**只影响「一键生成」**（绘制用的永远是单项 `brush`）。
+     * 说明里必须把它挂到一键生成上 —— 写成「一起涂」就是教错操作。
+     */
+    check("多选的说明指向「一键生成」（多选不参与手绘）", paletteTipText.includes("一键生成"), paletteTipText.replace(/\s+/g, " ").slice(-30));
+    check(
+      "自动连接的素材在标签里讲明「边缘会自己接上」（点之前就该知道）",
+      paletteOwner.shape === "plain" ? true : paletteTipText.includes("边缘会自己接上"),
+      `${paletteOwner.name} / ${paletteOwner.shape}`
+    );
+    byClass(tree, "SPR_mapEdTile")[0].props.onMouseLeave();
+    tree = await renderTree(() => MapModule({ api }));
+    check("鼠标移开调色板条目后小标签收起", byClass(tree, "SPR_mapEdTip").length === 0);
   }
 
   // ── 左列：12 个图标按钮 ─────────────────────────────────────────────────
@@ -1108,7 +1137,7 @@ try {
     let tip = tipOf(tree);
     const tipText = tip === undefined ? "" : textOf(tip);
     check("悬浮「画笔」弹出小标签", tip !== undefined, tipText.slice(0, 40));
-    check("小标签里有名称、快捷键与介绍", tipText.includes("画笔") && tipText.includes("B") && tipText.includes("按住左键涂抹"), tipText);
+    check("小标签里有名称、快捷键与介绍", tipText.includes("画笔") && tipText.includes("B") && tipText.includes("按住鼠标左键在格子上拖"), tipText);
     check(
       "小标签挂在被悬浮按钮的正上方（坐标是 hover 时现算的）",
       tip !== undefined && tip.props.style.left === "140px" && tip.props.style.top === "392px",
@@ -1120,7 +1149,7 @@ try {
     check("移开鼠标后小标签收起", tipOf(tree) === undefined);
     byTool(tree, "bucket")[0].props.onFocus({ currentTarget: { getBoundingClientRect: rect } });
     tree = await renderTree(() => MapModule({ api }));
-    check("键盘聚焦也弹小标签（介绍里有「连通区」）", textOf(tipOf(tree) ?? null).includes("连通区"), textOf(tipOf(tree) ?? null));
+    check("键盘聚焦也弹小标签（介绍里有「连成一片」）", textOf(tipOf(tree) ?? null).includes("连成一片"), textOf(tipOf(tree) ?? null));
     // 图层按钮是复合控件（上下两个半块 + 层号），它的说明也走同一张标签
     byClass(tree, "SPR_mapEdLayerBtn")[0].props.onMouseEnter({ currentTarget: { getBoundingClientRect: rect } });
     tree = await renderTree(() => MapModule({ api }));
