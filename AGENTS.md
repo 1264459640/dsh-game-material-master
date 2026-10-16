@@ -44,7 +44,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 界面文案一律写 `T("中文原文")`，并往 `src/client.ts` 的词条表补英文 | 中文原文就是 key；漏翻不会报错，只是那一条一直是中文。`verify-i18n.mjs` 会拦 |
 | **模块级**（工厂顶层）出现 `T()` 的文案表要同步加进 `staticTextRebuilders` | 模块顶层的 `T()` 在插件 load 时就求值了，那时 locale 服务还没挂上，此后永远停在中文。实测表现：切英文后方向名 / 模块页签不动。函数体内的 `T()` 不受影响 |
 | 浏览器半区往宿主加字段时，`src/wire.ts` 里那条方法的 `payload:` schema 必须同步加 | typert 按声明的 schema 校验 payload，**schema 里没有的键会被静默丢掉**。实测：给 `getProject` 带上 `lang` 却没进 schema，宿主永远读到 `undefined`，表现是「切了英文提示词还是中文」且不报任何错 |
-| 新增配置字段必须同时在 `src/index.ts` 的 `saveConfig` `directKeys` 白名单里加一条 | 白名单外的键会被**静默丢掉**：界面显示已保存、`config.json` 没变、不报任何错。`comfy*` 那十个键是这么加的 |
+| 新增配置字段必须同时在 `src/index.ts` 的 `saveConfig` `directKeys` 白名单里加一条 | 白名单外的键会被**静默丢掉**：界面显示已保存、`config.json` 没变、不报任何错。`comfy*` 那十个键是这么加的。⚠️ 唯一例外是**凭据类**字段（`arkApiKey` / `minimaxApiKey` / `comfyCookies`）：它们**不进**白名单——白名单是原样透传，凭据要先归一化 / trim，所以在 `saveConfig` 函数体里单独处理 |
 | 视频**按节点上记的 `backend` 分派**（`src/videogen.ts`），两个后端的 taskId 都是字符串 | `comfyVideo` 是全局开关，用户可能中途改设置；按当前配置去查就会拿 MiniMax 的接口查 ComfyUI 的 `prompt_id`（表现：一边报「任务不存在」、另一边永远 pending）。新增视频字段时 `VideoNode` / `TurnVideoNode` 的 `backend?` 要一起写 |
 | ComfyUI 工作流是**用户自己的 JSON**，注入前必须过 `parseComfyWorkflow` + `detectComfyBindings`，不许写死节点 id | 节点 id 与输入名由用户装的自定义节点决定。「首帧图」尤其危险：`LoadImage` 只代表一张图，首尾帧各用其一，搞错会**静默**把首帧顶掉（`verify-comfy.mjs` 盯这条） |
 | 后台任务表（`pipeline` / `seqgen` / `riggen`）**每次 `apply` 都要复位**（`activatePipeline()` / `activateSequence()` / `activateRig()`） | DSH 重载插件时 `ctx.effect` 的清理会把模块级的 `disposed` 置为 true，而 Node 模块缓存留着**同一个模块对象**——不可逆。症状：**所有生成类调用**都只回一句「任务已在进行中」，按钮点了没反应、项目日志一条不加，而上传源图 / 查状态 / 测试连接全正常。`activate*()` 就是给重载留的复位入口；`kick()` 失败时用 `kickFailure()` 区分「真在跑」与「实例已废」 |
@@ -69,7 +69,7 @@ node scripts/verify-tools.mjs      # 对话调用面（147 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
 node scripts/verify-feedback.mjs   # 浏览器半区真渲染（161 项，含功能管理、侧栏菜单与语义保存错误）
 node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
-node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（101 项，自起 mock ComfyUI，纯本地、不用装 ComfyUI）
+node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（113 项，自起 mock ComfyUI，纯本地、不用装 ComfyUI）
 node scripts/verify-rig-runtime.mjs  # 骨骼改动：官方 Spine 4.2 实际加载/IK/Path/FFD/顶点求值（开发依赖）
 node scripts/verify-tile.mjs       # 地图地块几何内核（147 项，含反向验证）
 node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115 项；⚠️ 需要先跑过 e2e-tile-live 生成过地块，否则会在拼图阶段直接抛）
@@ -163,7 +163,7 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 > **API 格式** JSON，注入点（提示词 / 宽高 / 时长 / 种子 / 首尾帧）自动探测，工作流里没连的 optional
 > `IMAGE` 输入按 `/object_info` 的节点定义自动补一个 `LoadImage`，内置模板就是 FreeVideo 那条链路；
 > 新增 `src/comfy.ts`（客户端）、`src/videogen.ts`（后端分派，按**节点上记的** `backend` 查任务）、
-> `scripts/verify-comfy.mjs`（101 项，自起 mock ComfyUI）、配置项 `comfy*` 十个，wire 新增 `testComfy`
+> `scripts/verify-comfy.mjs`（113 项，自起 mock ComfyUI）、配置项 `comfy*` 十一个（多出的 `comfyCookies` 专供鉴权反代，不进 `directKeys`），wire 新增 `testComfy`
 > （manifest 方法数 130 → 131）。生图 / 抠像 / 抽帧 / 合图不变。
 >
 > 两块内容一起发时版本按 minor 提（`0.7.0`）；只发模块六就仍是 `0.6.0`。

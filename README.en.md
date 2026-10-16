@@ -307,6 +307,11 @@ unaffected — the same downstream pipeline as MiniMax.
   and composition still run locally through `ffmpeg`**.
 - "Test connection" only reads the ComfyUI version, device and queue length: **no queueing, no
   generation, no cost**.
+- **Cookies (optional)**: ComfyUI does not authenticate on its own; a Cookie is only needed when it
+  sits behind a login-protected reverse proxy (Cloudflare Access, Basic Auth, and the like). Copy
+  the whole Cookie from your browser developer tools — the plugin normalises it into a single line
+  and sends it on **every** request: uploading first/last frames, submitting, polling, and fetching
+  the finished video.
 - The local backend does **not** support multimodal reference mode (reference images / videos) —
   that is a MiniMax v2 capability; use first/last-frame mode with ComfyUI.
 

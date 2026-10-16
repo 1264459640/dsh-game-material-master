@@ -177,7 +177,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 | 视频模型 | 默认 `MiniMax-H3`。选 H3/H3-Max 自动走 v2 协议，选 Hailuo/I2V 走 v1；**优云智算版 H3** 在同一个下拉里显式选择 |
 | Base URL | **主机根**，不含 `/v1`、`/v2`。国内站 `https://api.minimax.cn`，国际站 `https://api.minimaxi.com`。选中「优云智算版 H3」时该字段固定为 `https://cp.compshare.cn`、不可编辑 |
 | 默认参数 | 单格宽高、抽帧张数与工作尺寸、像素块边长、抠像阈值等 |
-| 本地 ComfyUI（图生视频） | 勾选后图生视频改走本机 ComfyUI（替代 MiniMax）：地址、超时、提示词 / 首帧注入点、宽高 / 时长 / 种子、API 格式工作流 JSON。「测试连接」只读 `/system_stats` 与 `/queue`，**免费**（对比火山方舟那个会真生一张图） |
+| 本地 ComfyUI（图生视频） | 勾选后图生视频改走本机 ComfyUI（替代 MiniMax）：地址、超时、提示词 / 首帧注入点、宽高 / 时长 / 种子、API 格式工作流 JSON。「测试连接」只读 `/system_stats` 与 `/queue`，**免费**（对比火山方舟那个会真生一张图）；另有 `comfyCookies`，供藏在鉴权反代后面的 ComfyUI 用 |
 | 功能管理 | 逐个开关六个模块；关掉的模块界面不出现，对话工具面也拒绝（见下） |
 
 Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，回传界面时始终脱敏（只给尾号）。
@@ -258,6 +258,24 @@ FreeVideo 的 Generate 节点靠这个开关决定「要不要真的用首帧图
 
 设置页的「测试连接」只读 `/system_stats`（版本、显卡）与 `/queue`（队列长度），再解析一遍工作流
 跑一次探测，把「探测到的注入点」显示出来：**不排队、不生成、不产生费用**。
+
+**Cookie：藏在鉴权反代后面的 ComfyUI**（`comfyCookies`）。ComfyUI 自己不做鉴权，但把 8188 挂在
+Cloudflare Access / Basic Auth 后面时，不带 `Cookie` 连 `/system_stats` 都读不到。`comfyFetch` 是
+comfy.ts 里**唯一**的 HTTP 出口（`/system_stats`、`/object_info`、`/upload/image`、`/prompt`、
+`/history`、`/queue` 全走它），头在那里统一挂上；**取回成品视频**那次 `GET /view` 走的是
+`downloadVideoTask`（不在 comfy.ts 里），Cookie 由 `videogen.ts` 单独传给 `downloadVideo` 的第三个
+参数——漏掉它就会「任务跑完但视频下不下来」。
+
+`normalizeComfyCookies` 负责把用户粘贴的东西收成一行：用户多半直接从开发者工具里复制，那里带
+`Cookie: ` 前缀，整段「Copy request headers」还夹着 Accept 之类的别的头，长 cookie 也可能折成几行。
+规则是「只认 `Cookie:` 那一行，加上它后面不以 `名字:` 开头的续行」，再剥前缀、去掉每段自己的尾分号，
+拼成 `a=1; b=2`（每段先各自去尾分号再拼，否则 `a=1;` + `b=2` 会拼出 `a=1;; b=2` —— `verify-comfy.mjs`
+盯这条）。
+
+它和 API Key **同一档待遇**：落盘明文、但**从不回传浏览器**，配置视图里只有 `comfyCookiesSet` /
+`comfyCookiesHint`（尾 4 位）；保存约定也一致 —— 不带该键 = 保持原值、带字符串 = 覆盖、
+`clearComfyCookies: true` = 清空。它也是 `saveConfig` 里 `directKeys` 的**唯一例外**：白名单里的键是
+原样透传，而 Cookie 必须先归一化，所以在函数体里单独处理。
 
 ### 功能管理：隐藏的模块必须对 AI 也关上
 
@@ -2097,7 +2115,7 @@ node scripts/dsh-web-cookie.mjs 127.0.0.1:43121 --json
 | `node scripts/verify-map-gateway.mjs` | 模块六**走真实网关**（**153 项**）：wire 清单（20 个方法）与工具面覆盖、模块接线（`m` 前缀 / 阶段 / 上传槽位）、素材导入与形态切换、编辑 / 撤销 / `mapPlan({view, have})` 的差集、`runMapGenerate`、预览与导出的状态回流、并发提交只放行一个、`setMapApproved`、**资源路由真调一遍**（200 / 403 / 目录穿越 / 未知 scope / 非法 id；`maps/` 已不在白名单里）、`revealMapProject` 与落盘结构 |
 | `node scripts/verify-map-client.mjs` | 模块六界面**真渲染 + 黄金对照**（**161 项**）：真加载 `lib/client.js` + **有状态会重渲染的迷你 React**，用**真宿主数据**渲染面板。① 四个 `MAP_*` 坐标函数与宿主真实现逐点比对（环绕与非环绕两组 × 整张地图采样 + 边界点 + 图外点）；② **画布 `drawImage` 调用序列与宿主 `mapPlan` 计划逐项相等**（含 4 象限与动画帧，预览 = 导出），并按 `clearRect` 分帧收集、断言「挂载首帧 == 同一视口的计划」（增量缓存必须按**视口**失效，只按 key 判会让视口变大后新露出来的格子一直空着）；③ 在画布上点一下真的改了地图、撤销回得去、`dropKeys` 真的删掉了缓存；④ 空态、12 个工具格（6 列 × 2 行）、**调色板读宿主 `palette`**（A2 素材只出一个自动连接笔刷）；⑤ **源码与渲染文案两套黑名单**（源码那份只扫模块六切片，并放行唯一的协议字段 `"chunks"` —— 曾经为了骗过它写出过 `"chu" + "nks"`，那种写法比术语本身更坏） |
 | `node scripts/e2e-map.mjs` | 模块六**真实链路端到端**（不联网、不花钱）：内置素材（5 张，含 4 张 A2）→ 再合成导入一张 A2 与一张普通图 → 画满 24×24（自动连接长边）→ 叠一层普通图块 → 断言计划里「一格四条 op」→ 查一次跨边界的视口（环绕时 `visibleKeys` 会出现负数 key）→ 撤销 / 重做 → 一键生成三种地图 → 预览 → 导出，**故意留下产物**并打印绝对路径，方便人眼验收 |
-| `node scripts/verify-comfy.mjs` | 本地 ComfyUI 后端（**101 项**，纯本地、不联网、不花钱、**不需要真装 ComfyUI**）：脚本自己用 `node:http` 在随机端口起一个 mock，覆盖地址归一化与注入点解析、`parseComfyWorkflow` 的界面格式拒绝、探测的**四级顺序**（显式覆盖回退 / 已有字面量量 / 已有 `LoadImage` / `object_info` 声明的 optional IMAGE）、两个 `LoadImage` 时首尾各用其一、注入的纯函数性与「插入节点只写 `image` 一个键」、`first_frame_reference` 自动打开、无首帧位置报错、以及 HTTP 层（`/system_stats`、`/queue` 排队中、`/history` 执行失败带出 node_type、上传 multipart、`node_errors` / `error` 两条失败路径、从 outputs 挑 mp4 而不挑 png、只有图片时判失败） |
+| `node scripts/verify-comfy.mjs` | 本地 ComfyUI 后端（**113 项**，纯本地、不联网、不花钱、**不需要真装 ComfyUI**）：脚本自己用 `node:http` 在随机端口起一个 mock，覆盖地址归一化与注入点解析、`parseComfyWorkflow` 的界面格式拒绝、探测的**四级顺序**（显式覆盖回退 / 已有字面量量 / 已有 `LoadImage` / `object_info` 声明的 optional IMAGE）、两个 `LoadImage` 时首尾各用其一、注入的纯函数性与「插入节点只写 `image` 一个键」、`first_frame_reference` 自动打开、无首帧位置报错、以及 HTTP 层（`/system_stats`、`/queue` 排队中、`/history` 执行失败带出 node_type、上传 multipart、`node_errors` / `error` 两条失败路径、从 outputs 挑 mp4 而不挑 png、只有图片时判失败、Cookie 的归一化与「每个请求都真的带上了这个头」） |
 | `node scripts/verify-host.mjs` | 宿主半区全链路（**322 项**）：六个模块的本地链路、**阶段①的转圈截帧（合成一段「转动」视频跑真实 ffmpeg，覆盖截帧位置、按比例换算、下游作废、切换生成方式）**、**模块五的资源路由（真起一台 server 走 HTTP 取回 `tile-assets` 的模板图，并验证 403 与目录穿越）**、资源路由（含 `turn/` 白名单）、预览页的 `text/html`、目录穿越与 id 前缀校验 |
 | `node scripts/verify-tile.mjs` | 模块五几何内核（**147 项**）：模板比例严格 2:1、合成图菱形测量、规整后无缺口/无越界、装饰锚点与遮挡、拼图无洞与同种子逐像素一致、PNG 往返。含**两条反向验证**——把模板几何改回硬编码错误值必须产生透明缺口、把抠底换回硬阈值必须留下近白像素；修复一旦被回退，这两条会红 |
 | `node scripts/verify-tile-pipeline.mjs` | 模块五数据层与流水线（**98 项**）：项目 CRUD（含非法单元格尺寸被拒）、参考图自动准备与几何、指纹复用、用**研究期真实 2K 图**喂规整（不花钱）、拼图与导出的产物、同种子重拼逐像素一致、换种子结果不同、**`map.pixel`**（叠层对齐用的裁剪偏移与交付尺寸）、**失效传播**（作废 generate 要清空变体与地图；只作废 map 时已花钱的地块必须保住）、**手改布局必须被保留**（传 `decorDensity` 等覆盖参数不能把它冲掉）、**全部为空的布局要走 fill 而不是渲染一张空画布**、**相对路径一律正斜杠**（`join()` 在 Windows 上给 `cell\…`，它会被拼进 URL）、提示词构造、快照给界面是相对路径而给对话工具是绝对 URL |
@@ -2115,7 +2133,7 @@ npm run build          # tsc → lib/，并剥掉浏览器束结尾的 export {}
 
 # 纯本地测试（不联网、不花钱）
 node scripts/verify-minimax.mjs    # MiniMax 协议层（85 项，含请求体逐字段断言）
-node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（101 项，自起 mock ComfyUI，纯本地不花钱）
+node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（113 项，自起 mock ComfyUI，纯本地不花钱）
 node scripts/verify-pipeline.mjs   # 抽帧/抠像/合成链路（40 项，含回归用例）
 node scripts/verify-host.mjs       # 宿主冒烟（322 项，真实 cordis + 真实 HTTP；含内置默认提示词的语言切换、hiddenModules 落盘与收敛、模块五资源路由）
 node scripts/verify-client.mjs     # 浏览器半区契约（347 项：阶段 ctx 键必须被转发、每个生成类调用点都带 loading 反馈、转圈时间轴与八圆圈、手动装配的四个坑、拆件质检 / IK 约束组件、功能管理 / 侧栏菜单的文本与样式契约）
