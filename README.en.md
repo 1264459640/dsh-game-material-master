@@ -250,9 +250,14 @@ The package is published to npm: [dsh-game-material-master](https://www.npmjs.co
 After installing, **restart DSH** (the host half is loaded at startup). The browser half is read from
 `lib/client.js` on disk on each request, so refreshing the browser is enough for it to take effect.
 
-**Dependencies**: `ffmpeg` / `ffprobe` must be on your `PATH` (macOS: `brew install ffmpeg`), or you can
-point `FFMPEG_PATH` / `FFPROBE_PATH` at absolute paths. The package has **no runtime npm dependencies** —
-`zod`, `cordis` and friends all resolve from DSH's own installation tree.
+**Dependencies**: `ffmpeg` / `ffprobe` must be reachable. They are looked up in this order:
+`FFMPEG_PATH` / `FFPROBE_PATH` environment variables → the same names in the Windows registry →
+common install locations (WinGet / Scoop / Chocolatey, `C:\ffmpeg\bin`) → `PATH`
+(macOS: `brew install ffmpeg`). So on Windows an ffmpeg installed but never added to `PATH` still works,
+and a path set with `setx` that "still cannot be found" after a restart is normal — `setx` only writes
+the registry and already running processes never inherit it, so the plugin reads the registry itself.
+The package has **no runtime npm dependencies** — `zod`, `cordis` and friends all resolve from DSH's own
+installation tree.
 
 > When upgrading from the older `dsh-8dir-sprites`, the first startup migrates the data directory
 > automatically and your existing projects carry over seamlessly.

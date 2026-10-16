@@ -149,8 +149,16 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 > `node scripts/verify-live-bundle.mjs` 可以确认运行中的宿主到底在提供哪一版浏览器束。
 
 - 需要宿主提供 `webServer` 与 `typert`，二者由 `@deepseek-ai/dsh-base` / `dsh-web-app` 提供，无需额外依赖。
-- 需要 **ffmpeg / ffprobe** 在 `PATH` 上（macOS：`brew install ffmpeg`），
-  也可用 `FFMPEG_PATH` / `FFPROBE_PATH` 指定绝对路径。设置页会显示探测结果。
+- 需要 **ffmpeg / ffprobe** 能找到。`src/media.ts` 的 `ffmpegPath()` / `ffprobePath()` 按
+  `FFMPEG_PATH` / `FFPROBE_PATH` 环境变量 → **Windows 注册表**里的同名变量
+  （`HKCU\\Environment`、`HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment`）→
+  WinGet Links / Scoop shims / Chocolatey bin / `%ProgramFiles%\\ffmpeg\\bin` / `C:\\ffmpeg\\bin` /
+  `D:\\ffmpeg\\bin` → 裸名字（交给 `PATH`）的顺序找：命中即缓存，没命中 10 秒后重试
+  （用户可以现装 ffmpeg 再点重试，不用重启插件）。
+  **为什么非要读注册表**：`setx` 只写注册表，**不会**改已经在跑的进程的环境——进程的环境块是
+  启动时从父进程复制的快照，而父进程通常是登录时就起的 explorer。实测就是这样：`setx` 了
+  `FFMPEG_PATH`、也重启了 DSH，插件里 `process.env.FFMPEG_PATH` 仍然是空的。
+  设置页会显示探测结果。
 - 本包**没有任何运行时 npm 依赖**：`zod`、`@deepseek-ai/dsh-typert-protocol`、`@deepseek-ai/cordis`
   都从 DSH 自身的安装树解析，避免出现两份不同版本的实例。
 
@@ -2259,7 +2267,7 @@ running 落在下一次 `getProject` 里**：
 | `src/minimax.ts` | MiniMax 视频客户端（v1/v2 双协议、首尾帧与多模态参考、优云智算版 `/minimax` 网关） |
 | `src/comfy.ts` | 本地 ComfyUI 客户端（工作流解析、注入点探测、`/prompt` + `/history` + `/queue` + `/upload/image` + `/view`，内置 FreeVideo 模板） |
 | `src/videogen.ts` | 视频后端分派：提交 / 查询 / 下载按**节点上记的** `backend` 走 MiniMax 或 ComfyUI |
-| `src/media.ts` | ffmpeg / ffprobe 封装 |
+| `src/media.ts` | ffmpeg / ffprobe 封装与路径查找（环境变量 → Windows 注册表 → 常见安装位置 → `PATH`） |
 | `src/chroma.ts` | 背景分割、绿色抠像、裁剪、像素量化、合成 |
 | `src/png.ts` | 极简 PNG 编码器（RGBA8，基于 node:zlib） |
 | `src/jsonio.ts` | 新模块共用的 JSON 原子写与日志 |

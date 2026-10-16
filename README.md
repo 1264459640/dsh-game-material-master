@@ -213,9 +213,11 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 装完**重启 DSH**（宿主半区在启动时装入）。浏览器半区按磁盘上的 `lib/client.js` 现取，
 刷新浏览器即可生效。
 
-**依赖**：`ffmpeg` / `ffprobe` 需要在 `PATH` 上（macOS：`brew install ffmpeg`），
-也可用 `FFMPEG_PATH` / `FFPROBE_PATH` 指定绝对路径。本包**没有任何运行时 npm 依赖**，
-`zod`、`cordis` 等全部从 DSH 自身的安装树解析。
+**依赖**：`ffmpeg` / `ffprobe` 得能找到。查找顺序是 `FFMPEG_PATH` / `FFPROBE_PATH` 环境变量 →
+Windows 注册表里的同名变量 → WinGet / Scoop / Chocolatey 与 `C:\ffmpeg\bin` 这类常见安装位置 →
+`PATH`（macOS：`brew install ffmpeg`）。于是 Windows 上「装了 ffmpeg 却没加进 `PATH`」也能直接用；
+用 `setx` 设过路径仍提示找不到也正常——`setx` 只写注册表，已经在跑的进程继承不到，插件会自己再读一遍。
+本包**没有任何运行时 npm 依赖**，`zod`、`cordis` 等全部从 DSH 自身的安装树解析。
 
 > 从旧版 `dsh-8dir-sprites` 升级时，首次启动会自动迁移数据目录，已有项目无缝接上。
 
