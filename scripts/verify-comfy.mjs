@@ -23,6 +23,7 @@ import {
   fetchComfyObjectInfo,
   formatBinding,
   normalizeComfyBaseUrl,
+  normalizeComfyCookies,
   parseBinding,
   parseComfyWorkflow,
   prepareComfyWorkflow,
@@ -75,7 +76,8 @@ const state = {
   pending: [],
   history: {},
   uploads: [],
-  submits: []
+  submits: [],
+  cookies: []
 };
 
 const readBody = (req) =>
@@ -88,6 +90,8 @@ const readBody = (req) =>
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   const path = url.pathname;
+  // 每个请求都把 Cookie 头记下来：藏鉴权反代后面时，漏掉任何一个请求都会 401。
+  state.cookies.push({ path, cookie: req.headers.cookie ?? "" });
   const send = (payload, status = 200) => {
     res.writeHead(status, { "Content-Type": "application/json" });
     res.end(JSON.stringify(payload));
@@ -372,6 +376,42 @@ const viewUrl = comfyViewUrl("http://127.0.0.1:8188/", { filename: "角色 1.mp4
 check("view 地址：中文与空格都被编码", viewUrl.startsWith("http://127.0.0.1:8188/view?") && viewUrl.includes("%E8%A7%92%E8%89%B2") && !viewUrl.includes(" "), viewUrl);
 check("view 地址：type 缺省成 output", comfyViewUrl(BASE, { filename: "a.mp4" }).includes("type=output"));
 check("view 地址：subfolder 为空时不写", !comfyViewUrl(BASE, { filename: "a.mp4", subfolder: "" }).includes("subfolder="));
+
+/* ---------------------------------------------------------------- 6. Cookie（鉴权反代） */
+
+section("6. Cookie 请求头（藏在鉴权反代后面的 ComfyUI）");
+check("归一化：空串 / 纯空白 = 不带这个头", normalizeComfyCookies(undefined) === "" && normalizeComfyCookies("   ") === "");
+check("归一化：剥掉 Cookie: 前缀", normalizeComfyCookies("Cookie: a=1; b=2") === "a=1; b=2", normalizeComfyCookies("Cookie: a=1; b=2"));
+check("归一化：去掉尾部分号", normalizeComfyCookies("a=1;") === "a=1", normalizeComfyCookies("a=1;"));
+check("归一化：多行折成一行", normalizeComfyCookies("a=1;\nb=2") === "a=1; b=2", normalizeComfyCookies("a=1;\nb=2"));
+check("归一化：续行（不以「名字:」开头）跟着 Cookie 走", normalizeComfyCookies("Cookie: a=1\nb=2") === "a=1; b=2", normalizeComfyCookies("Cookie: a=1\nb=2"));
+check(
+  "归一化：整块「Copy request headers」只取 Cookie 那一行",
+  normalizeComfyCookies("accept: */*\nCookie: token=abc; session=xyz\nreferer: http://x/") === "token=abc; session=xyz",
+  normalizeComfyCookies("accept: */*\nCookie: token=abc; session=xyz\nreferer: http://x/")
+);
+
+const cookies = "token=abc; session=xyz";
+state.cookies.length = 0;
+await testComfy({ ...client, cookies });
+check("带 cookies：/system_stats 收到该头", state.cookies.some((item) => item.path === "/system_stats" && item.cookie === cookies));
+check("带 cookies：/queue 收到该头", state.cookies.some((item) => item.path === "/queue" && item.cookie === cookies));
+
+state.cookies.length = 0;
+await testComfy(client);
+check("没配 cookies：一个请求都不带这个头", state.cookies.length > 0 && state.cookies.every((item) => item.cookie === ""), String(state.cookies.length));
+
+state.cookies.length = 0;
+await uploadComfyImage({ ...client, cookies }, "iVBORw0KGgo=");
+check("带 cookies：/upload/image 收到该头", state.cookies.some((item) => item.path === "/upload/image" && item.cookie === cookies));
+
+state.cookies.length = 0;
+await submitComfyVideo({ ...client, cookies, workflow: builtIn.workflow });
+check("带 cookies：提交 /prompt 收到该头", state.cookies.some((item) => item.path === "/prompt" && item.cookie === cookies));
+
+state.cookies.length = 0;
+await queryComfyVideo({ ...client, cookies, promptId: "pid-none" });
+check("带 cookies：查询也收到该头", state.cookies.every((item) => item.cookie === cookies), JSON.stringify(state.cookies.map((item) => item.path)));
 
 server.close();
 

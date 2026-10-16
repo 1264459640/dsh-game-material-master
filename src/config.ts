@@ -33,7 +33,7 @@ export function isLegacyRowOrder(order: unknown): boolean {
   );
 }
 import { COMP_SHARE_MODEL_ID, normalizeDuration, normalizeResolution, rootOf } from "./minimax.js";
-import { DEFAULT_COMFY_WORKFLOW_TEXT, normalizeComfyBaseUrl } from "./comfy.js";
+import { DEFAULT_COMFY_WORKFLOW_TEXT, normalizeComfyBaseUrl, normalizeComfyCookies } from "./comfy.js";
 
 export function dshHome(): string {
   const raw = process.env.DSH_HOME?.trim();
@@ -149,6 +149,13 @@ export interface Config {
   comfyVideo: boolean;
   comfyBaseUrl: string;
   /**
+   * 访问 ComfyUI 时附带的 `Cookie` 头（反代鉴权用）；空 = 不带。
+   *
+   * 和 API Key 同一档待遇：落盘明文，但**从不回传浏览器**——配置视图里只有
+   * `comfyCookiesSet` / `comfyCookiesHint`，界面留空即「不修改」。
+   */
+  comfyCookies: string;
+  /**
    * API 格式的工作流 JSON 文本。
    *
    * ⚠️ 必须是 ComfyUI 的 **API 格式**（`{节点id: {class_type, inputs}}`），
@@ -259,6 +266,7 @@ export const DEFAULT_CONFIG: Config = {
 
   comfyVideo: false,
   comfyBaseUrl: "http://127.0.0.1:8188",
+  comfyCookies: "",
   // 内置模板就是本机装好 FreeVideo 扩展后能直接跑的那份工作流；
   // 用户换成别的工作流（Wan / Hunyuan…）只要输入名符合常见约定就能直接用。
   comfyWorkflow: DEFAULT_COMFY_WORKFLOW_TEXT,
@@ -398,6 +406,7 @@ export function normalizeConfig(input: unknown): Config {
 
     comfyVideo: asBool(raw.comfyVideo, DEFAULT_CONFIG.comfyVideo),
     comfyBaseUrl: normalizeComfyBaseUrl(asString(raw.comfyBaseUrl, DEFAULT_CONFIG.comfyBaseUrl)),
+    comfyCookies: normalizeComfyCookies(asString(raw.comfyCookies, DEFAULT_CONFIG.comfyCookies)),
     comfyWorkflow,
     comfyPromptTarget: asString(raw.comfyPromptTarget, DEFAULT_CONFIG.comfyPromptTarget).trim(),
     comfyFirstFrameTarget: asString(raw.comfyFirstFrameTarget, DEFAULT_CONFIG.comfyFirstFrameTarget).trim(),
@@ -458,15 +467,18 @@ export async function saveConfig(patch: Partial<Config>): Promise<Config> {
 }
 
 /** 回传给浏览器的脱敏视图：只说明 key 是否已配置，以及尾部 4 位。 */
-export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey"> {
+export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "comfyCookies"> {
   arkApiKeySet: boolean;
   arkApiKeyHint: string;
   minimaxApiKeySet: boolean;
   minimaxApiKeyHint: string;
+  comfyCookiesSet: boolean;
+  comfyCookiesHint: string;
 }
 
 export function maskConfig(config: Config): ConfigView {
-  const { arkApiKey, minimaxApiKey, ...rest } = config;
+  const { arkApiKey, minimaxApiKey, comfyCookies, ...rest } = config;
+  const cookie = normalizeComfyCookies(comfyCookies);
   return {
     ...rest,
     rowOrder: [...config.rowOrder],
@@ -475,7 +487,10 @@ export function maskConfig(config: Config): ConfigView {
     arkApiKeySet: arkApiKey.trim() !== "",
     arkApiKeyHint: hintOf(arkApiKey),
     minimaxApiKeySet: minimaxApiKey.trim() !== "",
-    minimaxApiKeyHint: hintOf(minimaxApiKey)
+    minimaxApiKeyHint: hintOf(minimaxApiKey),
+    // Cookie 也是凭据（反代鉴权），同样不回传明文：只说配没配、尾巴 4 位。
+    comfyCookiesSet: cookie !== "",
+    comfyCookiesHint: hintOf(cookie)
   };
 }
 

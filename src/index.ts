@@ -34,6 +34,7 @@ import {
   fetchComfyObjectInfo,
   formatBinding,
   normalizeComfyBaseUrl,
+  normalizeComfyCookies,
   parseComfyWorkflow,
   testComfy
 } from "./comfy.js";
@@ -375,6 +376,12 @@ export class GameStudioGateway extends TypertRemoteService {
       patch.arkApiKey = "";
     if (input.clearMinimaxApiKey === true)
       patch.minimaxApiKey = "";
+    // ComfyUI 的 Cookie 也是凭据，与 API Key 同一套约定：不带 = 保持原值，带串 = 覆盖，
+    // clearComfyCookies = 清空。它**不进** directKeys——那里是原样透传，Cookie 要先归一化。
+    if (typeof input.comfyCookies === "string")
+      patch.comfyCookies = normalizeComfyCookies(input.comfyCookies);
+    if (input.clearComfyCookies === true)
+      patch.comfyCookies = "";
     const saved = await saveConfig(patch);
     this.ffmpegCache = undefined;
     return this.decorateConfig(saved);
@@ -409,7 +416,8 @@ export class GameStudioGateway extends TypertRemoteService {
     const config = await loadConfig();
     const status = await testComfy({
       baseUrl: config.comfyBaseUrl,
-      timeoutMs: config.comfyTimeoutMs
+      timeoutMs: config.comfyTimeoutMs,
+      cookies: config.comfyCookies
     });
     let nodes = 0;
     let bindings: Record<string, string> | undefined;
@@ -420,7 +428,7 @@ export class GameStudioGateway extends TypertRemoteService {
       // 连节点定义一起查：这样预览里能看到「工作流里没连、但接得下 IMAGE」的首帧注入点，
       // 与真正提交时的探测口径完全一致。
       const info = await fetchComfyObjectInfo(
-        { baseUrl: config.comfyBaseUrl, timeoutMs: config.comfyTimeoutMs },
+        { baseUrl: config.comfyBaseUrl, timeoutMs: config.comfyTimeoutMs, cookies: config.comfyCookies },
         Object.keys(parsed.workflow).map((id) => parsed.workflow[id]?.class_type ?? "")
       ).catch(() => undefined);
       const detected = detectComfyBindings(

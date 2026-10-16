@@ -17,6 +17,13 @@ export interface ComfyRequest {
   baseUrl: string;
   /** 单次 HTTP 超时（毫秒）。生成本身是异步的，这里只约束一次请求。 */
   timeoutMs: number;
+  /**
+   * 附带的 `Cookie` 请求头原文（如 `token=…; session=…`）；空 = 不带这个头。
+   *
+   * ComfyUI 自己不做鉴权，但把 8188 藏在**需要登录的反代**后面（Cloudflare Access、
+   * Basic Auth、自建网关）时，不带 cookie 连 `/system_stats` 都读不到。
+   */
+  cookies?: string;
 }
 
 export class ComfyError extends Error {
@@ -76,6 +83,34 @@ export function normalizeComfyBaseUrl(value: string | undefined): string {
   const trimmed = (value ?? "").trim();
   if (trimmed === "") return "http://127.0.0.1:8188";
   return trimmed.replace(/\/+$/, "");
+}
+
+/**
+ * 归一化 `Cookie` 请求头原文。
+ *
+ * 用户多半直接从浏览器的开发者工具里复制：那里可能带 `Cookie: ` 前缀，整段
+ * 「Copy request headers」还夹着 Accept 之类的别的头，长 cookie 也可能折成几行。
+ * 这里统一收成一行 `a=1; b=2`：只认 Cookie 那一行（加它的续行）、剥掉前缀、
+ * 去掉每段末尾多余的分号。空串（或只有空白）= 不带这个头。
+ */
+export function normalizeComfyCookies(value: string | undefined): string {
+  const trimmed = (value ?? "").trim();
+  if (trimmed === "") return "";
+  const lines = trimmed
+    .split(/[\r\n]+/)
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  // 整块粘贴时只认 Cookie：它那一行，加上后面不以「名字:」开头的续行。
+  const start = lines.findIndex((line) => /^cookie\s*:/i.test(line));
+  const picked =
+    start < 0 ? lines : [lines[start], ...lines.slice(start + 1).filter((line) => !/^[A-Za-z0-9_-]+\s*:/.test(line))];
+  return picked
+    // 每段先去掉自己的尾分号，再拼起来——不然 `a=1;` + `b=2` 会拼出 `a=1;; b=2`。
+    .map((line) => line.replace(/[;\s]+$/, ""))
+    .join("; ")
+    .replace(/^cookie\s*:/i, " ")
+    .replace(/[;\s]+$/, "")
+    .trim();
 }
 
 export function formatBinding(binding: ComfyBinding | undefined): string {
@@ -497,8 +532,12 @@ async function comfyFetch(request: ComfyRequest, path: string, init?: RequestIni
   const base = normalizeComfyBaseUrl(request.baseUrl);
   const timeoutMs = Math.max(5000, Math.round(request.timeoutMs));
   const timeout = AbortSignal.timeout(timeoutMs);
+  // 鉴权反代后面：所有请求（状态、上传、提交、查询）都带上同一份 Cookie。
+  const cookies = normalizeComfyCookies(request.cookies);
+  const headers = new Headers(init?.headers ?? undefined);
+  if (cookies !== "") headers.set("Cookie", cookies);
   try {
-    return await fetch(base + path, { ...(init ?? {}), signal: timeout });
+    return await fetch(base + path, { ...(init ?? {}), headers, signal: timeout });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     if (timeout.aborted === true) throw new ComfyError("本地 ComfyUI 请求超时（" + Math.round(timeoutMs / 1000) + " 秒）：" + path);

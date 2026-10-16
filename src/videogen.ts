@@ -19,6 +19,7 @@
 import type { Config } from "./config.js";
 import {
   fetchComfyObjectInfo,
+  normalizeComfyCookies,
   parseComfyWorkflow,
   prepareComfyWorkflow,
   queryComfyVideo,
@@ -118,7 +119,7 @@ async function submitViaComfy(config: Config, request: VideoSubmitRequest): Prom
   const parsed = parseComfyWorkflow(config.comfyWorkflow);
   if (parsed.ok === false) throw new Error(`ComfyUI 工作流无法解析：${parsed.error}`);
 
-  const client = { baseUrl: config.comfyBaseUrl, timeoutMs: config.comfyTimeoutMs };
+  const client = { baseUrl: config.comfyBaseUrl, timeoutMs: config.comfyTimeoutMs, cookies: config.comfyCookies };
   const firstImageName = await uploadComfyImage(client, request.firstFrameImage);
   const lastImageName =
     request.lastFrameImage === undefined ? undefined : await uploadComfyImage(client, request.lastFrameImage);
@@ -177,6 +178,7 @@ export async function queryVideoTask(
     const query = await queryComfyVideo({
       baseUrl: config.comfyBaseUrl,
       timeoutMs: config.comfyTimeoutMs,
+      cookies: config.comfyCookies,
       promptId: taskId
     });
     return { status: query.status, remoteStatus: query.remoteStatus, url: query.videoUrl, error: query.error };
@@ -202,7 +204,9 @@ export async function queryVideoTask(
 
 /** 下载成品视频。ComfyUI 的地址是本机 `/view`，超时用 comfyTimeoutMs。 */
 export async function downloadVideoTask(config: Config, backend: VideoBackend, url: string) {
-  return downloadVideo(url, backend === "comfy" ? config.comfyTimeoutMs : config.minimaxTimeoutMs);
+  // 反向代理鉴权时 `/view` 同样要带 Cookie，否则视频下不下来（只影响 comfy 后端）。
+  const cookies = backend === "comfy" ? normalizeComfyCookies(config.comfyCookies) : "";
+  return downloadVideo(url, backend === "comfy" ? config.comfyTimeoutMs : config.minimaxTimeoutMs, cookies === "" ? undefined : { Cookie: cookies });
 }
 
 /** 失败原因：两个后端的 query 都会给 error，兜底文案按后端区分。 */

@@ -1362,7 +1362,13 @@
       "未知显卡": "unknown device",
       "探测到的注入点 —— 提示词：{n0}；首帧：{n1}；尺寸：{n2} × {n3}；秒数：{n4}；种子：{n5}": "Detected injection targets - prompt: {n0}; first frame: {n1}; size: {n2} x {n3}; duration: {n4}; seed: {n5}",
       "未探测到": "not detected",
-      "—": "-"
+      "—": "-",
+      "Cookie {n0}": "Cookie {n0}",
+      "粘贴 Cookie 头，例如 token=abc; session=xyz": "Paste the Cookie header, e.g. token=abc; session=xyz",
+      "保存 Cookie": "Save cookie",
+      "ComfyUI Cookie 已保存": "ComfyUI cookie saved",
+      "已清除 ComfyUI Cookie": "ComfyUI cookie cleared",
+      "ComfyUI 本身不做鉴权；只有当它藏在需要登录的反向代理后面（Cloudflare Access、Basic Auth 之类）时才用得上——从浏览器开发者工具里把 Cookie 整段复制过来即可，所有请求（包括取回成品视频）都会带上它。": "ComfyUI does not authenticate on its own; a Cookie is only needed when it sits behind a login-protected reverse proxy (Cloudflare Access, Basic Auth, and the like). Copy the whole Cookie from your browser developer tools - every request, including fetching the finished video, carries it."
 
     };
 /* i18n-ignore-end */
@@ -14716,6 +14722,8 @@
       // 这里留成草稿（null = 跟随配置），点「保存工作流」才提交。
       const [comfyWorkflowDraft, setComfyWorkflowDraft] = React.useState(null);
       const [comfyProbe, setComfyProbe] = React.useState(null);
+      // Cookie 也是凭据：已配置时输入框留空 = 不修改，点「保存 Cookie」才覆盖。
+      const [comfyCookie, setComfyCookie] = React.useState("");
 
       const load = React.useCallback(async () => {
         if (api === undefined) return;
@@ -15080,6 +15088,25 @@
               onChange: (value) => void patch({ comfyTimeoutMs: value * 1000 })
             })
           ),
+          h(
+            "div",
+            { className: "SPR_keyRow" },
+            h(
+              "label",
+              { className: "SPR_field" },
+              h("span", { className: "SPR_fieldLabel" }, T("Cookie {n0}", { n0: config.comfyCookiesSet ? T("（已配置 {n0}）", { n0: config.comfyCookiesHint }) : T("（未配置）") })),
+              h("input", {
+                className: "SPR_input",
+                type: "password",
+                placeholder: config.comfyCookiesSet ? T("留空表示不修改") : T("粘贴 Cookie 头，例如 token=abc; session=xyz"),
+                value: comfyCookie,
+                onChange: (event) => setComfyCookie(event.target.value)
+              })
+            ),
+            h(Btn, { onClick: () => run(async () => { await api.saveConfig({ comfyCookies: comfyCookie }); setComfyCookie(""); }, T("ComfyUI Cookie 已保存")) }, T("保存 Cookie")),
+            h(Btn, { disabled: !config.comfyCookiesSet, onClick: () => run(() => api.saveConfig({ clearComfyCookies: true }), T("已清除 ComfyUI Cookie")) }, T("清除"))
+          ),
+          h("p", { className: "SPR_hint" }, T("ComfyUI 本身不做鉴权；只有当它藏在需要登录的反向代理后面（Cloudflare Access、Basic Auth 之类）时才用得上——从浏览器开发者工具里把 Cookie 整段复制过来即可，所有请求（包括取回成品视频）都会带上它。")),
           h(
             "div",
             { className: "SPR_fields" },
