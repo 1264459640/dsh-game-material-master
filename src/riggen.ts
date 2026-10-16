@@ -1650,6 +1650,12 @@ export function disposeRig(): void {
   running.clear();
 }
 
+/** 复位后台任务表（理由同 pipeline.activatePipeline：重载会让 disposed 永远停在 true）。 */
+export function activateRig(): void {
+  disposed = false;
+  running.clear();
+}
+
 export function listRigTasks(jobId: string): string[] {
   return [...(running.get(jobId) ?? [])];
 }

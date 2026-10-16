@@ -471,9 +471,9 @@ export async function retrieveFile(input: MiniMaxRequest & { fileId: string }): 
 }
 
 /** 把视频下载到本地。 */
-export async function downloadVideo(url: string, timeoutMs: number): Promise<Buffer> {
+export async function downloadVideo(url: string, timeoutMs: number, headers?: Record<string, string>): Promise<Buffer> {
   const timeout = AbortSignal.timeout(Math.max(30000, timeoutMs));
-  const response = await fetch(url, { signal: timeout });
+  const response = await fetch(url, { signal: timeout, headers });
   if (!response.ok) throw new MiniMaxError(`下载视频失败（HTTP ${response.status}）`);
   return Buffer.from(await response.arrayBuffer());
 }

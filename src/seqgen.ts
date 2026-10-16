@@ -1,7 +1,8 @@
 /**
  * 序列帧生成模块。
  *
- * 先用 MiniMax 生成一段视频（支持两种输入模式，平台规定二者互斥）：
+ * 先生成一段视频（默认云端 MiniMax，设置里可切到本机 ComfyUI，见 videogen.ts）。
+ * MiniMax 支持两种输入模式（平台规定二者互斥）：
  *   - **首尾帧模式**：上传首帧（必填）/ 尾帧（选填）
  *   - **多模态参考模式**：上传参考图 + 参考视频
  * 然后依次做：序列帧提取（张数可配）→ 绿幕抠像 → 横向合成，并可在界面里
@@ -22,13 +23,14 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { loadConfig, sequenceJobsRoot } from "./config.js";
-import { downloadVideo, normalizeDuration, normalizeResolution, queryVideo, retrieveFile, submitVideo } from "./minimax.js";
+import { normalizeDuration, normalizeResolution } from "./minimax.js";
+import { assertVideoBackendReady, downloadVideoTask, queryVideoTask, submitVideoTask, videoFailureReason } from "./videogen.js";
 import { extractFrames, fileSize, mimeOf, toJpegDataUri } from "./media.js";
 import { composeSheet, keyGreen, type SheetRow } from "./chroma.js";
 import { encodePng } from "./png.js";
 import { appendJobLog, messageOf, readJson, writeJsonAtomic, type JobLogEntry } from "./jsonio.js";
 import { safeName, sniffImage } from "./imagegen.js";
-import type { NodeStatus } from "./store.js";
+import type { NodeStatus, VideoBackend } from "./store.js";
 
 export type SequenceMode = "frames" | "reference";
 
@@ -37,9 +39,14 @@ export interface SequenceRef {
   name: string;
 }
 
+/**
+ * 视频节点。`backend` 记录这段视频是在哪个后端上跑的（见 store.ts 的 VideoBackend）：
+ * 查询必须按它走，不能按当前配置——用户可以在任务跑着的时候改设置。
+ */
 export interface SequenceVideoState {
   status: NodeStatus;
   taskId?: string;
+  backend?: VideoBackend;
   remoteStatus?: string;
   file?: string;
   error?: string;
@@ -301,6 +308,7 @@ function normalizeSequenceJob(raw: any): SequenceJob {
     video: {
       status: (raw?.video?.status ?? "empty") as NodeStatus,
       taskId: typeof raw?.video?.taskId === "string" ? raw.video.taskId : undefined,
+      backend: raw?.video?.backend === "comfy" || raw?.video?.backend === "minimax" ? raw.video.backend : undefined,
       remoteStatus: typeof raw?.video?.remoteStatus === "string" ? raw.video.remoteStatus : undefined,
       file: typeof raw?.video?.file === "string" ? raw.video.file : undefined,
       error: typeof raw?.video?.error === "string" ? raw.video.error : undefined,
@@ -365,6 +373,12 @@ export function disposeSequence(): void {
   jobsRunning.clear();
 }
 
+/** 复位后台任务表（理由同 pipeline.activatePipeline：重载会让 disposed 永远停在 true）。 */
+export function activateSequence(): void {
+  disposed = false;
+  jobsRunning.clear();
+}
+
 export function listSequenceTasks(jobId: string): string[] {
   return [...(jobsRunning.get(jobId) ?? [])];
 }
@@ -413,7 +427,7 @@ async function submitSequenceVideo(jobId: string): Promise<void> {
   const job = await readSequenceJob(jobId);
   if (job === undefined) throw new Error(`任务不存在：${jobId}`);
   const config = await loadConfig();
-  if (config.minimaxApiKey.trim() === "") throw new Error("尚未配置 MiniMax API Key");
+  assertVideoBackendReady(config);
 
   // 模型是全局设置（设置 → 游戏素材大师 → 视频模型），任务只跟随、不覆盖：
   // 任务的模型快照一旦和当前网关/Key 对不上（例如官方 H3 + 优云智算网关），
@@ -453,11 +467,7 @@ async function submitSequenceVideo(jobId: string): Promise<void> {
   await writeSequenceJob(job);
 
   try {
-    const taskId = await submitVideo({
-      baseUrl: config.minimaxBaseUrl,
-      apiKey: config.minimaxApiKey,
-      model,
-      timeoutMs: config.minimaxTimeoutMs,
+    const submitted = await submitVideoTask(config, {
       prompt: built.prompt,
       firstFrameImage,
       lastFrameImage,
@@ -465,13 +475,21 @@ async function submitSequenceVideo(jobId: string): Promise<void> {
       referenceVideos,
       duration: job.settings.duration,
       resolution: job.settings.resolution,
-      promptOptimizer: job.settings.promptOptimizer
+      promptOptimizer: job.settings.promptOptimizer,
+      model
     });
 
     const fresh = await readSequenceJob(jobId);
     if (fresh === undefined) return;
-    fresh.video = { status: "running", taskId, remoteStatus: "已提交", updatedAt: Date.now() };
-    appendJobLog(fresh.log, "info", `视频任务已提交（${taskId}）`);
+    fresh.video = {
+      status: "running",
+      taskId: submitted.taskId,
+      backend: submitted.backend,
+      remoteStatus: "已提交",
+      updatedAt: Date.now()
+    };
+    appendJobLog(fresh.log, "info", `视频任务已提交（${submitted.taskId}）`);
+    for (const note of submitted.notes) appendJobLog(fresh.log, "info", note);
     await writeSequenceJob(fresh);
     ensureSequencePoller(jobId);
   } catch (error) {
@@ -532,19 +550,15 @@ export async function pollSequenceOnce(jobId: string): Promise<void> {
   }
 
   const config = await loadConfig();
-  const request = {
-    baseUrl: config.minimaxBaseUrl,
-    apiKey: config.minimaxApiKey,
-    model: job.settings.model || config.minimaxModel,
-    timeoutMs: config.minimaxTimeoutMs
-  };
+  const backend: VideoBackend = job.video.backend ?? "minimax";
+  const model = job.settings.model || config.minimaxModel;
 
   try {
-    const query = await queryVideo({ ...request, taskId });
+    const query = await queryVideoTask(config, backend, taskId, { model });
     if (query.status === "failed") {
       const fresh = await readSequenceJob(jobId);
       if (fresh === undefined) return;
-      fresh.video = { ...fresh.video, status: "error", remoteStatus: query.remoteStatus, error: query.error ?? "MiniMax 报告任务失败", updatedAt: Date.now() };
+      fresh.video = { ...fresh.video, status: "error", remoteStatus: query.remoteStatus, error: videoFailureReason(backend, query.error), updatedAt: Date.now() };
       appendJobLog(fresh.log, "error", `视频生成失败：${fresh.video.error}`);
       await writeSequenceJob(fresh);
       stopSequencePoller(jobId);
@@ -558,9 +572,9 @@ export async function pollSequenceOnce(jobId: string): Promise<void> {
       return;
     }
 
-    const url = query.videoUrl ?? (query.fileId !== undefined ? await retrieveFile({ ...request, fileId: query.fileId }) : undefined);
-    if (url === undefined) throw new Error("任务已成功，但响应里既没有视频地址也没有 file_id");
-    const bytes = await downloadVideo(url, config.minimaxTimeoutMs);
+    const url = query.url;
+    if (url === undefined) throw new Error("任务已成功，但查询结果里没有视频地址");
+    const bytes = await downloadVideoTask(config, backend, url);
     const relative = "videos/output.mp4";
     await writeFile(sequenceAssetPath(jobId, relative), bytes);
 

@@ -33,6 +33,7 @@ export function isLegacyRowOrder(order: unknown): boolean {
   );
 }
 import { COMP_SHARE_MODEL_ID, normalizeDuration, normalizeResolution, rootOf } from "./minimax.js";
+import { DEFAULT_COMFY_WORKFLOW_TEXT, normalizeComfyBaseUrl, normalizeComfyCookies } from "./comfy.js";
 
 export function dshHome(): string {
   const raw = process.env.DSH_HOME?.trim();
@@ -221,6 +222,41 @@ export interface Config {
   minimaxPromptOptimizer: boolean;
   minimaxTimeoutMs: number;
 
+  /**
+   * **视频改用本机 ComfyUI 生成**（免费、纯本地；默认关）。
+   *
+   * 打开后，转圈视频 / 八方向视频 / 序列帧视频都提交给本机 ComfyUI，生图仍然
+   * 走火山方舟 Seedream（ComfyUI 侧只接管视频这条链路）。提示词、首帧图、
+   * 尺寸、时长、种子会被**注入**到 `comfyWorkflow` 的对应输入里：先自动探测
+   * （按输入名），探测不准时用下面的 Target 手工指定。
+   */
+  comfyVideo: boolean;
+  comfyBaseUrl: string;
+  /**
+   * 访问 ComfyUI 时附带的 `Cookie` 头（反代鉴权用）；空 = 不带。
+   *
+   * 和 API Key 同一档待遇：落盘明文，但**从不回传浏览器**——配置视图里只有
+   * `comfyCookiesSet` / `comfyCookiesHint`，界面留空即「不修改」。
+   */
+  comfyCookies: string;
+  /**
+   * API 格式的工作流 JSON 文本。
+   *
+   * ⚠️ 必须是 ComfyUI 的 **API 格式**（`{节点id: {class_type, inputs}}`），
+   * 不是界面里「导出」得到的带 nodes / links 数组的那种。
+   */
+  comfyWorkflow: string;
+  /** 注入点覆盖，形如 `1.text`；空 = 自动探测。 */
+  comfyPromptTarget: string;
+  comfyFirstFrameTarget: string;
+  /** 0 = 用工作流里自带的尺寸 / 时长。 */
+  comfyWidth: number;
+  comfyHeight: number;
+  comfySeconds: number;
+  /** 0 = 每次提交都注入随机种子（避开 ComfyUI 的结果缓存）。 */
+  comfySeed: number;
+  comfyTimeoutMs: number;
+
   /** 最终整图单格宽高（像素）。 */
   cellWidth: number;
   cellHeight: number;
@@ -327,6 +363,20 @@ export const DEFAULT_CONFIG: Config = {
   minimaxPromptOptimizer: true,
   minimaxTimeoutMs: 120000,
 
+  comfyVideo: false,
+  comfyBaseUrl: "http://127.0.0.1:8188",
+  comfyCookies: "",
+  // 内置模板就是本机装好 FreeVideo 扩展后能直接跑的那份工作流；
+  // 用户换成别的工作流（Wan / Hunyuan…）只要输入名符合常见约定就能直接用。
+  comfyWorkflow: DEFAULT_COMFY_WORKFLOW_TEXT,
+  comfyPromptTarget: "",
+  comfyFirstFrameTarget: "",
+  comfyWidth: 0,
+  comfyHeight: 0,
+  comfySeconds: 0,
+  comfySeed: 0,
+  comfyTimeoutMs: 600000,
+
   cellWidth: 256,
   cellHeight: 256,
   frameCount: 8,
@@ -432,6 +482,10 @@ export function normalizeConfig(input: unknown): Config {
   const minimaxDuration = normalizeDuration(minimaxModel, raw.minimaxDuration ?? DEFAULT_CONFIG.minimaxDuration);
   const minimaxResolution = normalizeResolution(minimaxModel, raw.minimaxResolution ?? DEFAULT_CONFIG.minimaxResolution);
 
+  // 工作流不能为空：空工作流提交必然失败，回落内置模板比让用户对着报错发呆好。
+  const comfyWorkflowRaw = asString(raw.comfyWorkflow, DEFAULT_CONFIG.comfyWorkflow);
+  const comfyWorkflow = comfyWorkflowRaw.trim() === "" ? DEFAULT_CONFIG.comfyWorkflow : comfyWorkflowRaw;
+
   return {
     imageProvider: raw.imageProvider === "custom" ? "custom" : "ark",
     customProtocol: (CUSTOM_PROTOCOLS as readonly string[]).includes(String(raw.customProtocol))
@@ -467,6 +521,19 @@ export function normalizeConfig(input: unknown): Config {
     minimaxResolution,
     minimaxPromptOptimizer: asBool(raw.minimaxPromptOptimizer, DEFAULT_CONFIG.minimaxPromptOptimizer),
     minimaxTimeoutMs: asInt(raw.minimaxTimeoutMs, DEFAULT_CONFIG.minimaxTimeoutMs, 10000, 900000),
+
+    comfyVideo: asBool(raw.comfyVideo, DEFAULT_CONFIG.comfyVideo),
+    comfyBaseUrl: normalizeComfyBaseUrl(asString(raw.comfyBaseUrl, DEFAULT_CONFIG.comfyBaseUrl)),
+    comfyCookies: normalizeComfyCookies(asString(raw.comfyCookies, DEFAULT_CONFIG.comfyCookies)),
+    comfyWorkflow,
+    comfyPromptTarget: asString(raw.comfyPromptTarget, DEFAULT_CONFIG.comfyPromptTarget).trim(),
+    comfyFirstFrameTarget: asString(raw.comfyFirstFrameTarget, DEFAULT_CONFIG.comfyFirstFrameTarget).trim(),
+    comfyWidth: asInt(raw.comfyWidth, DEFAULT_CONFIG.comfyWidth, 0, 4096),
+    comfyHeight: asInt(raw.comfyHeight, DEFAULT_CONFIG.comfyHeight, 0, 4096),
+    comfySeconds: asNumber(raw.comfySeconds, DEFAULT_CONFIG.comfySeconds, 0, 120),
+    // 0 = 每次随机；生成器只在探测到 seed 输入时才会写进去。
+    comfySeed: asInt(raw.comfySeed, DEFAULT_CONFIG.comfySeed, 0, 9007199254740991),
+    comfyTimeoutMs: asInt(raw.comfyTimeoutMs, DEFAULT_CONFIG.comfyTimeoutMs, 10000, 3600000),
 
     cellWidth: asInt(raw.cellWidth, DEFAULT_CONFIG.cellWidth, 16, 2048),
     cellHeight: asInt(raw.cellHeight, DEFAULT_CONFIG.cellHeight, 16, 2048),
@@ -518,17 +585,20 @@ export async function saveConfig(patch: Partial<Config>): Promise<Config> {
 }
 
 /** 回传给浏览器的脱敏视图：只说明 key 是否已配置，以及尾部 4 位。 */
-export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey"> {
+export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "comfyCookies"> {
   arkApiKeySet: boolean;
   arkApiKeyHint: string;
   minimaxApiKeySet: boolean;
   minimaxApiKeyHint: string;
   customApiKeySet: boolean;
   customApiKeyHint: string;
+  comfyCookiesSet: boolean;
+  comfyCookiesHint: string;
 }
 
 export function maskConfig(config: Config): ConfigView {
-  const { arkApiKey, minimaxApiKey, customApiKey, ...rest } = config;
+  const { arkApiKey, minimaxApiKey, customApiKey, comfyCookies, ...rest } = config;
+  const cookie = normalizeComfyCookies(comfyCookies);
   return {
     ...rest,
     rowOrder: [...config.rowOrder],
@@ -539,7 +609,10 @@ export function maskConfig(config: Config): ConfigView {
     minimaxApiKeySet: minimaxApiKey.trim() !== "",
     minimaxApiKeyHint: hintOf(minimaxApiKey),
     customApiKeySet: customApiKey.trim() !== "",
-    customApiKeyHint: hintOf(customApiKey)
+    customApiKeyHint: hintOf(customApiKey),
+    // Cookie 也是凭据（反代鉴权），同样不回传明文：只说配没配、尾巴 4 位。
+    comfyCookiesSet: cookie !== "",
+    comfyCookiesHint: hintOf(cookie)
   };
 }
 

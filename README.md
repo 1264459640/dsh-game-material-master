@@ -4,8 +4,8 @@
 
 **从一张角色设定图出发，批量做出游戏里真正要用的素材。**
 
-火山方舟 **Seedream** 负责生图，**MiniMax** 负责图生视频，抠像、抽帧、像素量化、合图全部在
-本机用 `ffmpeg` 完成——不需要任何系统图像库，素材也不会被传到第三方服务。
+火山方舟 **Seedream** 负责生图，**MiniMax**（或本机 **ComfyUI**）负责图生视频，抠像、抽帧、
+像素量化、合图全部在本机用 `ffmpeg` 完成——不需要任何系统图像库，素材也不会被传到第三方服务。
 
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -86,7 +86,7 @@ flowchart LR
 界面上那一排圆圈就是八个方位的截帧位置，底下的缩略条带是整圈候选帧——对着画面拖，
 松手就重切那一张（并自动作废这个方位的行走视频与序列帧，避免新旧朝向混在一起）。
 默认位置是「从正面开始、匀速转满一圈」的等分假设；模型实际转的方向或快慢不一样时，
-直接拖圆圈，或点一下「转圈方向」重排。改变候选帧数（8~64）会自动重抽，并把拖过的位置按比例换算。
+直接拖圆圈，或点一下「转圈方向」重排。改变候选帧数（8~512）会自动重抽，并把拖过的位置按比例换算。
 
 ### 也可以直接用**自己电脑上的视频**（阶段①、②都能）
 
@@ -234,9 +234,11 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 装完**重启 DSH**（宿主半区在启动时装入）。浏览器半区按磁盘上的 `lib/client.js` 现取，
 刷新浏览器即可生效。
 
-**依赖**：`ffmpeg` / `ffprobe` 需要在 `PATH` 上（macOS：`brew install ffmpeg`），
-也可用 `FFMPEG_PATH` / `FFPROBE_PATH` 指定绝对路径。本包**没有任何运行时 npm 依赖**，
-`zod`、`cordis` 等全部从 DSH 自身的安装树解析。
+**依赖**：`ffmpeg` / `ffprobe` 得能找到。查找顺序是 `FFMPEG_PATH` / `FFPROBE_PATH` 环境变量 →
+Windows 注册表里的同名变量 → WinGet / Scoop / Chocolatey 与 `C:\ffmpeg\bin` 这类常见安装位置 →
+`PATH`（macOS：`brew install ffmpeg`）。于是 Windows 上「装了 ffmpeg 却没加进 `PATH`」也能直接用；
+用 `setx` 设过路径仍提示找不到也正常——`setx` 只写注册表，已经在跑的进程继承不到，插件会自己再读一遍。
+本包**没有任何运行时 npm 依赖**，`zod`、`cordis` 等全部从 DSH 自身的安装树解析。
 
 > 从旧版 `dsh-8dir-sprites` 升级时，首次启动会自动迁移数据目录，已有项目无缝接上。
 
@@ -258,6 +260,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 | 视频模型 | 默认 `MiniMax-H3`（v2 协议）；Hailuo / I2V 走 v1；优云智算版 H3 显式选择 |
 | Base URL | 主机根，不含 `/v1` `/v2`。国内 `api.minimax.cn`，国际 `api.minimaxi.com` |
 | 默认参数 | 单格宽高、抽帧张数、像素块边长、抠像阈值等 |
+| 本地 ComfyUI（图生视频） | 勾选后图生视频改走**本机 ComfyUI**，替代 MiniMax；「测试连接」只读状态、免费 |
 | 功能管理 | 逐个开关六个模块：关掉的模块界面上不再出现，**对话里的 AI 也调不到**（见下） |
 
 Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，界面回显始终脱敏。
@@ -276,6 +279,36 @@ Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，界面回显
 
 本地服务通常不需要 API Key；地址填**主机根**（例如 `http://127.0.0.1:8188`），具体端点由插件按协议拼。
 配好点「测试连接」即可真跑一张测试图确认链路通。
+
+### 本地 ComfyUI（图生视频）
+
+不想用 MiniMax、或想跑自己的模型时，可以把**图生视频**这一步接到本机的
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI)：设置页勾选「本地 ComfyUI（图生视频）」，
+填上地址（默认 `http://127.0.0.1:8188`），把工作流 JSON 贴进去即可——API 格式、或编辑器里直接
+保存的界面格式都行。
+生图、抠像、抽帧、合图完全不受影响，与 MiniMax 走同一套下游流程。
+
+- **两种格式都收**：`Workflow → Export (API)` 导出的 API 格式最直接；编辑器里直接保存的**界面格
+  式**（顶层是 `nodes` / `links` 数组）也直接粘——插件会先转成 API 格式，那句「已自动转成 API 格
+  式（N 个节点）」会出现在「测试连接」下面。转换会跳过便签与静音 / 旁路节点；若那份 JSON 连控件
+  值都没带 `widget` 信息（很老的 ComfyUI 版本），插件会提示你改用 Save (API Format)。
+- **注入点自动探测**：提示词写进哪个节点的哪个输入、首帧图从哪进、宽高 / 时长 / 种子覆盖哪几个
+  输入，插件会自己认一遍，认到的结果就显示在「测试连接」下面。认错了就手工填 `节点ID.输入名`
+  （例如 `1.text`）覆盖。
+- **首帧图**：工作流里已经有 `LoadImage` 就直接用它；没有时插件会读 ComfyUI 的节点定义，在
+  「声明了 `IMAGE` 输入却没接线」的位置（例如 `FreeVideoGenerate.first`）自动补一个 `LoadImage`
+  接过去。
+- **内置模板就是 FreeVideo 那条链路**（`FreeVideoGenerate` + `FreeVideoMedia` + 一个空
+  `LoadImage`，首帧接在 `FreeVideoGenerate.first`——与官方示例
+  [FreeVideo-All-in-One.json](https://github.com/FlashML-org/FreeVideo/blob/main/example_workflows/FreeVideo-All-in-One.json)
+  的接法一致）。改坏了点「恢复内置模板」还原；官方那份界面格式的 JSON 也可以直接粘进来用。
+- 产物照旧：ComfyUI 只负责吐出那段绿幕视频，**抽帧、抠像、合图仍然是本机 `ffmpeg` 干的**。
+- 「测试连接」只读 ComfyUI 的版本、显卡与队列长度，**不排队、不生成、不产生费用**。
+- **Cookie（可选）**：ComfyUI 自己不做鉴权；只有当它被挡在需要登录的反向代理后面（Cloudflare
+  Access、Basic Auth 之类）时才用得上。从浏览器开发者工具里把 Cookie 整段复制过来即可，插件会
+  先归一化成一行，再让**每个请求**都带上它 —— 上传首尾帧图、提交、查询、取回成品视频，一个都不落。
+- 本地后端**不支持「多模态参考模式」**（参考图 / 参考视频）——那是 MiniMax v2 的能力，
+  走 ComfyUI 请用首尾帧模式。
 
 ### 功能管理（隐藏不用的模块）
 
@@ -380,6 +413,9 @@ T("第 {n0} 帧", { n0: index + 1 })                        // 带插值，英�
 - **自动装配只对「部件就是参考图上整块肢体」的素材可靠**；真实立绘走生图拆件时，
   建议用 agent 视觉先验或手工拖放校正（这些步骤都不花钱）。
 - MiniMax 偶发内容审核拒绝（实测约 10%），换一版更中性的提示词重试即可。
+- **本地 ComfyUI 的耗时不可预期**：任务在本机队列里可能排很久，也可能中途显存不足失败。
+  插件只负责提交与轮询，失败原因（执行到哪个节点、抛了什么异常）会原样带回界面，
+  模型 / 显存层面的问题要回到 ComfyUI 自己的控制台看。
 
 ## 交流与反馈
 

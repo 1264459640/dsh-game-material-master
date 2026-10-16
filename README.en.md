@@ -4,9 +4,10 @@ English | [中文](https://github.com/universe-st/dsh-game-material-master/blob/
 
 **Start from a single character sheet and batch-produce the assets your game actually needs.**
 
-Volcengine Ark **Seedream** handles image generation, **MiniMax** handles image-to-video, and keying,
-frame extraction, pixel quantization and spritesheet composition all happen locally through `ffmpeg` —
-no system image libraries required, and your assets are never uploaded to a third-party service.
+Volcengine Ark **Seedream** handles image generation, **MiniMax** (or a local **ComfyUI**) handles
+image-to-video, and keying, frame extraction, pixel quantization and spritesheet composition all happen
+locally through `ffmpeg` — no system image libraries required, and your assets are never uploaded to a
+third-party service.
 
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -274,9 +275,14 @@ The package is published to npm: [dsh-game-material-master](https://www.npmjs.co
 After installing, **restart DSH** (the host half is loaded at startup). The browser half is read from
 `lib/client.js` on disk on each request, so refreshing the browser is enough for it to take effect.
 
-**Dependencies**: `ffmpeg` / `ffprobe` must be on your `PATH` (macOS: `brew install ffmpeg`), or you can
-point `FFMPEG_PATH` / `FFPROBE_PATH` at absolute paths. The package has **no runtime npm dependencies** —
-`zod`, `cordis` and friends all resolve from DSH's own installation tree.
+**Dependencies**: `ffmpeg` / `ffprobe` must be reachable. They are looked up in this order:
+`FFMPEG_PATH` / `FFPROBE_PATH` environment variables → the same names in the Windows registry →
+common install locations (WinGet / Scoop / Chocolatey, `C:\ffmpeg\bin`) → `PATH`
+(macOS: `brew install ffmpeg`). So on Windows an ffmpeg installed but never added to `PATH` still works,
+and a path set with `setx` that "still cannot be found" after a restart is normal — `setx` only writes
+the registry and already running processes never inherit it, so the plugin reads the registry itself.
+The package has **no runtime npm dependencies** — `zod`, `cordis` and friends all resolve from DSH's own
+installation tree.
 
 > When upgrading from the older `dsh-8dir-sprites`, the first startup migrates the data directory
 > automatically and your existing projects carry over seamlessly.
@@ -299,6 +305,7 @@ point `FFMPEG_PATH` / `FFPROBE_PATH` at absolute paths. The package has **no run
 | Video model | Defaults to `MiniMax-H3` (v2 protocol); Hailuo / I2V use v1; the UCloud version of H3 is selected explicitly |
 | Base URL | Host root, without `/v1` or `/v2`. `api.minimax.cn` in mainland China, `api.minimaxi.com` internationally |
 | Default parameters | Cell width and height, frame count, pixel block size, keying threshold, and so on |
+| Local ComfyUI (image-to-video) | Routes image-to-video through a local **ComfyUI** instead of MiniMax; "Test connection" is read-only and free |
 | Feature management | Per-module switches: a disabled module disappears from the UI **and the agent cannot call it either** (see below) |
 
 Keys are written only to `<DSH_HOME>/game-material-master/config.json` on your machine, and the UI always
@@ -319,6 +326,45 @@ Besides Volcengine Ark you can plug in **your own image service** (Settings → 
 Local servers usually need no API key; enter the **host root** (for example `http://127.0.0.1:8188`) and the
 plugin appends the protocol-specific endpoint. Hit "Test connection" to really generate one test image and
 prove the whole path works.
+
+### Local ComfyUI (image-to-video)
+
+If you would rather not use MiniMax, or you want to run your own model, **image-to-video** can be
+routed to a local [ComfyUI](https://github.com/comfyanonymous/ComfyUI): tick "Local ComfyUI
+(image-to-video)" in the settings, set the address (default `http://127.0.0.1:8188`) and paste a
+workflow JSON — either the API format or the UI format the editor saves directly.
+Image generation, keying, frame extraction and composition are unaffected — the same downstream
+pipeline as MiniMax.
+
+- **Both formats are accepted**: the API format exported by `Workflow → Export (API)` is the most
+  direct; the **UI format** (top level holds `nodes` / `links` arrays) can be pasted as-is — the
+  plugin converts it first, and the line "converted from the ComfyUI UI format (N nodes)" shows up
+  under "Test connection". Notes and muted / bypassed nodes are skipped; if that JSON is so old
+  that its widgets carry no `widget` metadata, the plugin tells you to re-export with Save (API
+  Format) instead.
+- **Injection points are detected automatically**: which node input receives the prompt, where the
+  first frame goes, and which inputs override width / height / duration / seed. The detected
+  bindings are shown under "Test connection". If a guess is wrong, override it by hand with
+  `nodeId.inputName` (for example `1.text`).
+- **First frame**: an existing `LoadImage` node is used when present. Otherwise the plugin reads the
+  node definitions from ComfyUI and inserts a `LoadImage` at any declared-but-unwired `IMAGE` input
+  (for example `FreeVideoGenerate.first`).
+- **The built-in template is the FreeVideo chain** (`FreeVideoGenerate` + `FreeVideoMedia` plus an
+  empty `LoadImage`, with the first frame wired to `FreeVideoGenerate.first` — the same wiring as the
+  official
+  [FreeVideo-All-in-One.json](https://github.com/FlashML-org/FreeVideo/blob/main/example_workflows/FreeVideo-All-in-One.json)).
+  Broke it? Click "Restore built-in template"; the official UI-format JSON can be pasted in too.
+- The output is unchanged: ComfyUI only produces the green-screen clip — **frame extraction, keying
+  and composition still run locally through `ffmpeg`**.
+- "Test connection" only reads the ComfyUI version, device and queue length: **no queueing, no
+  generation, no cost**.
+- **Cookies (optional)**: ComfyUI does not authenticate on its own; a Cookie is only needed when it
+  sits behind a login-protected reverse proxy (Cloudflare Access, Basic Auth, and the like). Copy
+  the whole Cookie from your browser developer tools — the plugin normalises it into a single line
+  and sends it on **every** request: uploading first/last frames, submitting, polling, and fetching
+  the finished video.
+- The local backend does **not** support multimodal reference mode (reference images / videos) —
+  that is a MiniMax v2 capability; use first/last-frame mode with ComfyUI.
 
 ### Feature management (hiding modules you do not use)
 
@@ -442,6 +488,10 @@ The screenshots in this document were taken by Playwright against the real UI; t
   manual dragging (neither of those steps costs anything).
 - MiniMax occasionally rejects content on moderation (about 10% in practice); just reword to a more neutral
   prompt and retry.
+- **Local ComfyUI timing is unpredictable**: a job may sit in your local queue for a long time, or fail
+  halfway through because of VRAM. The plugin only submits and polls; the failure reason (which node,
+  which exception) is reported back verbatim, but model and VRAM issues have to be diagnosed in the
+  ComfyUI console itself.
 
 ## Credits
 

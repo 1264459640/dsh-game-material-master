@@ -6,8 +6,10 @@
  * 也不需要中间 PNG 往返。
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
 
 export class MediaError extends Error {
   constructor(message: string) {
@@ -16,12 +18,109 @@ export class MediaError extends Error {
   }
 }
 
+/** 解析结果缓存：命中就长期有效，没命中 10 秒后重试（用户可以现装 ffmpeg 再点重试）。 */
+interface ResolvedBin {
+  value: string;
+  hit: boolean;
+  at: number;
+}
+const resolvedBins = new Map<string, ResolvedBin>();
+const MISS_TTL_MS = 10000;
+
+/** 展开 Windows 环境变量写法（%LOCALAPPDATA% 这种）。 */
+function expandWindowsEnv(value: string): string {
+  return value.replace(/%([^%]+)%/g, (whole, name: string) => process.env[name] ?? whole);
+}
+
+/**
+ * 读 Windows 注册表里的环境变量。
+ *
+ * `setx` 只写注册表，**不会**改已经跑起来的进程的环境——进程的环境块是启动时从父进程复制的
+ * 快照，而父进程往往是登录时就起的 explorer。于是「设了 FFMPEG_PATH、也重启了程序，还是找不到
+ * ffmpeg」在 Windows 上很常见。直接读注册表就能拿到用户写进去的值，不必让人再去重启资源管理器。
+ */
+function windowsRegistryValue(name: string): string | undefined {
+  const keys = [
+    "HKCU\\Environment",
+    "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"
+  ];
+  for (const key of keys) {
+    try {
+      const output = execFileSync("reg.exe", ["query", key, "/v", name], {
+        encoding: "utf8",
+        timeout: 5000,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+      const matched = /REG_(?:EXPAND_)?SZ\s+(.+)/.exec(output);
+      const value = matched?.[1]?.trim();
+      if (value !== undefined && value !== "") return expandWindowsEnv(value);
+    } catch {
+      // 键不存在 / reg 不可用：当作没有这一项
+    }
+  }
+  return undefined;
+}
+
+/** Windows 上 ffmpeg 的常见落点（装了却没进 PATH 的典型情况）。 */
+function windowsBinCandidates(name: string): string[] {
+  const exe = name + ".exe";
+  const local = process.env.LOCALAPPDATA ?? "";
+  const profile = process.env.USERPROFILE ?? "";
+  const programFiles = process.env.ProgramFiles ?? process.env.PROGRAMFILES ?? "";
+  const programData = process.env.ProgramData ?? "C:\\ProgramData";
+  const list: string[] = [];
+  if (local !== "") list.push(join(local, "Microsoft", "WinGet", "Links", exe));
+  if (profile !== "") list.push(join(profile, "scoop", "shims", exe));
+  if (programData !== "") list.push(join(programData, "chocolatey", "bin", exe));
+  if (programFiles !== "") list.push(join(programFiles, "ffmpeg", "bin", exe));
+  list.push("C:\\ffmpeg\\bin\\" + exe);
+  list.push("D:\\ffmpeg\\bin\\" + exe);
+  return list;
+}
+
+/**
+ * 找 ffmpeg / ffprobe 的可执行文件。
+ *
+ * 顺序：`FFMPEG_PATH` 环境变量 → Windows 注册表里的同名变量 → Windows 常见安装位置 →
+ * 裸名字（交给 PATH）。只有**确实存在**的绝对路径才会被采用；都没命中就回退裸名字，
+ * 让 spawn 按 PATH 去找，出错时再提示怎么设路径。
+ */
+function resolveBin(name: "ffmpeg" | "ffprobe"): string {
+  const now = Date.now();
+  const cached = resolvedBins.get(name);
+  if (cached !== undefined && (cached.hit || now - cached.at < MISS_TTL_MS)) return cached.value;
+
+  const envKey = name === "ffmpeg" ? "FFMPEG_PATH" : "FFPROBE_PATH";
+  const candidates: string[] = [];
+  const fromEnv = process.env[envKey]?.trim() ?? "";
+  if (fromEnv !== "") candidates.push(fromEnv);
+  if (process.platform === "win32") {
+    const fromRegistry = windowsRegistryValue(envKey)?.trim() ?? "";
+    if (fromRegistry !== "") candidates.push(fromRegistry);
+    candidates.push(...windowsBinCandidates(name));
+  }
+
+  const found = candidates.find((candidate) => isAbsolute(candidate) && existsSync(candidate));
+  const value = found ?? name;
+  resolvedBins.set(name, { value, hit: found !== undefined, at: now });
+  return value;
+}
+
+/** 找不到 ffmpeg 时给用户的提示（Windows 与其它平台分开写，各自给可执行的下一步）。 */
+function missingBinMessage(bin: string): string {
+  const suffix = process.platform === "win32"
+    ? "插件也会主动去读注册表里的同名变量，以及 WinGet / Scoop / Chocolatey 的常见安装位置。"
+    : "（macOS: brew install ffmpeg）";
+  return "找不到 " + bin + "。请先安装 ffmpeg，或用 FFMPEG_PATH / FFPROBE_PATH 环境变量指定绝对路径。" + suffix;
+}
+
 export function ffmpegPath(): string {
-  return process.env.FFMPEG_PATH?.trim() || "ffmpeg";
+  return resolveBin("ffmpeg");
 }
 
 export function ffprobePath(): string {
-  return process.env.FFPROBE_PATH?.trim() || "ffprobe";
+  return resolveBin("ffprobe");
 }
 
 interface RunResult {
@@ -62,7 +161,7 @@ function run(bin: string, args: string[], timeoutMs = 300000): Promise<RunResult
       if (error.code === "ENOENT") {
         reject(
           new MediaError(
-            `找不到 ${bin}。请先安装 ffmpeg（macOS: brew install ffmpeg），或用 FFMPEG_PATH / FFPROBE_PATH 环境变量指定绝对路径。`
+            missingBinMessage(bin)
           )
         );
         return;
