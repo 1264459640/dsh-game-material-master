@@ -105,7 +105,17 @@ try {
   a2Brush = a2.palette[0].index;
   propBrush = prop.palette[0].index;
   check("A2 素材在**宿主视图**的调色板里只有一个条目（点它 = 自动连接笔刷）", a2.palette.length === 1 && a2.palette[0].rect.width === 32 && a2.palette[0].rect.height === 32, JSON.stringify(a2.palette));
-  check("普通素材的调色板是一格一条（道具网格 8 列 × 5 行 = 40 条）", prop.palette.length === 40, `${prop.palette.length}`);
+  /**
+   * ⚠️ 这条原来断言的是 40 —— 那是**照着实现写的**：内置道具图是「8 列 × 5 帧」，
+   * 但宿主当时把它当成了 40 个各自独立的图块，调色板于是冒出 40 个笔刷，
+   * 其中 32 个逐像素重复（用户截图里的「一堆重复的块」）。现在帧由宿主按全局帧号现推，
+   * 每列只出**第 0 帧**那一条：8 列 = 8 个笔刷，且都落在第一行（rect.y === 0）。
+   */
+  check(
+    "翻页图（行 = 帧）的调色板每列只出一条：道具 8 列 × 5 帧 = 8 条，且都在第 0 帧（rect.y = 0）",
+    prop.palette.length === 8 && prop.palette.every((item, index) => item.rect.y === 0 && item.rect.height === 32 && item.rect.x === index * 32),
+    `条数 ${prop.palette.length} / ${JSON.stringify(prop.palette.map((item) => [item.rect.x, item.rect.y]))}`
+  );
 
   // 画一片：A2 的 2×2 方块（验「一格 4 条 op」与自动连接）+ 两个道具格；
   // 第二层再画两笔 —— 单层预览要能证明「过滤真的发生了」。
@@ -1056,7 +1066,7 @@ try {
   const hostView = await G.mapView(await G.readMapProject(projectId));
   const expectedBrushes = hostView.tilesets.reduce((sum, ts) => sum + ts.palette.length, 0);
   check("左侧有素材调色板（8 列的网格）", byClass(tree, "SPR_mapEdPalette").length === 1 && paletteGrid !== undefined);
-  check(`调色板条目数 = 宿主 palette 的总和（${expectedBrushes} 条：4 张 A2 各 1 条 + 道具 40 条）`, paletteTiles.length === expectedBrushes, `渲染 ${paletteTiles.length} vs 宿主 ${expectedBrushes}`);
+  check(`调色板条目数 = 宿主 palette 的总和（${expectedBrushes} 条：4 张 A2 各 1 条 + 道具 8 条）`, paletteTiles.length === expectedBrushes, `渲染 ${paletteTiles.length} vs 宿主 ${expectedBrushes}`);
   check("调色板里 A2 素材只有一个条目（不是把 16px 小格摊出来）", paletteTiles.filter((node) => hostView.tilesets.find((ts) => ts.id === a2TilesetId).palette.some((item) => String(item.index) === node.props["data-index"])).length === 1);
   if (paletteTiles.length > 0) {
     const chosen = paletteTiles[4];
@@ -1478,7 +1488,12 @@ try {
 
   // ══ 6. 动画：同一格在不同帧号下取不同矩形 ════════════════════════════════
   section("6) 动画：全局帧号驱动，同一格不同帧取不同源矩形");
-  check("宿主计划给出 frameCount = 2（A2 的变体数就是帧数）", hostPlan.frameCount === 2 && hostPlan.fps === 1, `frameCount=${hostPlan.frameCount} fps=${hostPlan.fps}`);
+  /**
+   * ⚠️ `planMeta.frameCount` 是**本次计划里所有 cycle 长度的最大值**（全图共用一个时钟），
+   * 不是某一个素材的帧数：内置素材里 A2 的变体是 2 帧、道具翻页图是 5 帧，所以这里是 5。
+   * 面板按它推进全局帧号，每条 op 再各自 `frame % cycle.length` 取自己那一帧。
+   */
+  check("宿主计划给出 frameCount = 各 cycle 长度的最大值（A2 变体 2 帧 + 道具翻页图 5 帧 → 5）", hostPlan.frameCount === 5 && hostPlan.fps === 1, `frameCount=${hostPlan.frameCount} fps=${hostPlan.fps}`);
   const animated = hostOps.findIndex((op) => Array.isArray(op.cycle) && op.cycle.length === 2);
   check("A2 的 op 带 cycle（长度 2），且 t == cycle[0]", animated >= 0 && hostOps[animated].t === hostOps[animated].cycle[0], JSON.stringify(hostOps[animated]?.cycle));
   const frame0Rect = hostLegend.get(hostOps[animated].t).rect;

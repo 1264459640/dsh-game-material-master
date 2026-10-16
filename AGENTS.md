@@ -89,7 +89,7 @@ node scripts/verify-tile-gateway.mjs   # 地图地块走真实网关（81 项：
 node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项，拦「遮罩没出现」「地图不显示」这类静默问题）
 
 node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点内核（123 项，含反向验证与术语黑名单）
-node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（274 项，含 A2 每格 4 条 op、动画循环、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
+node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（276 项，含 A2 每格 4 条 op、动画循环、翻页图调色板每列一条、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
 node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（160 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透）
 node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（298 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，以及「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证）
 ```
@@ -176,6 +176,12 @@ ffmpeg / ffprobe 的路径查找（Windows 上读注册表与常见安装位置�
 `src/mapsamplegen.ts` 的 `renderGuideSheets()` 现画，拼块那张就是内置草地；生成器
 `scripts/make-map-guide-art.mjs` 把三张图 base64 内联进 `src/client.ts` 的 `MAP_GUIDE_ART` 标记块
 （**只改客户端，不用重启 DSH**），`--check` 会把整格那张图解回来量一遍方向位序。
+另有一处 `fix(map)`：**新建地图后调色板里一堆重复的块** —— 内置道具图（8 列 × 5 帧）的 5 行
+是按列取名字画出来的、逐像素相同，又声明成 `animRows: false` 的普通网格，于是 40 个小格全成了
+独立图块（调色板 44 条里 32 条重复）。现在道具图按相位画成**真帧**、声明 `animRows: true`，
+`paletteFor` 对翻页图**每列只出第 0 帧**（帧由宿主按全局帧号现推），调色板变成 12 条。
+⚠️ 模块六自检当时把错值当成了期望（`prop.palette.length === 40`），已改成 8 条，并新增
+「自建翻页图的调色板每列一条」与「道具图逐列量帧差」两条断言。⚠️ 这部分在宿主半区，要重启 DSH。
 生图 / 抠像 / 抽帧 / 合图不变。
 
 发布时按下面的流程走，并**把这段挪进上面的「已发布版本」表**（补上 UTC 时间）。

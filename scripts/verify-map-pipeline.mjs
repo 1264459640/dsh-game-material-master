@@ -308,9 +308,11 @@ try {
   check("一次装 5 张", sample.tilesets.length === 5, sample.tilesets.map((t) => t.name).join("、"));
   check("含 4 张 A2 + 1 张 plain 道具图", sample.tilesets.filter((t) => t.shape === "a2quad").length === 4 && sample.tilesets.filter((t) => t.shape === "plain").length === 1);
   check(
-    "A2 图是 64×160（2 变体 × 5 形状），道具图 8×5 格",
+    "A2 图是 64×160（2 变体 × 5 形状），道具图 8 列 × 5 帧（40 个小格，行 = 帧）",
     sample.tilesets.filter((t) => t.shape === "a2quad").every((t) => t.imageWidth === 64 && t.imageHeight === 160) &&
-      sample.tilesets.find((t) => t.shape === "plain").tiles.length === 40
+      sample.tilesets.find((t) => t.shape === "plain").tiles.length === 40 &&
+      sample.tilesets.find((t) => t.shape === "plain").animRows === true &&
+      sample.tilesets.find((t) => t.shape === "plain").variants === 5
   );
   const sampleFiles = await readdir(join(G.mapProjectDir(pSample.id), "tilesets"));
   check("5 张素材原图真的落盘了", sampleFiles.filter((name) => name.endsWith(".png")).length === 5, sampleFiles.join(" "));
@@ -318,6 +320,12 @@ try {
   check("再装一次不重复导入，并说明为什么跳过", sampleAgain.tilesets.length === 0 && sampleAgain.warnings.every((text) => text.includes("已经在项目里")), sampleAgain.warnings.join(" | ").slice(0, 80));
   const viewSample = await G.mapView(await G.readMapProject(pSample.id));
   check("内置素材的识别说明是人话（不是内部术语）", viewSample.tilesets.every((t) => t.reason.includes("拼块自动连接") || t.reason.includes("正方形网格")), viewSample.tilesets[0].reason);
+  const samplePropView = viewSample.tilesets.find((t) => t.shape === "plain");
+  check(
+    "内置道具图在调色板里是 8 条（8 列 × 5 帧，不把 5 帧摊成 40 条重复笔刷）",
+    samplePropView.palette.length === 8 && samplePropView.palette.every((item, i) => item.rect.y === 0 && item.rect.x === i * 32),
+    JSON.stringify(samplePropView.palette.map((item) => [item.rect.x, item.rect.y]))
+  );
 
   // ══ 4. 改切分与序号重映射 ════════════════════════════════════════════════
   section("4) 改切分：必须按「素材 id + 图块 id」重映射，不能只清越界序号");
@@ -707,6 +715,17 @@ try {
       JSON.stringify({ cell: madeTs.cell, shape: madeTs.shape, anim: madeTs.animRows })
     );
     check("翻页图：行数就是帧数（64×64 / 格 16 → 4 行 = 4 帧）", madeTs.variants === 4 && madeTs.tiles.length === 16, `variants=${madeTs.variants} tiles=${madeTs.tiles.length}`);
+    /**
+     * ⚠️ 调色板**不能**一帧一条：帧是宿主按全局帧号现推的，每帧都列出来只会让用户
+     * 看到 4 个一模一样的笔刷（内置道具图 8 列 × 5 帧当年就是这样冒出 40 条的）。
+     */
+    const madeView = await G.mapView(await G.readMapProject(pNew.id));
+    const madeBrush = madeView.tilesets.find((t) => t.id === madeTs.id);
+    check(
+      "翻页图的调色板每列只出一条（4 帧 → 4 个笔刷，都落在第 0 帧）",
+      madeBrush.palette.length === 4 && madeBrush.palette.every((item, i) => item.rect.y === 0 && item.rect.x === i * 16),
+      JSON.stringify(madeBrush.palette.map((item) => [item.rect.x, item.rect.y]))
+    );
     const auto = (await G.importMapTileset(pNew.id, "自动", sheetPng(64, 160, 16).toString("base64"), {})).tilesets[0];
     check("属性留空 = 走自动识别（64×160 → 拼块自动连接 / 2 变体）", auto.shape === "a2quad" && auto.variants === 2, `${auto.shape} / ${auto.variants}`);
     let badCellError = "";

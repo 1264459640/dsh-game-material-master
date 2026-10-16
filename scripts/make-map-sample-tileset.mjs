@@ -10,7 +10,7 @@
  *
  * 默认产物目录 `<仓库>/research/map-sample/`，5 个文件：
  *   sample-grass.png / sample-dirt.png / sample-water.png / sample-stone.png（4 张 A2 图，64×160）
- *   sample-props.png（道具网格图，256×160 = 8 列 × 5 行 32px 图块）
+ *   sample-props.png（道具网格图，256×160 = 8 列 × 5 帧 32px 图块，行 = 帧）
  *
  * `--ark` 会额外把原图留在 `research/map-sample/ark-<时间戳>/`，并**改写
  * `src/mapsample.ts` 的 `SAMPLE_TEXTURE_OVERRIDE`**（只替换那一个 export 块；
@@ -146,7 +146,7 @@ export function detectLayoutLikeSpec(imageWidth, imageHeight, realDetect) {
 /**
  * 内置素材的**手工登记表**：文件名 → 形态。
  *
- * 为什么需要它：道具图（256×160 = 8 列 × 5 行 32px）恰好也满足 a2quad 的尺寸判据
+ * 为什么需要它：道具图（256×160 = 8 列 × 5 帧 32px）恰好也满足 a2quad 的尺寸判据
  * （高 = 5×32、宽能被 32 整除），所以「只看尺寸」的识别必然二义。内置素材是**我们自己
  * 生成的**，形态由生成器写死在 `SampleTileset.shape` 里，自检就该断言那一份；
  * 识别函数只用来断言「格尺寸对不对」。
@@ -235,7 +235,7 @@ if (mode === "check") {
     }
     console.log(
       `  ✓ ${item.file.padEnd(18, " ")} ${size.width}×${size.height} → 声明 ${item.shape}` +
-        `（尺寸自动识别会给 ${guess.shape}，见下方说明）/ ${size.height / 32} 行 32px 图块`
+        `（尺寸自动识别会给 ${guess.shape}，见下方说明）/ ${size.height / 32} 行 = ${size.height / 32} 帧`
     );
   }
 
@@ -310,6 +310,47 @@ if (mode === "check") {
     );
   }
 
+  step(5, "自检 ④：道具图的行必须是**不同的帧**（不能是同一张图的 5 份拷贝）");
+  // 这条是防回归的：`drawProp` 曾经只按列取名字、无视行号，5 行画得逐像素相同，
+  // 而 `animRows` 又是 false —— 于是 40 个小格全成了独立图块，调色板里 32 条重复
+  // （用户看到的就是「新建地图怎么一堆重复的块」）。这里逐列量一次帧差。
+  const propItem = plain[0];
+  const propPixels = await bitmap.decodeFile(join(OUT_DIR, propItem.file));
+  const propWidth = propPixels.width;
+  const propNames = mapsamplegen.SAMPLE_PROP_NAMES;
+  const propRows = mapsamplegen.SAMPLE_PROP_ROWS;
+  const swaying = mapsamplegen.SAMPLE_PROP_SWAYING;
+  if (propItem.animRows !== true) {
+    fail(`${propItem.file}：必须声明 animRows: true（行 = 帧），实际 ${propItem.animRows} —— 不然每行都会被当成独立图块`);
+  }
+  if (!Array.isArray(swaying) || swaying.length === 0) {
+    fail("lib/mapsamplegen.js 里没有 SAMPLE_PROP_SWAYING —— lib/ 与 src/ 不同步（跑 npm run build）");
+  }
+  let movingMin = Number.POSITIVE_INFINITY;
+  let movingWorst = "";
+  for (const name of swaying) {
+    const col = propNames.indexOf(name);
+    if (col < 0) fail(`SAMPLE_PROP_SWAYING 里的「${name}」不在 SAMPLE_PROP_NAMES 里`);
+    let best = 0;
+    for (let row = 1; row < propRows; row++) {
+      best = Math.max(best, blockMad(propPixels.rgba, col * 32, 0, propPixels.rgba, col * 32, row * 32, propWidth));
+    }
+    if (best <= 1) fail(`道具「${name}」的 ${propRows} 帧逐像素几乎一样（最大差 ${best.toFixed(2)}）—— 帧表退化成了拷贝`);
+    if (best < movingMin) {
+      movingMin = best;
+      movingWorst = name;
+    }
+  }
+  let identicalRows = true;
+  for (let row = 1; row < propRows; row++) {
+    if (blockMad(propPixels.rgba, 0, 0, propPixels.rgba, 0, row * 32, propWidth) > 0.01) identicalRows = false;
+  }
+  if (identicalRows) fail(`${propItem.file}：整张图 ${propRows} 行逐像素相同 —— 那不是帧，是拷贝`);
+  console.log(
+    `  ✓ ${propItem.file} ${propWidth}×${propPixels.height}（${propNames.length} 列 × ${propRows} 帧 / animRows=true）：` +
+      `会动的列 ${swaying.join("、")}（最小帧差 ${movingMin.toFixed(2)}，最小的是「${movingWorst}」）/ 硬物允许静止，整张图不是拷贝`
+  );
+
   const overrideCount = Object.keys(mapsamplegen.SAMPLE_TEXTURE_OVERRIDE ?? {}).length;
   console.log(`\n  覆盖表：${overrideCount === 0 ? "空对象（全部走程序化纹理）" : `${overrideCount} 个地貌用了 Seedream 纹理`}`);
   console.log(`  形态：renderSampleTilesets() 给的 shape / cell —— ` + first.map((item) => `${item.file}=${item.shape} ${item.cell.width}×${item.cell.height}`).join(" | "));
@@ -329,7 +370,7 @@ for (const item of first) {
 
 if (mode === "local") {
   console.log(`\n✓ 完成。5 张图在 ${OUT_DIR}`);
-  console.log("  用图片浏览器直接看即可：4 张 A2 图按「块列 = 变体、块行 = 形状」排布；道具图 8 列 × 5 行。");
+  console.log("  用图片浏览器直接看即可：4 张 A2 图按「块列 = 变体、块行 = 形状」排布；道具图 8 列 × 5 帧（行 = 帧，会动的道具每帧差 1px）。");
   process.exit(0);
 }
 

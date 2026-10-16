@@ -1589,7 +1589,22 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
  */
 function paletteFor(tileset: MapTileset, flat: readonly FlatTile[]): Array<{ index: number; rect: MapRect }> {
   const mine = flat.filter((tile) => tile.tilesetId === tileset.id);
-  if (tileset.shape !== "a2quad") return mine.map((tile) => ({ index: tile.index, rect: tile.tile.rect }));
+  if (tileset.shape !== "a2quad") {
+    /**
+     * 「翻页图」（`animRows`）：同一列的每一行是**同一个逻辑块的不同帧**，帧由宿主按全局帧号
+     * 现推（`maprender` 的 `cycle`），所以调色板每列只出**第 0 帧**那一条。
+     *
+     * 每帧都出一条的话，用户看到的就是 N 个一模一样的笔刷 —— 内置道具图（8 列 × 5 帧）
+     * 曾经就是这样：`animRows` 少写了一个 true，40 个小格全成了独立图块，
+     * 调色板里 40 条有 32 条逐像素重复。
+     */
+    if (tileset.animRows === true) {
+      const first = mine.filter((tile) => (tile.tile.frame ?? 0) === 0);
+      const list = first.length > 0 ? first : mine.slice(0, 1);
+      return list.map((tile) => ({ index: tile.index, rect: tile.tile.rect }));
+    }
+    return mine.map((tile) => ({ index: tile.index, rect: tile.tile.rect }));
+  }
   let fullRow = 0;
   for (const tile of mine) fullRow = Math.max(fullRow, tile.tile.shape ?? 0);
   const pick = mine.find((tile) => (tile.tile.shape ?? 0) === fullRow && (tile.tile.variant ?? 0) === 0) ?? mine[0];
