@@ -123,7 +123,7 @@ const resetTurnPicksSchema = z.object({
 });
 const cutTurnFramesSchema = z.object({ projectId: z.string(), keys: z.array(z.string()).optional() });
 const runKeysSchema = z.object({ projectId: z.string(), keys: z.array(z.string()).optional() });
-/** 从一个方向的行走视频抽出候选帧。count 是候选张数（8~64），不是最终序列帧数。 */
+/** 从一个方向的行走视频抽出候选帧。count 是候选张数（8~512），不是最终序列帧数。 */
 const prepareFramePickSchema = z.object({
   projectId: z.string(),
   key: z.string(),
@@ -752,6 +752,8 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "testArk", result: jsonObject },
   { method: "testCustomImage", result: jsonObject },
   { method: "testMinimax", result: jsonObject },
+  // 本地 ComfyUI 后端自检（读 /system_stats + /queue，不排队生图）。
+  { method: "testComfy", result: jsonObject },
   // 浏览器半区在挂载时上报 origin，供宿主拼深链接；不是用户可调用的功能。
   { method: "reportClientOrigin", payload: reportOriginSchema, result: okSchema, clientOnly: true },
 

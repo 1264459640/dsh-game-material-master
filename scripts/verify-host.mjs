@@ -118,8 +118,9 @@ async function main() {
   // 方法数是**清单完整性**的锚点：新增 / 删除远程方法时必须同步改这个数字。
   // 模块六重做时删了 4 个（族 / 多地图）加了 2 个（一键生成 / 内置素材），132 → 130。
   // 八方向图加「本地自选视频」与「中间图片打包」两个方法，130 → 132。
-  // 生图后端加「自定义后端连接测试」（testCustomImage），132 → 133。
-  check("manifest 方法数为 133（新增远程方法时同步改这个数）", invocations.length === 133, `实际 ${invocations.length}`);
+  // 生图后端加「自定义后端连接测试」（testCustomImage），132 → 133；
+  // 本地 ComfyUI 视频后端新增 testComfy，133 → 134。
+  check("manifest 方法数为 134（新增远程方法时同步改这个数）", invocations.length === 134, `实际 ${invocations.length}`);
   const ids = new Set(invocations.map((i) => i.id));
   check("方法 id 唯一", ids.size === invocations.length);
   check("所有方法都声明在 gameStudio 服务下", invocations.every((i) => i.service === "gameStudio" && i.namespace === "gameStudio"));
@@ -1882,6 +1883,139 @@ async function main() {
     await studio.deleteRigJob({ jobId: rigId });
     const rigJobsAfter = await studio.listRigJobs();
     check("骨骼动画任务已删除", !rigJobsAfter.jobs.some((item) => item.id === rigId));
+  }
+
+  // ── 13b. 换源图：由旧源图派生的产物必须整体作废 ────────────────────────
+  //
+  // ⚠️ 这一节钉的是**静默**那一种坏法：换源图只改 project.source 的话，转圈首帧仍然优先
+  // 用旧的 images/front.png（turnFirstFrame：正面绿幕图 > 源图），于是「新角色配旧脸」——
+  // 不报错、日志也看不出来，只有肉眼看图才发现。
+  console.log("13b) 换源图作废派生产物");
+  {
+    const { patchProject: patch, projectDir } = await import("../lib/store.js");
+    const { mkdir, utimes, writeFile } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    const fresh = await studio.createProject({ name: "换源图" });
+    const freshId = fresh.projectId;
+    const freshRoot = projectDir(freshId);
+    await studio.uploadSource({ projectId: freshId, name: "old.png", data: png.toString("base64") });
+
+    // 伪造一套「已经生成过」的派生状态，并把产物真的写到盘上——不写文件就测不出「删没删盘」。
+    const derived = [
+      "images/front.png", "videos/turn.mp4", "turn/f00.png", "turn/strip.png",
+      "videos/front.mp4", "frames/front/f00.png", "out/sheet.png"
+    ];
+    for (const relative of derived) {
+      await mkdir(dirname(join(freshRoot, relative)), { recursive: true });
+      await writeFile(join(freshRoot, relative), png);
+    }
+    await patch(freshId, (project) => {
+      project.images.front = { status: "ready", file: "images/front.png", approved: true };
+      project.turn.video = { status: "ready", file: "videos/turn.mp4", approved: false, firstFrame: "images/front.png" };
+      project.turn.frames = {
+        status: "ready", frames: ["turn/f00.png"], times: [0], picks: { front: 0 },
+        strip: "turn/strip.png", rawFrameCount: 1, approved: true
+      };
+      project.videos.front = { status: "ready", file: "videos/front.mp4", approved: true };
+      project.frames.front = { status: "ready", frames: ["frames/front/f00.png"], keyed: [], approved: true };
+      project.sheet = { status: "ready", file: "out/sheet.png", approved: true };
+    });
+
+    const swapped = await studio.uploadSource({ projectId: freshId, name: "new.png", data: png.toString("base64") });
+    check("换源图返回作废个数", swapped.discarded >= 7, String(swapped.discarded));
+    check("源图确实换成了新的", swapped.file === "source/new.png", String(swapped.file));
+
+    const wiped = await studio.getProject({ projectId: freshId });
+    check(
+      "方向图 / 转圈视频 / 候选帧 / 序列帧 / 整图全部作废",
+      wiped.images.front.status === "empty" &&
+        wiped.turn.video.status === "empty" &&
+        wiped.turn.frames.status === "empty" &&
+        wiped.turn.frames.frames.length === 0 &&
+        wiped.videos.front.status === "empty" &&
+        wiped.frames.front.status === "empty" &&
+        wiped.sheet.status === "empty",
+      JSON.stringify({
+        images: wiped.images.front.status, turn: wiped.turn.video.status, candidates: wiped.turn.frames.status,
+        video: wiped.videos.front.status, frames: wiped.frames.front.status, sheet: wiped.sheet.status
+      })
+    );
+    check(
+      "八个截帧位置按当前候选帧数重新等分（旧位置指的是旧视频的帧号）",
+      wiped.turn.frames.picks.front === 0 && Object.keys(wiped.turn.frames.picks).length === 8,
+      JSON.stringify(wiped.turn.frames.picks)
+    );
+    check(
+      "换源图会在日志里说明作废了什么",
+      wiped.log.some((entry) => entry.level === "warn" && /换了源图：已作废/.test(entry.message))
+    );
+    for (const relative of derived) {
+      let gone = false;
+      try {
+        await readFile(join(freshRoot, relative));
+      } catch {
+        gone = true;
+      }
+      check(`旧产物已从磁盘删掉：${relative}`, gone);
+    }
+
+    // 第一次上传（还没有派生产物）不该报作废，也不该刷告警日志。
+    const beforePlain = (await studio.getProject({ projectId: freshId })).log.length;
+    const plain = await studio.uploadSource({ projectId: freshId, name: "third.png", data: png.toString("base64") });
+    const plainState = await studio.getProject({ projectId: freshId });
+    check("没有派生产物时作废数为 0", plain.discarded === 0, String(plain.discarded));
+    check(
+      "没有派生产物时不写告警日志（只看这次上传新增的那几条）",
+      !plainState.log.slice(beforePlain).some((entry) => /换了源图：已作废/.test(entry.message))
+    );
+
+    const renamed = await studio.uploadSource({ projectId: freshId, name: "fourth.png", data: png.toString("base64") });
+    check("再换一次仍然按新文件名落盘", renamed.file === "source/fourth.png", String(renamed.file));
+
+    // 首帧保险：正面绿幕图比源图旧 → 退回源图。换源图本来就会作废派生产物，
+    // 但历史项目 / 手工替换文件都可能带着「旧角色的正面图」，而首帧正是交给
+    // 模型的那一张图 —— 兜不住就是「新角色配旧脸」且不报错。
+    await mkdir(join(freshRoot, "images"), { recursive: true });
+    await writeFile(join(freshRoot, "images", "front.png"), png);
+    const anHourAgo = new Date(Date.now() - 3600 * 1000);
+    await utimes(join(freshRoot, "images", "front.png"), anHourAgo, anHourAgo);
+    await patch(freshId, (project) => {
+      project.images.front = { status: "ready", file: "images/front.png", approved: false };
+    });
+
+    const gateway = createServer((req, res) => {
+      req.resume();
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ base_resp: { status_code: 1004, status_msg: "invalid api key (verify)" } }));
+    });
+    await new Promise((resolve) => gateway.listen(0, "127.0.0.1", resolve));
+    await studio.saveConfig({
+      minimaxApiKey: "fake-key-for-verification",
+      minimaxBaseUrl: `http://127.0.0.1:${gateway.address().port}`
+    });
+    try {
+      const kicked = await studio.runTurnVideo({ projectId: freshId });
+      check("转圈视频提交被接受（首帧保险）", kicked.started === true, JSON.stringify(kicked));
+      let guarded = null;
+      for (let i = 0; i < 40; i++) {
+        await sleep(500);
+        const snapshot = await studio.getProject({ projectId: freshId });
+        if (snapshot.turn.video.status === "error" || snapshot.turn.video.status === "ready") {
+          guarded = snapshot;
+          break;
+        }
+      }
+      check(
+        "正面绿幕图比源图旧时改用源图当首帧",
+        guarded?.turn.video.firstFrame === "source/fourth.png",
+        String(guarded?.turn.video.firstFrame)
+      );
+      check("并把原因写进日志", (guarded?.log ?? []).some((entry) => /正面绿幕图比源图旧/.test(entry.message)));
+    } finally {
+      await new Promise((resolve) => gateway.close(resolve));
+      await studio.saveConfig({ minimaxBaseUrl: "https://api.minimaxi.com", clearMinimaxApiKey: true });
+    }
+    await studio.deleteProject({ projectId: freshId });
   }
 
   // ── 14. 地图地块的资源路由 ─────────────────────────────────────────────

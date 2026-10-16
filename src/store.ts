@@ -35,6 +35,14 @@ export type NodeStatus = "empty" | "running" | "ready" | "error";
 export type StageKey = "images" | "videos" | "frames" | "sheet";
 
 /**
+ * 视频任务的执行后端：MiniMax 云服务，或本机 ComfyUI。
+ *
+ * 节点的 `taskId` 在两个后端里都是字符串（MiniMax 是 task_id，ComfyUI 是 prompt_id），
+ * 单看 id 分不出是谁家的，所以要把后端一起记在节点上。
+ */
+export type VideoBackend = "minimax" | "comfy";
+
+/**
  * 阶段①「八方向绿幕图」的生成方式。
  *
  *   turn   （默认）先让视频模型绕竖轴转一整圈，再按时间轴截出八个方向的帧。
@@ -65,6 +73,11 @@ export interface ImageNode {
 export interface VideoNode {
   status: NodeStatus;
   taskId?: string;
+  /**
+   * 这个任务是在哪个后端上跑的。查询时必须按**这里记的值**，不能按当前配置：
+   * 用户可以在任务跑着的时候改设置。老数据没有这个字段 → 按 minimax 处理。
+   */
+  backend?: VideoBackend;
   remoteStatus?: string;
   file?: string;
   approved: boolean;
@@ -168,6 +181,8 @@ export interface LogEntry {
 export interface TurnVideoNode {
   status: NodeStatus;
   taskId?: string;
+  /** 见 VideoNode.backend。 */
+  backend?: VideoBackend;
   remoteStatus?: string;
   file?: string;
   approved: boolean;
@@ -383,6 +398,73 @@ function emptyFrames(): Record<string, FramesNode> {
   return out;
 }
 
+/**
+ * 换了源图：把「由源图派生出来的东西」全部作废。
+ *
+ * 源图是阶段①的输入。换了源图之后，之前那张图跑出来的八个方向图、转圈视频、
+ * 候选帧（`turn/raw.bin` 动辄上百 MB）以及阶段②③④的产物全都属于另一个角色。
+ * 留着它们不只是占地方——`turnFirstFrame()` 会**优先**拿 `images/front.png` 当首帧，
+ * 于是新源图根本进不了模型，表现就是「换了源图，生成结果一点没变」。
+ *
+ * 所以这里一律清回初始状态，并删掉对应的磁盘文件（删不掉的忽略，不影响主流程）。
+ * 返回被清掉的产物个数，供调用方记日志。
+ */
+export async function resetDerivedFromSource(id: string): Promise<number> {
+  const orphans = await patchProject(id, (project) => {
+    const files: string[] = [];
+    const push = (file?: string): void => {
+      if (file !== undefined && file !== "") files.push(file);
+    };
+    for (const key of DIRECTION_KEYS) push(project.images[key]?.file);
+    push(project.turn?.video?.file);
+    push(project.turn?.frames?.raw);
+    push(project.turn?.frames?.strip);
+    for (const file of project.turn?.frames?.frames ?? []) push(file);
+    for (const key of DIRECTION_KEYS) {
+      push(project.videos[key]?.file);
+      const frames = project.frames[key];
+      if (frames === undefined) continue;
+      push(frames.raw);
+      push(frames.strip);
+      for (const file of frames.frames) push(file);
+      for (const file of frames.keyed) push(file);
+      const candidates = frames.candidates;
+      if (candidates === undefined) continue;
+      push(candidates.raw);
+      push(candidates.strip);
+      for (const file of candidates.frames) push(file);
+    }
+    push(project.sheet?.file);
+    push(project.sheet?.thumb);
+    project.images = emptyImages();
+    project.videos = emptyVideos();
+    project.frames = emptyFrames();
+    project.sheet = { status: "empty", approved: false };
+    project.turn.video = { status: "empty", approved: false };
+    // 抽帧位置回到「候选帧数 ÷ 8」的默认值：旧的 picks 指的是旧视频的帧号，
+    // 新视频未必有那么多帧，留着没有意义。转圈方向（cw / ccw）是用户的选择，保留。
+    project.turn.frames = {
+      status: "empty",
+      frames: [],
+      times: [],
+      picks: freshPicks(project.settings.turnFrameCount),
+      approved: false
+    };
+    if (files.length > 0) {
+      log(
+        project,
+        "warn",
+        `换了源图：已作废由旧源图派生的 ${files.length} 个产物（方向图 / 转圈视频 / 候选帧 / 序列帧 / 整图），请重新生成。`
+      );
+    }
+    return files;
+  });
+  for (const relative of orphans) {
+    await rm(assetPath(id, relative), { force: true }).catch(() => undefined);
+  }
+  return orphans.length;
+}
+
 export async function ensureLayout(id: string): Promise<void> {
   const base = projectDir(id);
   for (const sub of ["source", "images", "videos", "frames", "keyed", "preview", "out", "turn"]) {
@@ -504,6 +586,16 @@ export function summarize(project: Project): ProjectSummary {
 }
 
 /** 补齐历史版本缺字段，保证读进来的对象形状永远完整。 */
+/**
+ * 视频节点的后端标记：只认两个已知值。
+ *
+ * 老项目 / 手写坏值一律折成 undefined（= 按 minimax 处理），而不是原样带进内存——
+ * 一个不认识的字符串会让查询分派悄悄走到「按配置猜」那条路上。
+ */
+function normalizeVideoBackend(raw: unknown): VideoBackend | undefined {
+  return raw === "comfy" || raw === "minimax" ? raw : undefined;
+}
+
 function normalizeProject(raw: any): Project {
   const now = Date.now();
   const settings = { ...(raw?.settings ?? {}) };
@@ -546,6 +638,7 @@ function normalizeProject(raw: any): Project {
         ...videos[key],
         ...node,
         approved: node.approved === true,
+        backend: normalizeVideoBackend(node.backend),
         origin: node.origin === "local" ? "local" : undefined,
         originalName: typeof node.originalName === "string" ? node.originalName : undefined
       };
@@ -675,6 +768,7 @@ function normalizeTurn(raw: any, frameCount: number): TurnState {
     video: {
       status: (raw?.video?.status ?? "empty") as NodeStatus,
       taskId: typeof raw?.video?.taskId === "string" ? raw.video.taskId : undefined,
+      backend: normalizeVideoBackend(raw?.video?.backend),
       remoteStatus: typeof raw?.video?.remoteStatus === "string" ? raw.video.remoteStatus : undefined,
       file: typeof raw?.video?.file === "string" ? raw.video.file : undefined,
       approved: raw?.video?.approved === true,

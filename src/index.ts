@@ -31,6 +31,15 @@ import { checkFfmpeg } from "./media.js";
 import { testArk } from "./ark.js";
 import { customImageBlocker, imageModelOf, imageProviderBlocker, imageProviderSummary, isCustomProvider, testCustomImage } from "./imageprovider.js";
 import {
+  detectComfyBindings,
+  fetchComfyObjectInfo,
+  formatBinding,
+  normalizeComfyBaseUrl,
+  normalizeComfyCookies,
+  parseComfyWorkflow,
+  testComfy
+} from "./comfy.js";
+import {
   COMP_SHARE_BASE_URL,
   COMP_SHARE_MODEL_ID,
   capabilityOf,
@@ -41,6 +50,7 @@ import {
   testMiniMax
 } from "./minimax.js";
 import {
+  activatePipeline,
   applyTurnPicks,
   clearVideos,
   disposePipeline,
@@ -66,7 +76,7 @@ import {
   startTurnVideo,
   startVideos
 } from "./pipeline.js";
-import { assetPath, createProject, deleteProject, listProjects, log, patchProject, projectDir, projectExists, readProject, } from "./store.js";
+import { assetPath, createProject, deleteProject, listProjects, log, patchProject, projectDir, projectExists, readProject, resetDerivedFromSource, } from "./store.js";
 import * as imagegen from "./imagegen.js";
 import * as seqgen from "./seqgen.js";
 import * as riggen from "./riggen.js";
@@ -359,6 +369,17 @@ export class GameStudioGateway extends TypertRemoteService {
       "minimaxResolution",
       "minimaxPromptOptimizer",
       "minimaxTimeoutMs",
+      // 本地 ComfyUI 后端（videogen.ts 按 comfyVideo 分派）。
+      "comfyVideo",
+      "comfyBaseUrl",
+      "comfyWorkflow",
+      "comfyPromptTarget",
+      "comfyFirstFrameTarget",
+      "comfyWidth",
+      "comfyHeight",
+      "comfySeconds",
+      "comfySeed",
+      "comfyTimeoutMs",
       "cellWidth",
       "cellHeight",
       "frameCount",
@@ -396,6 +417,12 @@ export class GameStudioGateway extends TypertRemoteService {
       patch.minimaxApiKey = "";
     if (input.clearCustomApiKey === true)
       patch.customApiKey = "";
+    // ComfyUI 的 Cookie 也是凭据，与 API Key 同一套约定：不带 = 保持原值，带串 = 覆盖，
+    // clearComfyCookies = 清空。它**不进** directKeys——那里是原样透传，Cookie 要先归一化。
+    if (typeof input.comfyCookies === "string")
+      patch.comfyCookies = normalizeComfyCookies(input.comfyCookies);
+    if (input.clearComfyCookies === true)
+      patch.comfyCookies = "";
     const saved = await saveConfig(patch);
     this.ffmpegCache = undefined;
     return this.decorateConfig(saved);
@@ -423,6 +450,72 @@ export class GameStudioGateway extends TypertRemoteService {
       model: config.minimaxModel,
       timeoutMs: config.minimaxTimeoutMs
     });
+  }
+  /**
+   * 【本地 ComfyUI】连接自检：读 `/system_stats` 与 `/queue`，不排队生图，不产生费用。
+   *
+   * 顺带报一次「工作流里探测到的注入点」——设置页只填 URL 和工作流，绑定对不对
+   * 全靠这一步看得见；后面生成时用的就是同一套探测。
+   */
+  async testComfy() {
+    const config = await loadConfig();
+    const status = await testComfy({
+      baseUrl: config.comfyBaseUrl,
+      timeoutMs: config.comfyTimeoutMs,
+      cookies: config.comfyCookies
+    });
+    let nodes = 0;
+    let bindings: Record<string, string> | undefined;
+    let notes: string[] = [];
+    const parsed = parseComfyWorkflow(config.comfyWorkflow);
+    if (parsed.ok === true) {
+      nodes = parsed.nodes;
+      // 连节点定义一起查：这样预览里能看到「工作流里没连、但接得下 IMAGE」的首帧注入点，
+      // 与真正提交时的探测口径完全一致。
+      const info = await fetchComfyObjectInfo(
+        { baseUrl: config.comfyBaseUrl, timeoutMs: config.comfyTimeoutMs, cookies: config.comfyCookies },
+        Object.keys(parsed.workflow).map((id) => parsed.workflow[id]?.class_type ?? "")
+      ).catch(() => undefined);
+      const detected = detectComfyBindings(
+        parsed.workflow,
+        {
+          prompt: config.comfyPromptTarget,
+          first: config.comfyFirstFrameTarget
+        },
+        info
+      );
+      bindings = {
+        prompt: formatBinding(detected.bindings.prompt),
+        first: formatBinding(detected.bindings.first),
+        last: formatBinding(detected.bindings.last),
+        width: formatBinding(detected.bindings.width),
+        height: formatBinding(detected.bindings.height),
+        seconds: formatBinding(detected.bindings.seconds),
+        seed: formatBinding(detected.bindings.seed)
+      };
+      notes = detected.notes;
+      // 界面格式（官方示例工作流就是这种）会在解析时自动转成 API 格式，这一步说出来，
+      // 免得用户以为自己粘错了。
+      if (parsed.converted === true) {
+        notes = [`检测到 ComfyUI 界面格式的工作流，已自动转成 API 格式（${parsed.nodes} 个节点）。`, ...notes];
+        if ((parsed.droppedWidgets ?? 0) > 0)
+          notes.push(
+            `有 ${parsed.droppedWidgets} 个控件值没能对应到输入名（这份工作流导出的版本比较老）。建议在 ComfyUI 里用「工作流 → 导出(API) / Save (API Format)」重新导出。`
+          );
+      }
+    } else {
+      notes = [`工作流无法解析：${parsed.error}`];
+    }
+    return {
+      baseUrl: normalizeComfyBaseUrl(config.comfyBaseUrl),
+      version: status.version,
+      device: status.device ?? "",
+      queueRunning: status.queueRunning,
+      queuePending: status.queuePending,
+      nodes,
+      bindings,
+      notes
+    };
   }
   /**
    * 浏览器半区上报自己的 `location.origin`。
@@ -505,7 +598,11 @@ export class GameStudioGateway extends TypertRemoteService {
       project.source = { file: relative, name: originalName };
       log(project, "info", `已上传源图：${originalName}（${(bytes.length / 1024).toFixed(0)} KB）`);
     });
-    return { ok: true, file: relative, name: originalName };
+    // 换了源图 = 阶段①重来：八个方向图 / 转圈视频 / 候选帧 / 阶段②③④的产物
+    // 都是上一张图跑出来的。不清掉的话 turnFirstFrame() 会继续拿旧的方向图当首帧，
+    // 新源图根本进不了模型——表现就是「换了源图，生成结果一点没变」。
+    const discarded = await resetDerivedFromSource(projectId);
+    return { ok: true, file: relative, name: originalName, discarded };
   }
   /**
    * 选用一段**本地视频**（用户自己选的，不走远程生成）。
@@ -1286,7 +1383,7 @@ export class GameStudioGateway extends TypertRemoteService {
   }
   async prepareFramePick(payload) {
     const input = asRecord(payload);
-    const count = input.count === undefined || input.count === null ? undefined : clampInt(input.count, 32, 8, 64);
+    const count = input.count === undefined || input.count === null ? undefined : clampInt(input.count, 32, TURN_FRAME_COUNT_MIN, TURN_FRAME_COUNT_MAX);
     return startFramePick(asString(input.projectId), asString(input.key), count);
   }
   async setFramePick(payload) {
@@ -2415,6 +2512,12 @@ async function handleAsset(req, res): Promise<void> {
 
 // ── cordis 插件体 ────────────────────────────────────────────────────────
 export function apply(ctx) {
+  // 插件被重载时，模块缓存会把上一次的 disposed 标记原样留下来，于是所有生成类调用都
+  // 静默变成「任务已在进行中」——每次 apply 都要把三个后台任务表复位。
+  activatePipeline();
+  seqgen.activateSequence();
+  riggen.activateRig();
+
   // 旧版本的数据目录叫 8dir-sprites，插件改名后搬一次，已有项目无缝接上。
   void migrateLegacyDataRoot()
     .then((moved) => {

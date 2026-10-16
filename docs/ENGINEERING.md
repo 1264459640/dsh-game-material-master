@@ -158,8 +158,16 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 > `node scripts/verify-live-bundle.mjs` 可以确认运行中的宿主到底在提供哪一版浏览器束。
 
 - 需要宿主提供 `webServer` 与 `typert`，二者由 `@deepseek-ai/dsh-base` / `dsh-web-app` 提供，无需额外依赖。
-- 需要 **ffmpeg / ffprobe** 在 `PATH` 上（macOS：`brew install ffmpeg`），
-  也可用 `FFMPEG_PATH` / `FFPROBE_PATH` 指定绝对路径。设置页会显示探测结果。
+- 需要 **ffmpeg / ffprobe** 能找到。`src/media.ts` 的 `ffmpegPath()` / `ffprobePath()` 按
+  `FFMPEG_PATH` / `FFPROBE_PATH` 环境变量 → **Windows 注册表**里的同名变量
+  （`HKCU\\Environment`、`HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment`）→
+  WinGet Links / Scoop shims / Chocolatey bin / `%ProgramFiles%\\ffmpeg\\bin` / `C:\\ffmpeg\\bin` /
+  `D:\\ffmpeg\\bin` → 裸名字（交给 `PATH`）的顺序找：命中即缓存，没命中 10 秒后重试
+  （用户可以现装 ffmpeg 再点重试，不用重启插件）。
+  **为什么非要读注册表**：`setx` 只写注册表，**不会**改已经在跑的进程的环境——进程的环境块是
+  启动时从父进程复制的快照，而父进程通常是登录时就起的 explorer。实测就是这样：`setx` 了
+  `FFMPEG_PATH`、也重启了 DSH，插件里 `process.env.FFMPEG_PATH` 仍然是空的。
+  设置页会显示探测结果。
 - 本包**没有任何运行时 npm 依赖**：`zod`、`@deepseek-ai/dsh-typert-protocol`、`@deepseek-ai/cordis`
   都从 DSH 自身的安装树解析，避免出现两份不同版本的实例。
 
@@ -178,6 +186,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 | 视频模型 | 默认 `MiniMax-H3`。选 H3/H3-Max 自动走 v2 协议，选 Hailuo/I2V 走 v1；**优云智算版 H3** 在同一个下拉里显式选择 |
 | Base URL | **主机根**，不含 `/v1`、`/v2`。国内站 `https://api.minimax.cn`，国际站 `https://api.minimaxi.com`。选中「优云智算版 H3」时该字段固定为 `https://cp.compshare.cn`、不可编辑 |
 | 默认参数 | 单格宽高、抽帧张数与工作尺寸、像素块边长、抠像阈值等 |
+| 本地 ComfyUI（图生视频） | 勾选后图生视频改走本机 ComfyUI（替代 MiniMax）：地址、超时、提示词 / 首帧注入点、宽高 / 时长 / 种子、API 格式工作流 JSON。「测试连接」只读 `/system_stats` 与 `/queue`，**免费**（对比火山方舟那个会真生一张图）；另有 `comfyCookies`，供藏在鉴权反代后面的 ComfyUI 用 |
 | 功能管理 | 逐个开关六个模块；关掉的模块界面不出现，对话工具面也拒绝（见下） |
 
 Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，回传界面时始终脱敏（只给尾号）。
@@ -209,6 +218,90 @@ Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，回传界面
 
 切换模型时非法值会被自动收敛（例如从 Hailuo 换到 H3 时 `1080P` → `2K`）。
 **参考图 / 参考视频模式是 v2 才有的能力**，选 v1 模型时会明确报错而不是静默失败。
+
+### 本地 ComfyUI 后端（可选，替代 MiniMax）
+
+设置页打开「本地 ComfyUI（图生视频）」后，**只有「图生视频」这一步**改由本机 ComfyUI 跑。
+`src/videogen.ts` 是分派层（提交 / 查询 / 下载三件事），`src/comfy.ts` 是客户端
+（零依赖，只用 `node:http`）。生图、抠像、抽帧、合成不受影响，与 MiniMax 共用同一套下游。
+
+| 环节 | 做法 |
+|---|---|
+| 提交 | 首尾帧图 `POST /upload/image`（multipart，`type=input`）→ 注入提示词 / 宽高 / 时长 / 种子 → `POST /prompt`，拿 `prompt_id` 当 taskId |
+| 查询 | `GET /history/<prompt_id>`；还没进 history 就查 `GET /queue`，按 `queue_running` / `queue_pending` 区分「在跑」与「排队中（前面还有 N 个任务）」 |
+| 取成品 | 从 `outputs` 里按打分挑视频：`metadata.kind === "video"` +5、扩展名 mp4/webm/mkv/mov +4、gif +2、图片 -5、音频 -4，总分 ≤0 丢弃。挑不到即判失败并提示「检查工作流终点节点」 |
+| 下载 | `GET /view?filename=…&subfolder=…&type=…`，超时用 `comfyTimeoutMs` |
+
+**两种工作流格式都收**：API 格式（`Workflow → Export (API)`）直通；**界面格式**（顶层是 `nodes` /
+`links` 数组，官方示例
+[FreeVideo-All-in-One.json](https://github.com/FlashML-org/FreeVideo/blob/main/example_workflows/FreeVideo-All-in-One.json)
+就是这个形状）由 `parseComfyWorkflow` 内部的 `convertUiWorkflow` 先转成 API 格式，返回 `converted: true`，
+设置页会显示「已自动转成 API 格式（N 个节点）」。转换规则：
+
+1. `inputs[]` 里带 `link` 的按连线表写成 `[来源节点 id, 槽位]`——**旧版数组形式的 links 与新版对象
+   形式的 `{ id, origin_id, origin_slot }` 都要认**；
+2. 带 `widget` 字段的输入按出现顺序从 `widgets_values` 取值，值**后面**那个 `fixed` / `increment` /
+   `decrement` / `randomize` 是 `control_after_generate`，必须跳过去（不跳就会把 `randomize` 当成
+   种子写进工作流）；
+3. `Note` / `MarkdownNote` 便签与 `mode` 为 2（静音）/ 4（旁路）的节点直接丢掉；
+4. 剩下没能对应到输入名的 `widgets_values` 计数返回 `droppedWidgets`，设置页据此提示改用 Save
+   (API Format)——**老版 ComfyUI 导出的界面格式里 widget 不在 `inputs[]` 里**，名字只能靠顺序猜，
+   猜不中就是丢控件值，宁可说出来也不静默跑。
+
+注意 `first` / `last` 这类**没连线的 IMAGE 槽不会进转换结果**（界面格式里它们是 `link: null` 且没有
+`widget`），正好留给下面第 4 级「按节点定义补一个 LoadImage」接手——官方 All-in-One 的首帧就是靠这条
+路径接上的（它的 LoadImage 不存在，全靠 `object_info` 里 `FreeVideoGenerate.optional.first`）。
+
+**注入点是探测出来的，不是写死的**（`detectComfyBindings`，候选键名都是常量表）。四级顺序：
+
+1. 设置页里的显式覆盖 `节点ID.输入名`（填了但无效——节点不存在 / 输入名不存在 / 那个输入是连线——
+   只记一条 note 并退回自动探测，所以设置页可以拿它做预览而不怕报错）；
+2. 工作流里**已有的字面量输入**，按候选键名匹配（提示词 `text` / `prompt` / `positive` /
+   `positive_prompt` / `caption`；秒数 `seconds` / `duration` / `video_length` / `length`；种子
+   `seed` / `noise_seed` / `rand_seed`），多个候选取节点 id 小的并记 note；
+3. 首帧 / 尾帧：优先用工作流里**已经接好线的 `LoadImage`**（直接替换它的 `image` 文件名），
+   其次是已有的 `first` / `last` 类字面量输入；
+4. 都没有时读一次 `GET /object_info/<class_type>`：**optional 的 IMAGE 输入在工作流 JSON 里根本
+   看不见**（`FreeVideoMedia.first` 只在节点定义里存在），只有它能回答「这个节点接得下 IMAGE、
+   键名叫 first」。命中就在提交时插入一个 `LoadImage`（新节点 id = 现有最大数字 id + 1）连过去。
+
+⚠️ `object_info` 的结构是 `{ input: { required, optional }, output, name }` —— **`input` 包了一层**，
+漏了这层就永远探测不到 IMAGE 输入（最初的实现就是这么错的）。
+
+命中首帧后，注入器还会把工作流里所有 `first_frame_reference === false` 改成 `true`：
+FreeVideo 的 Generate 节点靠这个开关决定「要不要真的用首帧图」，不改就是「图传上去了但没生效」。
+
+**一个 `LoadImage` 只代表一张图**：首帧用第一个、尾帧用第二个。只有一个 `LoadImage` 却真的注入了
+尾帧时，尾帧会**静默**顶掉首帧的图——所以提交前会检查「尾帧图上传了但没人接收」并直接报错，
+而不是丢掉（`verify-comfy.mjs` 里有这条，两个 `LoadImage` 的夹具也是为它准备的）。
+
+**判断后端必须按节点上记的 `backend`，不能按当前配置。** MiniMax 的 `task_id` 与 ComfyUI 的
+`prompt_id` 都是字符串，用户完全可能在任务跑到一半时改设置；按配置去查就会拿 MiniMax 的接口去查
+一个 ComfyUI 的 id（表现：一边报「任务不存在」、另一边永远 pending）。序列帧任务同理。
+
+**ComfyUI 后端不支持多模态参考模式**（参考图 / 参考视频）——那是 MiniMax v2 的能力，
+`submitViaComfy` 会明确报错，请改用首尾帧模式。ComfyUI 后端还必须有首帧图。
+
+设置页的「测试连接」只读 `/system_stats`（版本、显卡）与 `/queue`（队列长度），再解析一遍工作流
+跑一次探测，把「探测到的注入点」显示出来：**不排队、不生成、不产生费用**。
+
+**Cookie：藏在鉴权反代后面的 ComfyUI**（`comfyCookies`）。ComfyUI 自己不做鉴权，但把 8188 挂在
+Cloudflare Access / Basic Auth 后面时，不带 `Cookie` 连 `/system_stats` 都读不到。`comfyFetch` 是
+comfy.ts 里**唯一**的 HTTP 出口（`/system_stats`、`/object_info`、`/upload/image`、`/prompt`、
+`/history`、`/queue` 全走它），头在那里统一挂上；**取回成品视频**那次 `GET /view` 走的是
+`downloadVideoTask`（不在 comfy.ts 里），Cookie 由 `videogen.ts` 单独传给 `downloadVideo` 的第三个
+参数——漏掉它就会「任务跑完但视频下不下来」。
+
+`normalizeComfyCookies` 负责把用户粘贴的东西收成一行：用户多半直接从开发者工具里复制，那里带
+`Cookie: ` 前缀，整段「Copy request headers」还夹着 Accept 之类的别的头，长 cookie 也可能折成几行。
+规则是「只认 `Cookie:` 那一行，加上它后面不以 `名字:` 开头的续行」，再剥前缀、去掉每段自己的尾分号，
+拼成 `a=1; b=2`（每段先各自去尾分号再拼，否则 `a=1;` + `b=2` 会拼出 `a=1;; b=2` —— `verify-comfy.mjs`
+盯这条）。
+
+它和 API Key **同一档待遇**：落盘明文、但**从不回传浏览器**，配置视图里只有 `comfyCookiesSet` /
+`comfyCookiesHint`（尾 4 位）；保存约定也一致 —— 不带该键 = 保持原值、带字符串 = 覆盖、
+`clearComfyCookies: true` = 清空。它也是 `saveConfig` 里 `directKeys` 的**唯一例外**：白名单里的键是
+原样透传，而 Cookie 必须先归一化，所以在函数体里单独处理。
 
 ### 功能管理：隐藏的模块必须对 AI 也关上
 
@@ -372,7 +465,7 @@ dsh --profile gmmweb --port 19388     # 打印 http://127.0.0.1:19388/?token=…
 和「换个转圈方向重排」（`resetTurnPicks({projectId,direction})`）。拖动只重切那一张，
 但会**作废该方向的行走视频与序列帧**（它们拍的是另一个朝向），整图同样作废。
 
-改候选帧数（`saveSettings({turnFrameCount})`，8~64）会**自动重抽**，并把用户拖过的位置
+改候选帧数（`saveSettings({turnFrameCount})`，8~512）会**自动重抽**，并把用户拖过的位置
 按比例换算（32 帧里的第 12 帧 → 8 帧里的第 6 帧）；直接保留下标会把八个位置整体打乱。
 另外，八个位置在**第一次**抽帧时按这次的张数重新等分——否则「新建项目默认 32、第一次
 却抽 16 张」时，四个方向会一起被夹到最后一帧。
@@ -439,7 +532,7 @@ dsh --profile gmmweb --port 19388     # 打印 http://127.0.0.1:19388/?token=…
 这样八个方向才能共享同一个裁剪框、脚底对齐同一条基线。
 
 「提取全部序列帧」对每一段就绪视频用**同一套**帧数等分。每个方向卡片上的「手动选帧」
-只处理那一段视频：先匀抽出一串候选帧（默认 32，8~64），再在条带上拖圆圈决定每一张输出帧
+只处理那一段视频：先匀抽出一串候选帧（默认 32，8~512），再在条带上拖圆圈决定每一张输出帧
 落在哪一时刻。圆圈个数跟项目的「每段视频抽帧数」走，所以整图仍然是整齐的格子；拖动只读
 本机缓存，不重新解码视频。再点「抽取 / 提取全部」会回到等分，并清掉这个方向的手动选帧。
 
@@ -2021,6 +2114,20 @@ curl http://127.0.0.1:43121/dsh-game-material-master/_health
 `mtimeMs` 是 `lib/index.js` **被 import 时**捕获的。重新 build 之后如果不手动刷新页面，
 它就该跟着变；没变说明代码没生效，而不是功能坏了。
 
+**每次 apply 都必须复位后台任务表。** 插件被重载（`patchReload: live`、plugin-manager 的
+`pnpm importPackage` 重装等）时，`ctx.effect` 的清理会跑 `disposePipeline()` /
+`disposeSequence()` / `disposeRig()`，把模块级的 `disposed` 置为 true；而 Node 的模块缓存
+留着**同一个模块对象**，于是重载之后 `disposed` 永远停在 true，`kick()` 一律返回 false。
+症状极具迷惑性：**所有生成类调用**（八方向图 / 转圈视频 / 抽帧 / 视频提交 / 手动选帧 /
+序列帧 / 抠像 / 合成 / 骨骼）都只回一句「任务已在进行中」，按钮点了像没反应、项目里连
+一条日志都不加；而 `uploadSource` / `getProject` / `testComfy` 不走 pipeline，全都正常。
+所以 `src/index.ts` 的 `apply()` 开头必须依次调用 `activatePipeline()`、
+`seqgen.activateSequence()`、`riggen.activateRig()`；`kick()` 失败时也要用
+`kickFailure()` 把「实例已废」与「真的已经在跑」分开，前者要明说请重启 DSH ——
+否则用户会一直等一个根本不存在的任务。（2026-10 实测：`[ERR_PNPM_EPERM] … rename
+'…dsh-game-material-master_tmp_13920_10' -> '…dsh-game-material-master'` 之后，
+界面就变成了这个样子。）
+
 用 Playwright 驱动这个测试宿主时，需要先过 Web 认证（每个 Host RPC 都要求同一个
 浏览器会话）：启动令牌只在进程内存里拿不到，但 cookie 的签名密钥是持久化的，
 可以从本机凭据派生一份合法 cookie：
@@ -2104,7 +2211,8 @@ node scripts/dsh-web-cookie.mjs 127.0.0.1:43121 --json
 | `node scripts/verify-map-client.mjs` | 模块六界面**真渲染 + 黄金对照**（**266 项**）：真加载 `lib/client.js` + **有状态会重渲染的迷你 React**，用**真宿主数据**渲染面板。① 四个 `MAP_*` 坐标函数与宿主真实现逐点比对（环绕与非环绕两组 × 整张地图采样 + 边界点 + 图外点）；② **画布 `drawImage` 调用序列与宿主 `mapPlan` 计划逐项相等**（含 4 象限与动画帧，预览 = 导出），并按 `clearRect` 分帧收集、断言「挂载首帧 == 同一视口的计划」（增量缓存必须按**视口**失效，只按 key 判会让视口变大后新露出来的格子一直空着）；③ 在画布上点一下真的改了地图、撤销回得去、`dropKeys` 真的删掉了缓存；④ 空态、12 个工具格（6 列 × 2 行）、**调色板读宿主 `palette`**（A2 素材只出一个自动连接笔刷）；⑤ **导出卡片**：内容是多选、执行只有一个「导出」、倍率只在勾了 PNG 时出现、提交的 formats 就是勾的那几项、导完由 **busy 轮询**（`setInterval` 有真实现，由测试放出来）刷出新清单、主下载按钮指向 zip 且带 `download`、卡片写出本机绝对路径、「另存为…」先弹框再取字节（`pick>fetch>write>close`）；⑥ **源码与渲染文案两套黑名单**（源码那份只扫模块六切片，并放行唯一的协议字段 `"chunks"` —— 曾经为了骗过它写出过 `"chu" + "nks"`，那种写法比术语本身更坏）；⑦ **「模块⑥已转正」的反向验证**：产物里没有 `MapExperimentalDialog`、`MODULES` 条目没有 `experimental`、面板里没有角标与常驻提示条、`experimentalGateMuted` 里没有 `map` 这一格，同时反过来断言**模块⑤仍然带实验性标记**（别把转正顺手扩大化）；⑧ **工具小标签的层级**：`.SPR_mapEdTip` 的 z-index 必须高于对话框遮罩与看图遮罩（从 CSS 里取数比大小，配「旧值 60 判不过 / 没写 z-index 的选择器取不到数」的反向验证 —— 低了的话「新增素材」里的说明会被整片蒙层盖住，而 jsdom 看不见绘制顺序） |
 | `node scripts/e2e-map.mjs` | 模块六**真实链路端到端**（不联网、不花钱）：内置素材（5 张，含 4 张 A2）→ 再合成导入一张 A2 与一张普通图 → 画满 24×24（自动连接长边）→ 叠一层普通图块 → 断言计划里「一格四条 op」→ 查一次跨边界的视口（环绕时 `visibleKeys` 会出现负数 key）→ 撤销 / 重做 → 一键生成三种地图 → 预览 → 导出，**故意留下产物**并打印绝对路径，方便人眼验收 |
 | `node scripts/verify-custom-image.mjs` | **自定义生图后端**（**68 项**）：起一台本地假服务端把 OpenAI / ComfyUI / SD WebUI 三种协议都模拟出来，全程离线零计费。断言的重点不是「有没有返回字节」而是**请求真的长对了**：端点路径、body 字段名（`cfg_scale` / `denoise` / `init_images`…）、参考图的形态（multipart / 纯 base64 / 上传后的文件名）、`images/edits` 端点不存在时退回 `generations` 的 `image` 字段、ComfyUI 的轮询（第一次故意返回空）、**占位符的 JSON 类型**（`{{width}}` 必须是数字，写成字符串 ComfyUI 会报 type 错；提示词里的引号换行不能破坏工作流 JSON）、没写 `{{image}}` 时自动改 `LoadImage` 节点，以及 `imageProvider` 一个字段切换后所有调用点真的换了端点（Ark 那边一次都没打）。另含配置归一化（脏数据按上下限收敛）与「报错要讲清改哪里」 |
-| `node scripts/verify-host.mjs` | 宿主半区全链路（**367 项**）：六个模块的本地链路、**阶段①的转圈截帧（合成一段「转动」视频跑真实 ffmpeg，覆盖截帧位置、按比例换算、下游作废、切换生成方式）**、**模块五的资源路由（真起一台 server 走 HTTP 取回 `tile-assets` 的模板图，并验证 403 与目录穿越）**、资源路由（含 `turn/` 白名单）、预览页的 `text/html`、目录穿越与 id 前缀校验、**本地自选视频（真实 ffmpeg 造的 MP4 走 `uploadVideo`：容器嗅探 / 槽位校验 / 下游作废 / 转圈导入后自动抽帧 / 摘掉在跑的远端任务号）与中间图片 zip（自检里带一个真解包的 ZIP 读取器：逐条比 CRC 与长度、断言八方向图 / 转圈候选帧 / 绿幕帧 / 抠像帧 / 整图都在包里，并真起一台 server 把 zip 下载回来）** |
+| `node scripts/verify-comfy.mjs` | 本地 ComfyUI 后端（**124 项**，纯本地、不联网、不花钱、**不需要真装 ComfyUI**）：脚本自己用 `node:http` 在随机端口起一个 mock，覆盖地址归一化与注入点解析、`parseComfyWorkflow` 的 **UI 格式自动转换**（官方 All-in-One 形状的夹具：控件值按 `widgets_values` 顺序取、`randomize` 不当种子、连线写成 `[来源节点, 槽位]`、没连的 `first` 留给探测、便签与静音节点丢掉、`droppedWidgets` 计数、新版对象形式的 `links`）、探测的**四级顺序**（显式覆盖回退 / 已有字面量量 / 已有 `LoadImage` / `object_info` 声明的 optional IMAGE）、两个 `LoadImage` 时首尾各用其一、注入的纯函数性与「插入节点只写 `image` 一个键」、`first_frame_reference` 自动打开、无首帧位置报错、以及 HTTP 层（`/system_stats`、`/queue` 排队中、`/history` 执行失败带出 node_type、上传 multipart、`node_errors` / `error` 两条失败路径、从 outputs 挑 mp4 而不挑 png、只有图片时判失败、Cookie 的归一化与「每个请求都真的带上了这个头」） |
+| `node scripts/verify-host.mjs` | 宿主半区全链路（**385 项**）：六个模块的本地链路、**阶段①的转圈截帧（合成一段「转动」视频跑真实 ffmpeg，覆盖截帧位置、按比例换算、下游作废、切换生成方式）**、**换源图后由旧源图派生的产物整体作废（状态清空 + 磁盘文件真的删掉）**、**转圈首帧的时间兜底（正面图比源图旧时改用源图）**、**模块五的资源路由（真起一台 server 走 HTTP 取回 `tile-assets` 的模板图，并验证 403 与目录穿越）**、资源路由（含 `turn/` 白名单）、预览页的 `text/html`、目录穿越与 id 前缀校验、**本地自选视频（真实 ffmpeg 造的 MP4 走 `uploadVideo`：容器嗅探 / 槽位校验 / 下游作废 / 转圈导入后自动抽帧 / 摘掉在跑的远端任务号）与中间图片 zip（自检里带一个真解包的 ZIP 读取器：逐条比 CRC 与长度、断言八方向图 / 转圈候选帧 / 绿幕帧 / 抠像帧 / 整图都在包里，并真起一台 server 把 zip 下载回来）** |
 | `node scripts/verify-tile.mjs` | 模块五几何内核（**147 项**）：模板比例严格 2:1、合成图菱形测量、规整后无缺口/无越界、装饰锚点与遮挡、拼图无洞与同种子逐像素一致、PNG 往返。含**两条反向验证**——把模板几何改回硬编码错误值必须产生透明缺口、把抠底换回硬阈值必须留下近白像素；修复一旦被回退，这两条会红 |
 | `node scripts/verify-tile-pipeline.mjs` | 模块五数据层与流水线（**98 项**）：项目 CRUD（含非法单元格尺寸被拒）、参考图自动准备与几何、指纹复用、用**研究期真实 2K 图**喂规整（不花钱）、拼图与导出的产物、同种子重拼逐像素一致、换种子结果不同、**`map.pixel`**（叠层对齐用的裁剪偏移与交付尺寸）、**失效传播**（作废 generate 要清空变体与地图；只作废 map 时已花钱的地块必须保住）、**手改布局必须被保留**（传 `decorDensity` 等覆盖参数不能把它冲掉）、**全部为空的布局要走 fill 而不是渲染一张空画布**、**相对路径一律正斜杠**（`join()` 在 Windows 上给 `cell\…`，它会被拼进 URL）、提示词构造、快照给界面是相对路径而给对话工具是绝对 URL |
 | `node scripts/verify-tile-gateway.mjs` | 模块五**走真实网关**（**78 项**）：payload 解析、中英默认清单、模板作业、验收回写、`saveTileProject` 的**作废边界**（只改标签产物必须保住；改内容只废那一个；改画风全废）、**增删改地块**（新增计入 progress、改用途/家族/占格/变体数生效、删除后数量正确、提交空清单不能清空项目、`resetItemsToDefault` 中英各一份）、**手动改布局**（写回 cells/rows/cols/seed、不作废地块、带空格能重铺、空 cells 不清空）、拼图/导出、错误路径、`setReviewMode` 支持 tile。纯函数与直接调 tilegen 都测不到这一层——实测它抓出过「验收一个地块就崩」与「任何一次保存都清空全部（花钱生成的）产物」 |
@@ -2121,9 +2229,11 @@ npm run build          # tsc → lib/，并剥掉浏览器束结尾的 export {}
 
 # 纯本地测试（不联网、不花钱）
 node scripts/verify-minimax.mjs    # MiniMax 协议层（85 项，含请求体逐字段断言）
+node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（124 项，自起 mock ComfyUI，纯本地不花钱）
 node scripts/verify-pipeline.mjs   # 抽帧/抠像/合成链路（40 项，含回归用例）
-node scripts/verify-host.mjs       # 宿主冒烟（367 项，真实 cordis + 真实 HTTP；含内置默认提示词的语言切换、hiddenModules 落盘与收敛、生图后端两组配置与阻塞判断、模块五资源路由）
+node scripts/verify-host.mjs       # 宿主冒烟（385 项，真实 cordis + 真实 HTTP；含内置默认提示词的语言切换、hiddenModules 落盘与收敛、生图后端两组配置与阻塞判断、模块五资源路由）
 node scripts/verify-custom-image.mjs # 自定义生图后端三协议（68 项，本地假服务端；离线、零计费）
+node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（124 项，自起 mock ComfyUI，纯本地、不用装 ComfyUI）
 node scripts/verify-client.mjs     # 浏览器半区契约（352 项：阶段 ctx 键必须被转发、每个生成类调用点都带 loading 反馈、转圈时间轴与八圆圈、手动装配的四个坑、拆件质检 / IK 约束组件、功能管理 / 侧栏菜单的文本与样式契约）
 node scripts/verify-feedback.mjs   # 浏览器半区渲染（203 项：真加载 lib/client.js，断言遮罩真的出现 / 空闲时真的不出现 / 转圈模式两种生成方式与八圆圈都在 / **「选择本地视频」入口真的在（label + 隐藏 file input，只收 video/*）与每一处「保存」链接（八方向图 / 条带 / 成片 / 预览带 / 整包出口），且没有产物时不渲染空链接** / 深链接点击真的切面板 / 隐藏模块后页签与菜单真的消失、设置页勾选真的写回宿主 / **生图后端：ark 与自定义两组同屏、协议下拉、ComfyUI 工作流文本框只在选中 ComfyUI 时出现、改工作流不立刻发请求** / 语义校验失败没有误报成功）
 node scripts/verify-tools.mjs      # 对话调用面（153 项：工具 schema、方法覆盖、**客户端清单的 payload 标记与宿主 manifest 逐条一致**、返回值无损 JSON 审计、固定流程（含阶段①生成方式必问）、审核模式、深链接契约、转圈模式的 status/review 渲染、**功能管理（每个方法都归了模块 / 隐藏后一律拒绝 / 可见性不许模型改）**）
@@ -2271,7 +2381,9 @@ running 落在下一次 `getProject` 里**：
 | `src/config.ts` | 全局配置、数据目录迁移 |
 | `src/ark.ts` | 火山方舟生图客户端 |
 | `src/minimax.ts` | MiniMax 视频客户端（v1/v2 双协议、首尾帧与多模态参考、优云智算版 `/minimax` 网关） |
-| `src/media.ts` | ffmpeg / ffprobe 封装 |
+| `src/comfy.ts` | 本地 ComfyUI 客户端（工作流解析、注入点探测、`/prompt` + `/history` + `/queue` + `/upload/image` + `/view`，内置 FreeVideo 模板） |
+| `src/videogen.ts` | 视频后端分派：提交 / 查询 / 下载按**节点上记的** `backend` 走 MiniMax 或 ComfyUI |
+| `src/media.ts` | ffmpeg / ffprobe 封装与路径查找（环境变量 → Windows 注册表 → 常见安装位置 → `PATH`） |
 | `src/chroma.ts` | 背景分割、绿色抠像、裁剪、像素量化、合成 |
 | `src/png.ts` | 极简 PNG 编码器（RGBA8，基于 node:zlib） |
 | `src/jsonio.ts` | 新模块共用的 JSON 原子写与日志 |

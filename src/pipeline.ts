@@ -18,7 +18,7 @@
  * 界面靠自己轮询 getState 看进度——一次 Hailuo 生成要几分钟，绝不能同步阻塞。
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { loadConfig, type Config } from "./config.js";
 import {
@@ -39,8 +39,14 @@ import {
   imageSizeOf,
   imageWatermarkOf
 } from "./imageprovider.js";
-import { downloadVideo, queryVideo, retrieveFile, submitVideo } from "./minimax.js";
 import { extractFrames, mimeOf, sniffVideo, toDataUri, toJpegDataUri } from "./media.js";
+import {
+  assertVideoBackendReady,
+  downloadVideoTask,
+  queryVideoTask,
+  submitVideoTask,
+  videoFailureReason
+} from "./videogen.js";
 import { composeSheet, keyGreen, type SheetRow } from "./chroma.js";
 import { encodePng } from "./png.js";
 import { zipEntries, type ZipEntry } from "./zip.js";
@@ -52,7 +58,8 @@ import {
   readProject,
   referenceFiles,
   type Project,
-  type ProjectSettings
+  type ProjectSettings,
+  type VideoBackend
 } from "./store.js";
 
 /** 生图的依赖分层：同一层内可并发，层与层之间必须按序。 */
@@ -94,21 +101,36 @@ export function disposePipeline(): void {
   jobs.clear();
 }
 
+/**
+ * 复位后台任务表。
+ *
+ * 插件被 DSH 重载时，`ctx.effect` 的清理会跑 `disposePipeline()`；只要 Node 的模块缓存
+ * 还留着这个模块（同一份 lib 被再次 apply），`disposed` 就会一直停在 true——此后每一次
+ * 生成类调用都只得到一句「任务已在进行中」，界面看着像按钮点了没反应，其实一个任务都没建。
+ * 所以**每次 apply 都必须复位**，不能只依赖进程重启。
+ */
+export function activatePipeline(): void {
+  disposed = false;
+  jobs.clear();
+}
+
+/**
+ * `kick` 返回 false 时的理由。
+ *
+ * 必须区分「真的已经在跑」与「实例已废」：后者只说「任务已在进行中」的话，
+ * 用户会一直等一个根本不存在的任务。
+ */
+const PIPELINE_DISPOSED_REASON = "插件实例已被 DSH 重载（旧实例已卸载），请重启 DSH 后再试";
+function kickFailure(detail: string): { started: boolean; reason: string } {
+  return { started: false, reason: disposed ? PIPELINE_DISPOSED_REASON : detail };
+}
+
 export function listJobs(projectId: string): JobInfo[] {
   return [...(jobs.get(projectId)?.values() ?? [])];
 }
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function miniMaxRequest(config: Config) {
-  return {
-    baseUrl: config.minimaxBaseUrl,
-    apiKey: config.minimaxApiKey,
-    model: config.minimaxModel,
-    timeoutMs: config.minimaxTimeoutMs
-  };
 }
 
 /** 把一个后台任务登记进运行表并立刻返回；重复的 taskKey 会被拒绝。 */
@@ -177,7 +199,7 @@ export function startImage(projectId: string, key: string, options: StartImageOp
   if (jobs.get(projectId)?.has(`image:${key}`) === true) return { started: false, reason: "该方向正在生成中" };
 
   const started = kick(projectId, `image:${key}`, `生成「${direction.label}」`, () => generateOne(projectId, key, options.prompt));
-  return started ? { started: true } : { started: false, reason: "任务已在进行中" };
+  return started ? { started: true } : kickFailure("任务已在进行中");
 }
 
 async function generateOne(projectId: string, key: string, promptOverride?: string): Promise<void> {
@@ -296,7 +318,7 @@ export function startAllImages(projectId: string, force = false): { started: boo
       });
     }
   });
-  return started ? { started: true } : { started: false, reason: "批量生成已在进行中" };
+  return started ? { started: true } : kickFailure("批量生成已在进行中");
 }
 
 // ── 阶段 1b：转圈截帧（八方向绿幕图的默认生成方式）──────────────────────
@@ -310,33 +332,67 @@ function clampInt(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+/** 取文件的修改时间；读不到（还没落盘 / 已经被删）时返回 null。 */
+async function fileMtimeMs(absolute: string): Promise<number | null> {
+  try {
+    return (await stat(absolute)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 转圈视频的首帧。
  *
  * 优先用已经有的正面绿幕图，没有就退回源图：源图不一定是绿幕，但提示词里
  * 已经明确要求「纯色绿幕 #00FF00」，模型会照着重画背景。把实际用的那张记进
  * `turn.video.firstFrame`，排查「第一帧就不是正面」时才有据可依。
+ *
+ * ⚠️ 正面绿幕图如果比源图还旧，说明源图是后来换的（换源图会作废派生产物，
+ * 但历史项目、手工替换文件、以及从前留下的旧数据都可能带着这种状态）：
+ * 那一张画的是**上一个角色**，用它当首帧就会「新角色配旧脸」——生成的图
+ * 看着没问题，只有肉眼看内容才发现。所以这里拿文件时间兜一道，宁可退回
+ * 源图（哪怕不是绿幕），也不拿旧角色的脸去生成。
  */
-function turnFirstFrame(project: Project): { file: string; label: string } | undefined {
+async function turnFirstFrame(
+  projectId: string,
+  project: Project
+): Promise<{ file: string; label: string; note?: string } | undefined> {
   const front = project.images["front"]?.file;
-  if (front !== undefined) return { file: front, label: "正面绿幕图" };
-  if (project.source !== null) return { file: project.source.file, label: "源图" };
+  const source = project.source?.file;
+  if (front !== undefined) {
+    if (source !== undefined) {
+      const [frontAt, sourceAt] = await Promise.all([
+        fileMtimeMs(assetPath(projectId, front)),
+        fileMtimeMs(assetPath(projectId, source))
+      ]);
+      if (frontAt !== null && sourceAt !== null && sourceAt > frontAt + 1000) {
+        return {
+          file: source,
+          label: "源图",
+          note: "正面绿幕图比源图旧（源图是后来换的），这次改用源图当首帧——否则会拿上一个角色的脸去生成。"
+        };
+      }
+    }
+    return { file: front, label: "正面绿幕图" };
+  }
+  if (source !== undefined) return { file: source, label: "源图" };
   return undefined;
 }
 
 export function startTurnVideo(projectId: string): { started: boolean; reason?: string } {
   if (jobs.get(projectId)?.has("turn:video") === true) return { started: false, reason: "转圈视频正在生成中" };
   const started = kick(projectId, "turn:video", "生成转圈视频", () => submitTurnVideo(projectId));
-  return started ? { started: true } : { started: false, reason: "任务已在进行中" };
+  return started ? { started: true } : kickFailure("任务已在进行中");
 }
 
 async function submitTurnVideo(projectId: string): Promise<void> {
   const project = await readProject(projectId);
   if (project === undefined) throw new Error(`项目不存在：${projectId}`);
   const config = await loadConfig();
-  if (config.minimaxApiKey.trim() === "") throw new Error("尚未配置 MiniMax API Key");
+  assertVideoBackendReady(config);
 
-  const first = turnFirstFrame(project);
+  const first = await turnFirstFrame(projectId, project);
   if (first === undefined) throw new Error("还没有源图，无法生成转圈视频");
 
   const base = (project.prompts.turn ?? DEFAULT_TURN_PROMPT).trim();
@@ -356,14 +412,14 @@ async function submitTurnVideo(projectId: string): Promise<void> {
     // 而不是直接清空——用户还能对着上一版继续调位置，直到新视频落地。
     if (current.turn.frames.frames.length > 0) current.turn.frames.stale = true;
     log(current, "info", `开始生成转圈视频（首帧：${first.label}）`);
+    if (first.note !== undefined) log(current, "warn", first.note);
   });
 
   const startedAt = Date.now();
   try {
     const jpegRel = "videos/turn-first-frame.jpg";
     const dataUri = await toJpegDataUri(assetPath(projectId, first.file), assetPath(projectId, jpegRel));
-    const taskId = await submitVideo({
-      ...miniMaxRequest(config),
+    const submitted = await submitVideoTask(config, {
       prompt,
       firstFrameImage: dataUri,
       duration: config.minimaxDuration,
@@ -374,12 +430,16 @@ async function submitTurnVideo(projectId: string): Promise<void> {
       current.turn.video = {
         ...current.turn.video,
         status: "running",
-        taskId,
+        taskId: submitted.taskId,
+        backend: submitted.backend,
         remoteStatus: "已提交",
         elapsedMs: Date.now() - startedAt,
         updatedAt: Date.now()
       };
-      log(current, "info", `转圈视频任务已提交（${taskId}）`);
+      log(current, "info", `转圈视频任务已提交（${submitted.taskId}）`);
+      // 自动探测出来的注入点（改了哪个节点的哪个输入）记进日志：
+      // 生成结果不对时，第一件要确认的事就是「提示词和首帧到底注进去了没有」。
+      for (const note of submitted.notes) log(current, "info", note);
     });
     ensurePoller(projectId);
   } catch (error) {
@@ -396,14 +456,16 @@ async function submitTurnVideo(projectId: string): Promise<void> {
 async function pollTurnVideoOnce(projectId: string, config: Config): Promise<void> {
   const project = await readProject(projectId);
   if (project === undefined) return;
-  const taskId = project.turn?.video?.taskId;
-  if (project.turn?.video?.status !== "running" || taskId === undefined) return;
+  const node = project.turn?.video;
+  const taskId = node?.taskId;
+  if (node?.status !== "running" || taskId === undefined) return;
+  // 后端按节点上记的那个值走，不按当前配置：任务可能是改设置之前提交的。
+  const backend: VideoBackend = node.backend ?? "minimax";
 
-  const request = miniMaxRequest(config);
   try {
-    const query = await queryVideo({ ...request, taskId });
+    const query = await queryVideoTask(config, backend, taskId);
     if (query.status === "failed") {
-      const reason = query.error ?? "MiniMax 报告该任务失败";
+      const reason = videoFailureReason(backend, query.error);
       await patchProject(projectId, (current) => {
         current.turn.video = { ...current.turn.video, status: "error", error: reason, remoteStatus: query.remoteStatus, updatedAt: Date.now() };
         log(current, "error", `转圈视频生成失败：${reason}`);
@@ -417,12 +479,10 @@ async function pollTurnVideoOnce(projectId: string, config: Config): Promise<voi
       return;
     }
 
-    const url =
-      query.videoUrl ??
-      (query.fileId !== undefined ? await retrieveFile({ ...request, fileId: query.fileId }) : undefined);
-    if (url === undefined) throw new Error("任务已成功，但响应里既没有视频地址也没有 file_id");
+    const url = query.url;
+    if (url === undefined) throw new Error("任务已成功，但查询结果里没有视频地址");
 
-    const bytes = await downloadVideo(url, config.minimaxTimeoutMs);
+    const bytes = await downloadVideoTask(config, backend, url);
     const relative = "videos/turn.mp4";
     await writeFile(assetPath(projectId, relative), bytes);
     await patchProject(projectId, (current) => {
@@ -457,7 +517,7 @@ export function startTurnFrames(projectId: string, count?: number): { started: b
     setJobTargets(projectId, "turn:frames", DIRECTION_KEYS);
     await extractTurnFrames(projectId, count);
   });
-  return started ? { started: true } : { started: false, reason: "任务已在进行中" };
+  return started ? { started: true } : kickFailure("任务已在进行中");
 }
 
 /**
@@ -937,7 +997,7 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
     const project = await readProject(projectId);
     if (project === undefined) throw new Error(`项目不存在：${projectId}`);
     const config = await loadConfig();
-    if (config.minimaxApiKey.trim() === "") throw new Error("尚未配置 MiniMax API Key");
+    assertVideoBackendReady(config);
 
     const targets = (keys ?? DIRECTION_KEYS).filter((key) => {
       const image = project.images[key];
@@ -976,8 +1036,7 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
         const jpegRel = `videos/${key}-first-frame.jpg`;
         const dataUri = await toJpegDataUri(assetPath(projectId, image.file), assetPath(projectId, jpegRel));
         const prompt = (fresh.prompts.videoPerDirection?.[key] ?? fresh.prompts.video).trim();
-        const taskId = await submitVideo({
-          ...miniMaxRequest(config),
+        const submitted = await submitVideoTask(config, {
           prompt,
           firstFrameImage: dataUri,
           duration: config.minimaxDuration,
@@ -988,11 +1047,13 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
           current.videos[key] = {
             ...current.videos[key],
             status: "running",
-            taskId,
+            taskId: submitted.taskId,
+            backend: submitted.backend,
             remoteStatus: "已提交",
             updatedAt: Date.now()
           };
-          log(current, "info", `「${label}」视频任务已提交（${taskId}）`);
+          log(current, "info", `「${label}」视频任务已提交（${submitted.taskId}）`);
+          for (const note of submitted.notes) log(current, "info", `「${label}」${note}`);
         });
       } catch (error) {
         const message = messageOf(error);
@@ -1009,7 +1070,7 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
 
     ensurePoller(projectId);
   });
-  return started ? { started: true } : { started: false, reason: "视频任务提交已在进行中" };
+  return started ? { started: true } : kickFailure("视频任务提交已在进行中");
 }
 
 export function ensurePoller(projectId: string): void {
@@ -1053,10 +1114,11 @@ export async function pollVideosOnce(projectId: string): Promise<void> {
     pending.map(async (key) => {
       const label = directionOf(key)?.label ?? key;
       const taskId = project.videos[key].taskId as string;
+      const backend: VideoBackend = project.videos[key].backend ?? "minimax";
       try {
-        const query = await queryVideo({ ...miniMaxRequest(config), taskId });
+        const query = await queryVideoTask(config, backend, taskId);
         if (query.status === "failed") {
-          const reason = query.error ?? "MiniMax 报告该任务失败";
+          const reason = videoFailureReason(backend, query.error);
           await patchProject(projectId, (current) => {
             current.videos[key] = { ...current.videos[key], status: "error", error: reason, remoteStatus: query.remoteStatus, updatedAt: Date.now() };
             log(current, "error", `「${label}」视频生成失败：${reason}`);
@@ -1071,12 +1133,10 @@ export async function pollVideosOnce(projectId: string): Promise<void> {
         }
 
         // v2（H3）在查询结果里直接给地址；v1 还要拿 file_id 再换一次。
-        const url =
-          query.videoUrl ??
-          (query.fileId !== undefined ? await retrieveFile({ ...miniMaxRequest(config), fileId: query.fileId }) : undefined);
-        if (url === undefined) throw new Error("任务已成功，但响应里既没有视频地址也没有 file_id");
+        const url = query.url;
+        if (url === undefined) throw new Error("任务已成功，但查询结果里没有视频地址");
 
-        const bytes = await downloadVideo(url, config.minimaxTimeoutMs);
+        const bytes = await downloadVideoTask(config, backend, url);
         const relative = `videos/${key}.mp4`;
         await writeFile(assetPath(projectId, relative), bytes);
         await patchProject(projectId, (current) => {
@@ -1333,7 +1393,7 @@ export async function startFramePick(
       dropJobTarget(projectId, taskKey, key);
     }
   });
-  return started ? { started: true } : { started: false, reason: "这个方向正在手动选帧" };
+  return started ? { started: true } : kickFailure("这个方向正在手动选帧");
 }
 
 /** 改这个方向某一个输出帧落在哪张候选帧上（圆圈松手时调用）。 */
@@ -1506,7 +1566,7 @@ export function startExtract(projectId: string, keys?: string[]): { started: boo
     // 抽完帧立刻按当前参数出一次抠像结果与预览带。
     await renderSheet(projectId);
   });
-  return started ? { started: true } : { started: false, reason: "抽帧任务已在进行中" };
+  return started ? { started: true } : kickFailure("抽帧任务已在进行中");
 }
 
 // ── 阶段 4：抠像 + 合成整图 ──────────────────────────────────────────────
@@ -1516,14 +1576,14 @@ export function startRekey(projectId: string): { started: boolean; reason?: stri
   const started = kick(projectId, "sheet:key", "重新抠像", async () => {
     await renderSheet(projectId, { requireFrames: true });
   });
-  return started ? { started: true } : { started: false, reason: "抠像任务已在进行中" };
+  return started ? { started: true } : kickFailure("抠像任务已在进行中");
 }
 
 export function startCompose(projectId: string): { started: boolean; reason?: string } {
   const started = kick(projectId, "sheet:compose", "合成整图", async () => {
     await renderSheet(projectId, { requireFrames: true });
   });
-  return started ? { started: true } : { started: false, reason: "合成任务已在进行中" };
+  return started ? { started: true } : kickFailure("合成任务已在进行中");
 }
 
 export interface RenderOptions {

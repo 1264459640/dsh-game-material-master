@@ -213,6 +213,7 @@ export const SHARED_TOOL_METHODS: ReadonlySet<string> = new Set([
   "testArk",
   "testCustomImage",
   "testMinimax",
+  "testComfy",
   "setReviewMode"
 ]);
 
@@ -632,9 +633,9 @@ function intentFromCall(method: string, payload: Record<string, any>): OpenInten
 /** `game_material_call` 的描述：把每个远程方法的用途与入参写清楚。 */
 const CALL_DESCRIPTION = [
   "调用「游戏素材大师」插件的任意远程方法——插件界面上的每个功能都能在这里调用。",
-  "配置：getConfig() / saveConfig(payload: 任意配置字段，如 arkApiKey、arkModel、imageProvider(ark|custom)、customProtocol(openai|comfyui|sdwebui)、customBaseUrl、customModel、customWorkflow、minimaxModel、cellWidth…) / testArk() / testCustomImage() / testMinimax()",
+  "配置：getConfig() / saveConfig(payload: 任意配置字段，如 arkApiKey、arkModel、imageProvider(ark|custom)、customProtocol(openai|comfyui|sdwebui)、customBaseUrl、customModel、customWorkflow、minimaxModel、cellWidth…) / testArk() / testCustomImage() / testMinimax() / testComfy()",
   "  ★ 生图后端有两种：`ark`（火山方舟 Seedream，默认）与 `custom`（用户自己的服务，协议可选 openai / comfyui / sdwebui）。",
-  "    换后端只改 imageProvider 一个字段，八方向图 / 图片生成 / 骨骼动画 / 地图地块全都跟着走；图生视频始终只走 MiniMax。",
+  "    换后端只改 imageProvider 一个字段，八方向图 / 图片生成 / 骨骼动画 / 地图地块全都跟着走；图生视频走 MiniMax，也可以改走本机 / 远端 ComfyUI（comfyVideo 开关）。",
   "  ⚠️ 用户可以在「设置 → 游戏素材大师 → 功能管理」里隐藏某些功能模块。被隐藏的模块**工具面一律拒绝**（界面也看不到），",
   "    调用会直接报错并说明去哪里打开；不要试图绕过。hiddenModules 本身只能由用户在设置界面里改，工具面不允许写。",
   "八方向图：listProjects() / createProject({name}) / getProject({projectId}) / deleteProject({projectId}) / renameProject({projectId,name}) /",
