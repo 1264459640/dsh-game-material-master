@@ -1993,6 +1993,20 @@ curl http://127.0.0.1:43121/dsh-game-material-master/_health
 `mtimeMs` 是 `lib/index.js` **被 import 时**捕获的。重新 build 之后如果不手动刷新页面，
 它就该跟着变；没变说明代码没生效，而不是功能坏了。
 
+**每次 apply 都必须复位后台任务表。** 插件被重载（`patchReload: live`、plugin-manager 的
+`pnpm importPackage` 重装等）时，`ctx.effect` 的清理会跑 `disposePipeline()` /
+`disposeSequence()` / `disposeRig()`，把模块级的 `disposed` 置为 true；而 Node 的模块缓存
+留着**同一个模块对象**，于是重载之后 `disposed` 永远停在 true，`kick()` 一律返回 false。
+症状极具迷惑性：**所有生成类调用**（八方向图 / 转圈视频 / 抽帧 / 视频提交 / 手动选帧 /
+序列帧 / 抠像 / 合成 / 骨骼）都只回一句「任务已在进行中」，按钮点了像没反应、项目里连
+一条日志都不加；而 `uploadSource` / `getProject` / `testComfy` 不走 pipeline，全都正常。
+所以 `src/index.ts` 的 `apply()` 开头必须依次调用 `activatePipeline()`、
+`seqgen.activateSequence()`、`riggen.activateRig()`；`kick()` 失败时也要用
+`kickFailure()` 把「实例已废」与「真的已经在跑」分开，前者要明说请重启 DSH ——
+否则用户会一直等一个根本不存在的任务。（2026-10 实测：`[ERR_PNPM_EPERM] … rename
+'…dsh-game-material-master_tmp_13920_10' -> '…dsh-game-material-master'` 之后，
+界面就变成了这个样子。）
+
 用 Playwright 驱动这个测试宿主时，需要先过 Web 认证（每个 Host RPC 都要求同一个
 浏览器会话）：启动令牌只在进程内存里拿不到，但 cookie 的签名密钥是持久化的，
 可以从本机凭据派生一份合法 cookie：

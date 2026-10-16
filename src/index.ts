@@ -48,6 +48,7 @@ import {
   testMiniMax
 } from "./minimax.js";
 import {
+  activatePipeline,
   applyTurnPicks,
   clearVideos,
   disposePipeline,
@@ -2413,6 +2414,12 @@ async function handleAsset(req, res): Promise<void> {
 
 // ── cordis 插件体 ────────────────────────────────────────────────────────
 export function apply(ctx) {
+  // 插件被重载时，模块缓存会把上一次的 disposed 标记原样留下来，于是所有生成类调用都
+  // 静默变成「任务已在进行中」——每次 apply 都要把三个后台任务表复位。
+  activatePipeline();
+  seqgen.activateSequence();
+  riggen.activateRig();
+
   // 旧版本的数据目录叫 8dir-sprites，插件改名后搬一次，已有项目无缝接上。
   void migrateLegacyDataRoot()
     .then((moved) => {

@@ -373,6 +373,12 @@ export function disposeSequence(): void {
   jobsRunning.clear();
 }
 
+/** 复位后台任务表（理由同 pipeline.activatePipeline：重载会让 disposed 永远停在 true）。 */
+export function activateSequence(): void {
+  disposed = false;
+  jobsRunning.clear();
+}
+
 export function listSequenceTasks(jobId: string): string[] {
   return [...(jobsRunning.get(jobId) ?? [])];
 }

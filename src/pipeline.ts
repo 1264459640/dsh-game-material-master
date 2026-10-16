@@ -94,6 +94,30 @@ export function disposePipeline(): void {
   jobs.clear();
 }
 
+/**
+ * 复位后台任务表。
+ *
+ * 插件被 DSH 重载时，`ctx.effect` 的清理会跑 `disposePipeline()`；只要 Node 的模块缓存
+ * 还留着这个模块（同一份 lib 被再次 apply），`disposed` 就会一直停在 true——此后每一次
+ * 生成类调用都只得到一句「任务已在进行中」，界面看着像按钮点了没反应，其实一个任务都没建。
+ * 所以**每次 apply 都必须复位**，不能只依赖进程重启。
+ */
+export function activatePipeline(): void {
+  disposed = false;
+  jobs.clear();
+}
+
+/**
+ * `kick` 返回 false 时的理由。
+ *
+ * 必须区分「真的已经在跑」与「实例已废」：后者只说「任务已在进行中」的话，
+ * 用户会一直等一个根本不存在的任务。
+ */
+const PIPELINE_DISPOSED_REASON = "插件实例已被 DSH 重载（旧实例已卸载），请重启 DSH 后再试";
+function kickFailure(detail: string): { started: boolean; reason: string } {
+  return { started: false, reason: disposed ? PIPELINE_DISPOSED_REASON : detail };
+}
+
 export function listJobs(projectId: string): JobInfo[] {
   return [...(jobs.get(projectId)?.values() ?? [])];
 }
@@ -177,7 +201,7 @@ export function startImage(projectId: string, key: string, options: StartImageOp
   if (jobs.get(projectId)?.has(`image:${key}`) === true) return { started: false, reason: "该方向正在生成中" };
 
   const started = kick(projectId, `image:${key}`, `生成「${direction.label}」`, () => generateOne(projectId, key, options.prompt));
-  return started ? { started: true } : { started: false, reason: "任务已在进行中" };
+  return started ? { started: true } : kickFailure("任务已在进行中");
 }
 
 async function generateOne(projectId: string, key: string, promptOverride?: string): Promise<void> {
@@ -295,7 +319,7 @@ export function startAllImages(projectId: string, force = false): { started: boo
       });
     }
   });
-  return started ? { started: true } : { started: false, reason: "批量生成已在进行中" };
+  return started ? { started: true } : kickFailure("批量生成已在进行中");
 }
 
 // ── 阶段 1b：转圈截帧（八方向绿幕图的默认生成方式）──────────────────────
@@ -326,7 +350,7 @@ function turnFirstFrame(project: Project): { file: string; label: string } | und
 export function startTurnVideo(projectId: string): { started: boolean; reason?: string } {
   if (jobs.get(projectId)?.has("turn:video") === true) return { started: false, reason: "转圈视频正在生成中" };
   const started = kick(projectId, "turn:video", "生成转圈视频", () => submitTurnVideo(projectId));
-  return started ? { started: true } : { started: false, reason: "任务已在进行中" };
+  return started ? { started: true } : kickFailure("任务已在进行中");
 }
 
 async function submitTurnVideo(projectId: string): Promise<void> {
@@ -459,7 +483,7 @@ export function startTurnFrames(projectId: string, count?: number): { started: b
     setJobTargets(projectId, "turn:frames", DIRECTION_KEYS);
     await extractTurnFrames(projectId, count);
   });
-  return started ? { started: true } : { started: false, reason: "任务已在进行中" };
+  return started ? { started: true } : kickFailure("任务已在进行中");
 }
 
 /**
@@ -788,7 +812,7 @@ export function startVideos(projectId: string, keys?: string[]): { started: bool
 
     ensurePoller(projectId);
   });
-  return started ? { started: true } : { started: false, reason: "视频任务提交已在进行中" };
+  return started ? { started: true } : kickFailure("视频任务提交已在进行中");
 }
 
 export function ensurePoller(projectId: string): void {
@@ -1111,7 +1135,7 @@ export async function startFramePick(
       dropJobTarget(projectId, taskKey, key);
     }
   });
-  return started ? { started: true } : { started: false, reason: "这个方向正在手动选帧" };
+  return started ? { started: true } : kickFailure("这个方向正在手动选帧");
 }
 
 /** 改这个方向某一个输出帧落在哪张候选帧上（圆圈松手时调用）。 */
@@ -1284,7 +1308,7 @@ export function startExtract(projectId: string, keys?: string[]): { started: boo
     // 抽完帧立刻按当前参数出一次抠像结果与预览带。
     await renderSheet(projectId);
   });
-  return started ? { started: true } : { started: false, reason: "抽帧任务已在进行中" };
+  return started ? { started: true } : kickFailure("抽帧任务已在进行中");
 }
 
 // ── 阶段 4：抠像 + 合成整图 ──────────────────────────────────────────────
@@ -1294,14 +1318,14 @@ export function startRekey(projectId: string): { started: boolean; reason?: stri
   const started = kick(projectId, "sheet:key", "重新抠像", async () => {
     await renderSheet(projectId, { requireFrames: true });
   });
-  return started ? { started: true } : { started: false, reason: "抠像任务已在进行中" };
+  return started ? { started: true } : kickFailure("抠像任务已在进行中");
 }
 
 export function startCompose(projectId: string): { started: boolean; reason?: string } {
   const started = kick(projectId, "sheet:compose", "合成整图", async () => {
     await renderSheet(projectId, { requireFrames: true });
   });
-  return started ? { started: true } : { started: false, reason: "合成任务已在进行中" };
+  return started ? { started: true } : kickFailure("合成任务已在进行中");
 }
 
 export interface RenderOptions {
