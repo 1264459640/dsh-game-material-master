@@ -1559,6 +1559,95 @@ async function main() {
     check("骨骼动画任务已删除", !rigJobsAfter.jobs.some((item) => item.id === rigId));
   }
 
+  // ── 13b. 换源图：由旧源图派生的产物必须整体作废 ────────────────────────
+  //
+  // ⚠️ 这一节钉的是**静默**那一种坏法：换源图只改 project.source 的话，转圈首帧仍然优先
+  // 用旧的 images/front.png（turnFirstFrame：正面绿幕图 > 源图），于是「新角色配旧脸」——
+  // 不报错、日志也看不出来，只有肉眼看图才发现。
+  console.log("13b) 换源图作废派生产物");
+  {
+    const { patchProject: patch, projectDir } = await import("../lib/store.js");
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    const fresh = await studio.createProject({ name: "换源图" });
+    const freshId = fresh.projectId;
+    const freshRoot = projectDir(freshId);
+    await studio.uploadSource({ projectId: freshId, name: "old.png", data: png.toString("base64") });
+
+    // 伪造一套「已经生成过」的派生状态，并把产物真的写到盘上——不写文件就测不出「删没删盘」。
+    const derived = [
+      "images/front.png", "videos/turn.mp4", "turn/f00.png", "turn/strip.png",
+      "videos/front.mp4", "frames/front/f00.png", "out/sheet.png"
+    ];
+    for (const relative of derived) {
+      await mkdir(dirname(join(freshRoot, relative)), { recursive: true });
+      await writeFile(join(freshRoot, relative), png);
+    }
+    await patch(freshId, (project) => {
+      project.images.front = { status: "ready", file: "images/front.png", approved: true };
+      project.turn.video = { status: "ready", file: "videos/turn.mp4", approved: false, firstFrame: "images/front.png" };
+      project.turn.frames = {
+        status: "ready", frames: ["turn/f00.png"], times: [0], picks: { front: 0 },
+        strip: "turn/strip.png", rawFrameCount: 1, approved: true
+      };
+      project.videos.front = { status: "ready", file: "videos/front.mp4", approved: true };
+      project.frames.front = { status: "ready", frames: ["frames/front/f00.png"], keyed: [], approved: true };
+      project.sheet = { status: "ready", file: "out/sheet.png", approved: true };
+    });
+
+    const swapped = await studio.uploadSource({ projectId: freshId, name: "new.png", data: png.toString("base64") });
+    check("换源图返回作废个数", swapped.discarded >= 7, String(swapped.discarded));
+    check("源图确实换成了新的", swapped.file === "source/new.png", String(swapped.file));
+
+    const wiped = await studio.getProject({ projectId: freshId });
+    check(
+      "方向图 / 转圈视频 / 候选帧 / 序列帧 / 整图全部作废",
+      wiped.images.front.status === "empty" &&
+        wiped.turn.video.status === "empty" &&
+        wiped.turn.frames.status === "empty" &&
+        wiped.turn.frames.frames.length === 0 &&
+        wiped.videos.front.status === "empty" &&
+        wiped.frames.front.status === "empty" &&
+        wiped.sheet.status === "empty",
+      JSON.stringify({
+        images: wiped.images.front.status, turn: wiped.turn.video.status, candidates: wiped.turn.frames.status,
+        video: wiped.videos.front.status, frames: wiped.frames.front.status, sheet: wiped.sheet.status
+      })
+    );
+    check(
+      "八个截帧位置按当前候选帧数重新等分（旧位置指的是旧视频的帧号）",
+      wiped.turn.frames.picks.front === 0 && Object.keys(wiped.turn.frames.picks).length === 8,
+      JSON.stringify(wiped.turn.frames.picks)
+    );
+    check(
+      "换源图会在日志里说明作废了什么",
+      wiped.log.some((entry) => entry.level === "warn" && /换了源图：已作废/.test(entry.message))
+    );
+    for (const relative of derived) {
+      let gone = false;
+      try {
+        await readFile(join(freshRoot, relative));
+      } catch {
+        gone = true;
+      }
+      check(`旧产物已从磁盘删掉：${relative}`, gone);
+    }
+
+    // 第一次上传（还没有派生产物）不该报作废，也不该刷告警日志。
+    const beforePlain = (await studio.getProject({ projectId: freshId })).log.length;
+    const plain = await studio.uploadSource({ projectId: freshId, name: "third.png", data: png.toString("base64") });
+    const plainState = await studio.getProject({ projectId: freshId });
+    check("没有派生产物时作废数为 0", plain.discarded === 0, String(plain.discarded));
+    check(
+      "没有派生产物时不写告警日志（只看这次上传新增的那几条）",
+      !plainState.log.slice(beforePlain).some((entry) => /换了源图：已作废/.test(entry.message))
+    );
+
+    const renamed = await studio.uploadSource({ projectId: freshId, name: "fourth.png", data: png.toString("base64") });
+    check("再换一次仍然按新文件名落盘", renamed.file === "source/fourth.png", String(renamed.file));
+    await studio.deleteProject({ projectId: freshId });
+  }
+
   // ── 14. 地图地块的资源路由 ─────────────────────────────────────────────
   //
   // ⚠️ 这一节钉的是一个**静默坏掉**的点：路由里的 scope 白名单有**两处**——

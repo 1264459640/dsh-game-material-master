@@ -73,7 +73,7 @@ import {
   startTurnVideo,
   startVideos
 } from "./pipeline.js";
-import { assetPath, createProject, deleteProject, listProjects, log, patchProject, projectDir, projectExists, readProject, } from "./store.js";
+import { assetPath, createProject, deleteProject, listProjects, log, patchProject, projectDir, projectExists, readProject, resetDerivedFromSource, } from "./store.js";
 import * as imagegen from "./imagegen.js";
 import * as seqgen from "./seqgen.js";
 import * as riggen from "./riggen.js";
@@ -449,6 +449,15 @@ export class GameStudioGateway extends TypertRemoteService {
         seed: formatBinding(detected.bindings.seed)
       };
       notes = detected.notes;
+      // 界面格式（官方示例工作流就是这种）会在解析时自动转成 API 格式，这一步说出来，
+      // 免得用户以为自己粘错了。
+      if (parsed.converted === true) {
+        notes = [`检测到 ComfyUI 界面格式的工作流，已自动转成 API 格式（${parsed.nodes} 个节点）。`, ...notes];
+        if ((parsed.droppedWidgets ?? 0) > 0)
+          notes.push(
+            `有 ${parsed.droppedWidgets} 个控件值没能对应到输入名（这份工作流导出的版本比较老）。建议在 ComfyUI 里用「工作流 → 导出(API) / Save (API Format)」重新导出。`
+          );
+      }
     } else {
       notes = [`工作流无法解析：${parsed.error}`];
     }
@@ -544,7 +553,11 @@ export class GameStudioGateway extends TypertRemoteService {
       project.source = { file: relative, name: originalName };
       log(project, "info", `已上传源图：${originalName}（${(bytes.length / 1024).toFixed(0)} KB）`);
     });
-    return { ok: true, file: relative, name: originalName };
+    // 换了源图 = 阶段①重来：八个方向图 / 转圈视频 / 候选帧 / 阶段②③④的产物
+    // 都是上一张图跑出来的。不清掉的话 turnFirstFrame() 会继续拿旧的方向图当首帧，
+    // 新源图根本进不了模型——表现就是「换了源图，生成结果一点没变」。
+    const discarded = await resetDerivedFromSource(projectId);
+    return { ok: true, file: relative, name: originalName, discarded };
   }
   async savePrompts(payload) {
     const input = asRecord(payload);

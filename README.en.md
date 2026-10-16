@@ -287,22 +287,29 @@ after you switch models, tasks align to the new tier automatically.
 
 If you would rather not use MiniMax, or you want to run your own model, **image-to-video** can be
 routed to a local [ComfyUI](https://github.com/comfyanonymous/ComfyUI): tick "Local ComfyUI
-(image-to-video)" in the settings, set the address (default `http://127.0.0.1:8188`) and paste an
-**API-format** workflow JSON. Image generation, keying, frame extraction and composition are
-unaffected — the same downstream pipeline as MiniMax.
+(image-to-video)" in the settings, set the address (default `http://127.0.0.1:8188`) and paste a
+workflow JSON — either the API format or the UI format the editor saves directly.
+Image generation, keying, frame extraction and composition are unaffected — the same downstream
+pipeline as MiniMax.
 
-- **API format is required**: the file exported by `Workflow → Export (API)`. The UI format (the one
-  the editor saves directly) stores nodes as an array with `links` / `last_node_id`; the plugin
-  rejects it with an explanation instead of silently submitting an empty job.
+- **Both formats are accepted**: the API format exported by `Workflow → Export (API)` is the most
+  direct; the **UI format** (top level holds `nodes` / `links` arrays) can be pasted as-is — the
+  plugin converts it first, and the line "converted from the ComfyUI UI format (N nodes)" shows up
+  under "Test connection". Notes and muted / bypassed nodes are skipped; if that JSON is so old
+  that its widgets carry no `widget` metadata, the plugin tells you to re-export with Save (API
+  Format) instead.
 - **Injection points are detected automatically**: which node input receives the prompt, where the
   first frame goes, and which inputs override width / height / duration / seed. The detected
   bindings are shown under "Test connection". If a guess is wrong, override it by hand with
   `nodeId.inputName` (for example `1.text`).
 - **First frame**: an existing `LoadImage` node is used when present. Otherwise the plugin reads the
   node definitions from ComfyUI and inserts a `LoadImage` at any declared-but-unwired `IMAGE` input
-  (for example `FreeVideoMedia.first`).
+  (for example `FreeVideoGenerate.first`).
 - **The built-in template is the FreeVideo chain** (`FreeVideoGenerate` + `FreeVideoMedia` plus an
-  empty `LoadImage`). Broke it? Click "Restore built-in template".
+  empty `LoadImage`, with the first frame wired to `FreeVideoGenerate.first` — the same wiring as the
+  official
+  [FreeVideo-All-in-One.json](https://github.com/FlashML-org/FreeVideo/blob/main/example_workflows/FreeVideo-All-in-One.json)).
+  Broke it? Click "Restore built-in template"; the official UI-format JSON can be pasted in too.
 - The output is unchanged: ComfyUI only produces the green-screen clip — **frame extraction, keying
   and composition still run locally through `ffmpeg`**.
 - "Test connection" only reads the ComfyUI version, device and queue length: **no queueing, no

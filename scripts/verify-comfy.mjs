@@ -4,7 +4,7 @@
  *
  * 检查的是「用户自己那份工作流能不能被正确注入 / 提交 / 追踪」这件事本身：
  *   1. 地址归一化与「节点ID.输入名」的解析；
- *   2. 工作流解析：拒绝 ComfyUI 界面导出的格式、拒绝缺 class_type 的节点；
+ *   2. 工作流解析：API 格式直通、ComfyUI 界面格式（官方示例工作流那种）自动转换、拒绝缺 class_type 的节点；
  *   3. 注入点探测：内置模板 / 只写 required 的工作流 / 需要按 /object_info 补 optional IMAGE 的工作流；
  *   4. 注入：字面量写入、连线跳过、首帧插入 LoadImage、first_frame_reference 开关、纯函数不改原对象；
  *   5. HTTP 层：/system_stats、/queue、/object_info、/upload/image、/prompt、/history 的每个分支，
@@ -189,8 +189,74 @@ const emptyParse = parseComfyWorkflow("   ");
 check("空工作流报错", emptyParse.ok === false && emptyParse.error.includes("空的"), emptyParse.ok === false ? emptyParse.error : "");
 const badJson = parseComfyWorkflow("{ not json");
 check("非法 JSON 报错", badJson.ok === false && badJson.error.includes("不是合法 JSON"), badJson.ok === false ? badJson.error.slice(0, 40) : "");
-const uiFormat = parseComfyWorkflow(JSON.stringify({ last_node_id: 3, nodes: [{ id: 1, type: "LoadImage" }], links: [] }));
-check("拒绝 ComfyUI 界面导出的格式", uiFormat.ok === false && uiFormat.error.includes("API 格式"), uiFormat.ok === false ? uiFormat.error.slice(0, 40) : "");
+// 界面格式（ComfyUI 直接导出的 json）——官方示例 FreeVideo-All-in-One.json 就是这个形状，
+// 它把首帧接在 FreeVideoGenerate.first，这里照抄一份缩过的夹具。
+const UI_FORMAT_FIXTURE = {
+  id: "fixture",
+  revision: 0,
+  last_node_id: 2,
+  last_link_id: 1,
+  nodes: [
+    {
+      id: 1,
+      type: "FreeVideoGenerate",
+      mode: 0,
+      title: "FreeVideo · Generate & Preview",
+      inputs: [
+        { name: "text", type: "STRING", widget: { name: "text" } },
+        { name: "width", type: "INT", widget: { name: "width" } },
+        { name: "height", type: "INT", widget: { name: "height" } },
+        { name: "seconds", type: "FLOAT", widget: { name: "seconds" } },
+        { name: "seed", type: "INT", widget: { name: "seed" } },
+        { name: "first", type: "IMAGE", link: null },
+        { name: "media", type: "FREEVIDEO_MEDIA", link: 1 }
+      ],
+      widgets_values: ["一只猫在散步", 1344, 768, 10, 2026090903, "randomize"]
+    },
+    {
+      id: 2,
+      type: "FreeVideoMedia",
+      mode: 0,
+      inputs: [
+        { name: "assets", type: "STRING", widget: { name: "assets" } },
+        { name: "first", type: "IMAGE", link: null }
+      ],
+      widgets_values: ["[]"]
+    }
+  ],
+  links: [[1, 2, 0, 1, 6, "FREEVIDEO_MEDIA"]],
+  groups: []
+};
+const uiParsed = parseComfyWorkflow(JSON.stringify(UI_FORMAT_FIXTURE));
+check("界面格式：自动转成 API 格式", uiParsed.ok === true && uiParsed.converted === true && uiParsed.nodes === 2, uiParsed.ok === true ? "nodes=" + uiParsed.nodes : uiParsed.error);
+check("界面格式：控件值按 widgets_values 顺序取", uiParsed.ok === true && uiParsed.workflow["1"].inputs.text === "一只猫在散步" && uiParsed.workflow["1"].inputs.width === 1344 && uiParsed.workflow["1"].inputs.seconds === 10);
+check("界面格式：seed 后面的 randomize 是控件不是输入", uiParsed.ok === true && uiParsed.workflow["1"].inputs.seed === 2026090903 && !Object.values(uiParsed.workflow["1"].inputs).includes("randomize"));
+check("界面格式：连线写成 [来源节点, 槽位]", uiParsed.ok === true && Array.isArray(uiParsed.workflow["1"].inputs.media) && uiParsed.workflow["1"].inputs.media[0] === "2" && uiParsed.workflow["1"].inputs.media[1] === 0);
+check("界面格式：没连的 first 不进 inputs（留给探测按节点定义补）", uiParsed.ok === true && uiParsed.workflow["1"].inputs.first === undefined);
+check("界面格式：节点标题进 _meta", uiParsed.ok === true && uiParsed.workflow["1"]._meta.title === "FreeVideo · Generate & Preview");
+check("界面格式：便签与静音 / 旁路节点被丢掉", (() => {
+  const p = parseComfyWorkflow(JSON.stringify({ nodes: [{ id: 1, type: "Note", widgets_values: ["x"] }, { id: 2, type: "KSampler", mode: 4, inputs: [], widgets_values: [] }, { id: 3, type: "KSampler", mode: 0, inputs: [], widgets_values: [] }], links: [] }));
+  return p.ok === true && p.nodes === 1 && p.workflow["3"] !== undefined;
+})());
+check("界面格式：只剩便签时转换失败", (() => {
+  const p = parseComfyWorkflow(JSON.stringify({ nodes: [{ id: 1, type: "Note" }], links: [] }));
+  return p.ok === false && p.error.includes("转换失败");
+})());
+check("界面格式：老版导出丢控件值时报个数", (() => {
+  const p = parseComfyWorkflow(JSON.stringify({ nodes: [{ id: 1, type: "CheckpointLoaderSimple", inputs: [], widgets_values: ["sd.safetensors"] }], links: [] }));
+  return p.ok === true && p.droppedWidgets === 1;
+})());
+check("界面格式：新版 links 对象也认", (() => {
+  const p = parseComfyWorkflow(JSON.stringify({ nodes: [{ id: 1, type: "A", inputs: [{ name: "x", link: 3 }], widgets_values: [] }, { id: 2, type: "B", inputs: [{ name: "y", widget: { name: "y" } }], widgets_values: [42] }], links: [{ id: 3, origin_id: 2, origin_slot: 1, target_id: 1, target_slot: 0, type: "X" }] }));
+  return p.ok === true && Array.isArray(p.workflow["1"].inputs.x) && p.workflow["1"].inputs.x[0] === "2" && p.workflow["1"].inputs.x[1] === 1 && p.workflow["2"].inputs.y === 42;
+})());
+check("界面格式：转换后按节点定义补出 1.first / 1.last", (() => {
+  if (uiParsed.ok !== true) return false;
+  const d = detectComfyBindings(uiParsed.workflow, {}, OBJECT_INFO);
+  return formatBinding(d.bindings.first) === "1.first" && formatBinding(d.bindings.last) === "1.last" && formatBinding(d.bindings.prompt) === "1.text";
+})());
+const uiSingleLoadImage = parseComfyWorkflow(JSON.stringify({ last_node_id: 3, nodes: [{ id: 1, type: "LoadImage" }], links: [] }));
+check("界面格式：只有一个 LoadImage 也能转", uiSingleLoadImage.ok === true && uiSingleLoadImage.converted === true && uiSingleLoadImage.nodes === 1, uiSingleLoadImage.ok === true ? "" : uiSingleLoadImage.error);
 const arrayTop = parseComfyWorkflow("[]");
 check("顶层是数组时报错", arrayTop.ok === false, arrayTop.ok === false ? arrayTop.error : "");
 const noNodes = parseComfyWorkflow("{}");

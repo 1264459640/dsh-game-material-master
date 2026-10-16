@@ -245,20 +245,24 @@ Key 只写入本机 `<DSH_HOME>/game-material-master/config.json`，界面回显
 
 不想用 MiniMax、或想跑自己的模型时，可以把**图生视频**这一步接到本机的
 [ComfyUI](https://github.com/comfyanonymous/ComfyUI)：设置页勾选「本地 ComfyUI（图生视频）」，
-填上地址（默认 `http://127.0.0.1:8188`），把 **API 格式**的工作流 JSON 贴进去即可。
+填上地址（默认 `http://127.0.0.1:8188`），把工作流 JSON 贴进去即可——API 格式、或编辑器里直接
+保存的界面格式都行。
 生图、抠像、抽帧、合图完全不受影响，与 MiniMax 走同一套下游流程。
 
-- **必须是 API 格式**：ComfyUI 里 `Workflow → Export (API)` 导出的那份。界面格式（编辑器里直接
-  保存的那个）节点是数组、带 `links` / `last_node_id`，插件会明确拒绝并说明原因，不会静默跑出
-  一个空任务。
+- **两种格式都收**：`Workflow → Export (API)` 导出的 API 格式最直接；编辑器里直接保存的**界面格
+  式**（顶层是 `nodes` / `links` 数组）也直接粘——插件会先转成 API 格式，那句「已自动转成 API 格
+  式（N 个节点）」会出现在「测试连接」下面。转换会跳过便签与静音 / 旁路节点；若那份 JSON 连控件
+  值都没带 `widget` 信息（很老的 ComfyUI 版本），插件会提示你改用 Save (API Format)。
 - **注入点自动探测**：提示词写进哪个节点的哪个输入、首帧图从哪进、宽高 / 时长 / 种子覆盖哪几个
   输入，插件会自己认一遍，认到的结果就显示在「测试连接」下面。认错了就手工填 `节点ID.输入名`
   （例如 `1.text`）覆盖。
 - **首帧图**：工作流里已经有 `LoadImage` 就直接用它；没有时插件会读 ComfyUI 的节点定义，在
-  「声明了 `IMAGE` 输入却没接线」的位置（例如 `FreeVideoMedia.first`）自动补一个 `LoadImage`
+  「声明了 `IMAGE` 输入却没接线」的位置（例如 `FreeVideoGenerate.first`）自动补一个 `LoadImage`
   接过去。
 - **内置模板就是 FreeVideo 那条链路**（`FreeVideoGenerate` + `FreeVideoMedia` + 一个空
-  `LoadImage`）。改坏了点「恢复内置模板」还原。
+  `LoadImage`，首帧接在 `FreeVideoGenerate.first`——与官方示例
+  [FreeVideo-All-in-One.json](https://github.com/FlashML-org/FreeVideo/blob/main/example_workflows/FreeVideo-All-in-One.json)
+  的接法一致）。改坏了点「恢复内置模板」还原；官方那份界面格式的 JSON 也可以直接粘进来用。
 - 产物照旧：ComfyUI 只负责吐出那段绿幕视频，**抽帧、抠像、合图仍然是本机 `ffmpeg` 干的**。
 - 「测试连接」只读 ComfyUI 的版本、显卡与队列长度，**不排队、不生成、不产生费用**。
 - **Cookie（可选）**：ComfyUI 自己不做鉴权；只有当它被挡在需要登录的反向代理后面（Cloudflare
