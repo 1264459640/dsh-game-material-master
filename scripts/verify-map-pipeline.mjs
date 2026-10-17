@@ -1492,6 +1492,48 @@ try {
       check("反向验证：没有白框的砖不会被裁（notes 里不提裁边）", plainBrick.notes.every((text) => !text.includes("自动裁掉")), plainBrick.notes.join(" | "));
     }
 
+    // ── 方向感知：竖段换向 + 转角斜接（走到真机数据上验一遍）──────────────────
+    {
+      /** 横条纹的墙砖：竖着走的那一段必须变成竖条纹。 */
+      const striped = { width: 64, height: 64, rgba: Buffer.alloc(64 * 64 * 4) };
+      for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+        const offset = (y * 64 + x) * 4;
+        const on = Math.floor(y / 16) % 2 === 0;
+        striped.rgba[offset] = on ? 240 : 30;
+        striped.rgba[offset + 1] = on ? 210 : 40;
+        striped.rgba[offset + 2] = 70;
+        striped.rgba[offset + 3] = 255;
+      }
+      const stripeFile = join(frameDir, "striped.png");
+      await writeFile(stripeFile, encodeBitmap(striped));
+      const composedStripe = await G.composeMapAsset({ projectId: project.id, name: "条纹墙", files: [stripeFile], shape: "corner16" });
+      const sheet = await decodeFile(G.mapAssetPath(project.id, composedStripe.file));
+      const blockOf = (mask) => {
+        const cell = sheet.width / 4;
+        const rgba = Buffer.alloc(cell * cell * 4);
+        for (let y = 0; y < cell; y++) {
+          const from = (((Math.floor(mask / 4) * cell) + y) * sheet.width + (mask % 4) * cell) * 4;
+          sheet.rgba.copy(rgba, y * cell * 4, from, from + cell * 4);
+        }
+        return { cell, rgba };
+      };
+      const variation = ({ cell, rgba }) => {
+        let dx = 0, dy = 0, n = 0;
+        for (let y = 2; y < cell - 2; y++) for (let x = 2; x < cell - 2; x++) {
+          const o = (y * cell + x) * 4;
+          dx += Math.abs(rgba[o] - rgba[o - 4]);
+          dy += Math.abs(rgba[o] - rgba[o - cell * 4]);
+          n++;
+        }
+        return { dx: dx / n, dy: dy / n };
+      };
+      const horizontalRun = variation(blockOf(10)); // E+W
+      const verticalRun = variation(blockOf(5));    // N+S
+      check("★ 合成出来的整格：横着走的那一块是横条纹", horizontalRun.dy > horizontalRun.dx * 2, JSON.stringify(horizontalRun));
+      check("★ 合成出来的整格：竖着走的那一块被转了 90°（变成竖条纹）", verticalRun.dx > verticalRun.dy * 2, JSON.stringify(verticalRun));
+      check("转角那一块（N+W）和十字块不同（斜接真的进了素材图）", JSON.stringify([...blockOf(9).rgba]) !== JSON.stringify([...blockOf(15).rgba]));
+    }
+
     // 失败路径：空数组 / 读不到的文件 / 超过一列上限，都要明确抛错。
     let emptyError = "";
     try {
@@ -1738,7 +1780,96 @@ try {
     check("16 网格的内置素材同样按比例缩下来（每格 16px）", smallSampled.tilesets.every((entry) => entry.cell.width === 16) && smallSampled.tilesets[0].imageWidth === 32, `${smallSampled.tilesets[0].cell.width} / ${smallSampled.tilesets[0].imageWidth}`);
   }
 
-  section("21) 删除项目");
+  section("21) 原地重烘（recomposeMapTileset：换规则后不用重画地图）");
+  {
+    const project2 = await G.createMapProject("重烘自检", { grid: { tileWidth: 16, tileHeight: 16, wrap: true }, cols: 8, rows: 8 });
+    created.push(project2.id);
+    await G.importSampleTileset(project2.id);
+    const dir2 = join(HOME, "recompose-frames");
+    await mkdir(dir2, { recursive: true });
+    const make = async (shift, name) => {
+      const rgba = Buffer.alloc(64 * 64 * 4);
+      for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+        const offset = (y * 64 + x) * 4;
+        rgba[offset] = (x * 4 + shift) % 256;
+        rgba[offset + 1] = (y * 4) % 256;
+        rgba[offset + 2] = 90;
+        rgba[offset + 3] = 255;
+      }
+      const file = join(dir2, name);
+      await writeFile(file, encodeBitmap({ width: 64, height: 64, rgba }));
+      return file;
+    };
+    const first = await make(0, "a.png");
+    const second = await make(120, "b.png");
+    const sheet = await G.composeMapAsset({ projectId: project2.id, name: "墙", files: [first], shape: "corner16" });
+    const bytes = await readFile(G.mapAssetPath(project2.id, sheet.file));
+    const imported = await G.importMapTileset(project2.id, "墙", bytes.toString("base64"), {
+      shape: "corner16",
+      cell: { width: 16, height: 16 },
+      scale: sheet.scale,
+      clarity: "smooth"
+    });
+    const tilesetId = imported.tilesets[0].id;
+    /**
+     * ★ 先把地图画满：重烘之后**这些格子必须一格都不动**（序号不变）。
+     */
+    const view = await G.mapView(await G.readMapProject(project2.id));
+    const brush = view.tilesets.find((t) => t.id === tilesetId).palette[0].index;
+    const ops = [];
+    for (let r = 1; r < 7; r++) for (let c = 1; c < 7; c++) ops.push({ kind: "paint", layerId: view.layers[0].id, cells: [{ r, c, tile: brush }] });
+    await G.applyMapOps(project2.id, ops, { stroke: "recompose" });
+    // 落盘是防抖的：先手动 flush，否则拍到的「之前」还是画之前的盘上状态。
+    await G.flushMapDoc(project2.id);
+    // 最硬的断言：重烘前后 `map.json` 必须**逐字节相同**（一格都没动）。
+    const mapFile = G.mapDocFile(project2.id);
+    const beforeBytes = await readFile(mapFile);
+
+    const imageBefore = await decodeFile(join(G.mapProjectDir(project2.id), imported.tilesets[0].file));
+    const recomposed = await G.recomposeMapTileset(project2.id, tilesetId, { files: [second] });
+    check("原地重烘：素材 id 不变（地图引用的还是它）", recomposed.tileset.id === tilesetId, `${recomposed.tileset.id} vs ${tilesetId}`);
+    check("原地重烘：图块数不变（16 块，序号一个都不动）", recomposed.tileset.tileCount === 16, String(recomposed.tileset.tileCount));
+    check("原地重烘：格子 / 形态 / 清晰度沿用原素材", recomposed.tileset.cell.width === 16 && recomposed.tileset.shape === "corner16" && recomposed.tileset.clarity === "smooth");
+    const imageAfter = await decodeFile(join(G.mapProjectDir(project2.id), recomposed.tileset.file));
+    let diff = 0;
+    for (let i = 0; i < imageAfter.rgba.length; i += 4) diff += Math.abs(imageAfter.rgba[i] - imageBefore.rgba[i]);
+    check("★ 原地重烘：素材图真的换了（源图不同 → 像素不同）", diff > 1000, `累计差 ${diff}`);
+    const afterBytes = await readFile(mapFile);
+    /**
+     * 逐字节比较太严：读路径会顺手迁移 / 触摸 `updatedAt`（2172 → 2172 字节也可能是这一处）。
+     * 语义比较才是真契约：**图层结构与每格的值**必须一模一样。
+     */
+    const beforeDoc = JSON.parse(beforeBytes.toString("utf8"));
+    const afterDoc = JSON.parse(afterBytes.toString("utf8"));
+    check(
+      "★ 重烘前后地图数据一模一样（每格的值与图层结构都没动）",
+      JSON.stringify(afterDoc.data) === JSON.stringify(beforeDoc.data) && JSON.stringify(afterDoc.layers) === JSON.stringify(beforeDoc.layers),
+      (() => {
+        const a = afterDoc.data[view.layers[0].id], b = beforeDoc.data[view.layers[0].id];
+        const diff = a.map((v, i) => (v === b[i] ? null : `${i}:${b[i]}→${v}`)).filter(Boolean).slice(0, 6);
+        return `${a.filter((v) => v > 0).length} 格；层的差异 ${JSON.stringify(afterDoc.layers.map((l) => l.id))} vs ${JSON.stringify(beforeDoc.layers.map((l) => l.id))}；前几处 ${diff.join(" ")}`;
+      })()
+    );
+    check("原地重烘会记一条日志", (await G.readMapProject(project2.id)).logs.some((entry) => String(entry.message).includes("重新整理素材")));
+
+    let builtinError = "";
+    try {
+      const builtinId = view.tilesets.find((t) => t.builtin === true).id;
+      await G.recomposeMapTileset(project2.id, builtinId, { files: [first] });
+    } catch (error) {
+      builtinError = String(error?.message ?? error);
+    }
+    check("内置素材不许重烘（明确报错）", builtinError.includes("内置"), builtinError);
+    let emptyError = "";
+    try {
+      await G.recomposeMapTileset(project2.id, tilesetId, { files: [] });
+    } catch (error) {
+      emptyError = String(error?.message ?? error);
+    }
+    check("没给源图时明确报错（不静默清空素材）", emptyError.includes("源图"), emptyError);
+  }
+
+  section("22) 删除项目");
   for (const id of created.slice()) {
     const existed = existsSync(G.mapProjectDir(id));
     await G.deleteMapProject(id);

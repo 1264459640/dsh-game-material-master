@@ -2959,6 +2959,29 @@ try {
     );
     check("提示词：写明「按地图网格出图」与「不要绿幕 / 不做抠像」", oneFrame.includes("32×32") && oneFrame.includes("绿幕") && oneFrame.includes("抠像"));
     check("提示词：帧数 1 时只走图片生成（不含序列帧那几步）", oneFrame.includes("runImageJob") && !oneFrame.includes("runSequenceVideo"), "");
+    /**
+     * ★ 按一格的实际像素给「细节尺寸」的指导。
+     *
+     * 真机翻车过：2K 的细密砖墙缩到 32px 只剩一片红雾（细节量 8.9 vs 64px 的 14.6），用户看到的就是
+     * 「不像墙」。所以提示词必须写清「细节不小于一格的四分之一、一格最多几排」，32px 时还要建议 64 格。
+     */
+    check(
+      "提示词：写明「细节不能小于一格的四分之一」与「一格最多排几排」（32 格 → 1/4 ≈ 8px、最多 3 排）",
+      oneFrame.includes("四分之一") && oneFrame.includes("8px") && oneFrame.includes("最多排 3 排"),
+      oneFrame.match(/一格只有[^\n]*/)?.[0] ?? ""
+    );
+    check(
+      "提示词：一格 32px 时明确建议「做成一格 64px 再生成」（并要它在回答里告诉用户）",
+      oneFrame.includes("一格 64px") && oneFrame.includes("告诉用户"),
+      oneFrame.match(/⚠️ 一格 32px[^\n]*/)?.[0] ?? ""
+    );
+    // 反向验证：64 格的项目不该出现「装不下细密砖纹」那句，而且允许的排数跟着放大到 5。
+    const wideFrame = promptOf({ cell: { width: 64, height: 64 } });
+    check(
+      "反向验证：一格 64px 时不劝退（没有「装不下」那句），排数放宽到 5 排",
+      !wideFrame.includes("装不下细密砖纹") && wideFrame.includes("最多排 5 排") && wideFrame.includes("约 16px"),
+      wideFrame.match(/一格只有[^\n]*/)?.[0] ?? ""
+    );
     const threeFrames = promptOf({ frames: 3 });
     check("提示词：帧数 3 + 生图模型 → count:3 的一次图片生成", threeFrames.includes("runImageJob({jobId, count:3})"), "");
     const videoFrames = promptOf({ frames: 3, mode: "video" });

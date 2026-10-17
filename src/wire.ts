@@ -665,6 +665,13 @@ const importMapTilesetSchema = z.object({
   /** 会动的素材怎么循环：`forward` 正放（默认）/ `reverse` 倒放 / `pingpong` 来回。 */
   loop: z.string().optional()
 });
+const recomposeMapTilesetSchema = z.object({
+  projectId: z.string(),
+  tilesetId: z.string(),
+  /** 源图绝对路径：整格给 1 张、普通 / 拼块按帧顺序给 N 张。 */
+  files: z.array(z.string()).optional(),
+  clarity: z.string().optional()
+});
 const saveMapTilesetSchema = z.object({
   projectId: z.string(),
   tilesetId: z.string(),
@@ -924,6 +931,7 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "importMapTileset", payload: importMapTilesetSchema, result: jsonObject },
   { method: "importSampleTileset", payload: mapProjectIdSchema, result: jsonObject },
   { method: "composeMapAsset", payload: composeMapAssetSchema, result: jsonObject },
+  { method: "recomposeMapTileset", payload: recomposeMapTilesetSchema, result: jsonObject },
   { method: "saveMapTileset", payload: saveMapTilesetSchema, result: jsonObject },
   { method: "removeMapTileset", payload: removeMapTilesetSchema, result: jsonObject },
   { method: "saveMapDoc", payload: saveMapDocSchema, result: jsonObject },

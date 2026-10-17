@@ -1621,6 +1621,8 @@
       "{n0}×{n0} 像素": "{n0}x{n0} px",
       "这一下就定了、之后不能改。想让 AI 生成的素材更清楚就用 48 / 64（一格能留下更多细节），代价是同样屏幕上能放的地图格数变少。": "Set once here and cannot be changed later. Use 48 / 64 to keep more detail in AI-generated assets - the trade-off is fewer map cells on screen.",
       "{n0}×{n1} 像素": "{n0}x{n1} px",
+      "一格只有 {n3}px：画的时候就要按这个尺寸想 —— **任何细节不能小于一格的四分之一（约 {n4}px）**；砖块 / 石块 / 雕花这类重复单元，一格最多排 {n5} 排。比这更细的纹理缩到一格大小会糊成一片色雾，看不出画的是什么。": "One cell is only {n3}px: design for that size from the start - **no detail smaller than a quarter of a cell (about {n4}px)**; for repeating units like bricks, stones or carvings, at most {n5} rows per cell. Anything finer turns into a colour haze once scaled down to one cell.",
+      "⚠️ 一格 32px 装不下细密砖纹：请**按大砖画**（一格 2~3 排、砖缝 1px、明暗对比强一点），并在回答里告诉用户 —— 想要真正的砖纹细节，把地图做成一格 64px（新建项目时选）再生成一次，同样一幅画能留下 4 倍细节。": "WARNING: a 32px cell cannot hold fine brickwork. **Draw big bricks** (2-3 rows per cell, 1px mortar, stronger contrast) and tell the user: for real brick detail, create the map with a 64px cell (choose it when creating a project) and generate again - the same artwork then keeps 4x the detail.",
       "新建项目时定的，之后不能改。AI 生成的素材会按这个尺寸出块；想让素材更清楚就新建一个 48 / 64 的项目。": "Fixed when the project was created. AI-generated assets are cut at this size; for sharper assets create a new 48 / 64 project.",
       "平滑（面积平均）": "Smooth (area average)",
       "把每个格子覆盖到的像素全部平均掉：细节保留、边缘柔和、没有锯齿。AI 画的那种金属 / 霓虹 / 渐变的图，选这个最清楚。": "Averages every source pixel a cell covers: detail survives, edges stay soft, no stair-stepping. Best for the metal / neon / gradient art AI produces.",
@@ -2004,6 +2006,25 @@
         );
       }
       lines.push("", T("画法要求：内容要铺满、不要留边；不要用绿幕背景、也不要做抠像 —— 地图素材要的是不透明的方块。"));
+      /**
+       * **按一格的实际像素想细节**：这轮真机翻车就翻在这 —— 2K 的细密砖墙缩到 32px 只剩一片红雾
+       * （实测细节量 8.9，64px 时是 14.6），用户看着就是「不像墙」。
+       * 所以把「细节不能小于一格的四分之一、一格最多排几排」写进提示词，并让它在 32px 时直接建议 64 格。
+       */
+      {
+        // `cell` 是展示用的「32×32」字符串，算尺寸用数值那一份。
+        const size = Math.max(1, Math.round(input.cell.width));
+        const unit = Math.max(3, Math.round(size / 4));
+        const rows = size >= 64 ? 5 : size >= 48 ? 4 : 3;
+        lines.push(
+          T("一格只有 {n3}px：画的时候就要按这个尺寸想 —— **任何细节不能小于一格的四分之一（约 {n4}px）**；砖块 / 石块 / 雕花这类重复单元，一格最多排 {n5} 排。比这更细的纹理缩到一格大小会糊成一片色雾，看不出画的是什么。", { n3: String(cell), n4: String(unit), n5: String(rows) })
+        );
+        if (size <= 32) {
+          lines.push(
+            T("⚠️ 一格 32px 装不下细密砖纹：请**按大砖画**（一格 2~3 排、砖缝 1px、明暗对比强一点），并在回答里告诉用户 —— 想要真正的砖纹细节，把地图做成一格 64px（新建项目时选）再生成一次，同样一幅画能留下 4 倍细节。")
+          );
+        }
+      }
       if (shape === "a2quad" && animated) {
         lines.push(T("变体之间保持同构图、同色调、同光位，只让该动的部分变化。"));
       } else if (shape === "plain" && animated) {
@@ -2185,6 +2206,7 @@
       ["importMapTileset", true],
       ["importSampleTileset", true],
       ["composeMapAsset", true],
+      ["recomposeMapTileset", true],
       ["saveMapTileset", true],
       ["removeMapTileset", true],
       ["saveMapDoc", true],
@@ -9731,7 +9753,7 @@
           onMouseLeave: hideToolTip,
           onBlur: hideToolTip,
           style: {
-            backgroundImage: `url(${assetBase}${owner.file})`,
+            backgroundImage: `url(${assetBase}${owner.file}${owner.rev === undefined ? "" : `?v=${owner.rev}`})`,
             backgroundSize: `${owner.imageWidth * scaleX}px ${owner.imageHeight * scaleY}px`,
             backgroundPosition: `${-entry.rect.x * scaleX}px ${-entry.rect.y * scaleY}px`
           },
@@ -10428,7 +10450,7 @@
                 ref: (node) => {
                   imageRefs.current[entry.id] = node;
                 },
-                src: `${assetBase}${entry.file}`,
+                src: `${assetBase}${entry.file}${entry.rev === undefined ? "" : `?v=${entry.rev}`}`,
                 alt: "",
                 onLoad: () => setImagesReady((value) => value + 1),
                 // ⚠️ 只挂 onLoad 不挂 onError 的话，素材图 404 / 解码失败时
@@ -18001,6 +18023,7 @@
         // 界面不发起这一步（它是对话里 agent 的活），但方法清单必须与宿主一致，
         // 所以照样挂一条 —— 少一条 verify-tools 的「客户端清单覆盖全部方法」就红。
         composeMapAsset: (payload) => call("composeMapAsset", payload),
+        recomposeMapTileset: (payload) => call("recomposeMapTileset", payload),
         saveMapTileset: (payload) => call("saveMapTileset", payload),
         removeMapTileset: (payload) => call("removeMapTileset", payload),
         saveMapDoc: (payload) => call("saveMapDoc", payload),

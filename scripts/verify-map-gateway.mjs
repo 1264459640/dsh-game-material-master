@@ -378,6 +378,33 @@ try {
   );
   check("未知清晰度明确报错（不静默回落）", (await failed(() => gw("importMapTileset", { projectId, name: "乱写", data: bigSheet.toString("base64"), cell: { width: 32, height: 32 }, clarity: "nope" }))).includes("清晰度"));
 
+  /**
+   * ★ 素材图的 `rev`（文件 mtime）：界面拼 URL 时带上 `?v=`，否则原地重烘之后
+   * 浏览器继续用缓存里的旧图 —— 表现是「重烘跑完了，画面一点没变」。
+   */
+  const cornerImported = await gw("importMapTileset", {
+    projectId,
+    name: "转角图",
+    data: sheetPng(128, 32).toString("base64"),
+    cell: { width: 32, height: 32 },
+    shape: "corner16"
+  });
+  const cornerTileset = cornerImported.tilesets[0];
+  check("素材视图带 rev（版本号是数字）", typeof cornerTileset.rev === "number" && cornerTileset.rev > 0, String(cornerTileset.rev));
+  const recomposeSource = join(HOME, "recompose-source.png");
+  await writeFile(recomposeSource, sheetPng(128, 32));
+  const recomposed = await gw("recomposeMapTileset", { projectId, tilesetId: cornerTileset.id, files: [recomposeSource] });
+  check(
+    "recomposeMapTileset 走网关：素材 id 与图块数不变（16 块，地图不用改）",
+    recomposed.tileset.id === cornerTileset.id && recomposed.tileset.tileCount === cornerTileset.tileCount,
+    `id ${recomposed.tileset.id}；块 ${recomposed.tileset.tileCount} vs ${cornerTileset.tileCount}`
+  );
+  check("★ 重烘之后 rev 变新了（界面会重新拉图，不会一张旧图卡住）", recomposed.tileset.rev !== cornerTileset.rev, `${cornerTileset.rev} → ${recomposed.tileset.rev}`);
+  check(
+    "反向验证：手动导的图集（2×2 = 4 块）不能原地重烘（尺寸对不上，明确报错而不是写坏）",
+    (await failed(() => gw("recomposeMapTileset", { projectId, tilesetId: clarityTileset.id, files: [recomposeSource] }))).includes("不能原地重烘")
+  );
+
   /** ★ 循环方式：同一个 schema 陷阱（字段不在 schema 里就被静默丢掉）。 */
   const loopImported = await gw("importMapTileset", { projectId, name: "倒放图", data: sheetPng(128, 128, 32).toString("base64"), animRows: true, loop: "reverse" });
   check("importMapTileset.loop 真的到宿主（素材上记着 reverse）", loopImported.tilesets[0].loop === "reverse", String(loopImported.tilesets[0].loop));

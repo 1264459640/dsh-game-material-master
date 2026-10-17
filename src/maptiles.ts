@@ -894,14 +894,127 @@ function blitInto(source: Bitmap, target: Bitmap, atX: number, atY: number): voi
  * 从同一块砖的像素拼出来 —— 凡是「连」的边都是同一张砖的边缘，接缝等于砖自身的环绕缝
  * （最好的可能值）；「断」的边由 `shadeSide` 加收口，所以墙头 / 拐角仍然看得见。
  */
+/**
+ * 顺时针转 90°：**竖着走的那一段墙要用它**。
+ *
+ * 一张砖墙贴图的砖缝是横向的；墙往南北走时，砖缝也得跟着竖过来 —— 否则竖着的那一段看着
+ * 就是「同一张图硬贴上去」，花纹接不上（用户原话：「围墙竖过来的部分花纹就没拼了」）。
+ */
+export function rotate90(frame: Bitmap, clockwise = true): Bitmap {
+  const width = frame.height;
+  const height = frame.width;
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      // 顺时针：新 (x,y) 取原 (y, H-1-x)... 用行列替换写清楚更不容易错。
+      const sx = clockwise ? y : frame.width - 1 - y;
+      const sy = clockwise ? frame.height - 1 - x : x;
+      const from = (sy * frame.width + sx) * 4;
+      const to = (y * width + x) * 4;
+      frame.rgba.copy(rgba, to, from, from + 4);
+    }
+  }
+  return { width, height, rgba };
+}
+
+/** 整格的位序：北 1 / 东 2 / 南 4 / 西 8。 */
+const CORNER_SIDES = { N: 1, E: 2, S: 4, W: 8 } as const;
+
+/**
+ * 转角块：把「横着走的砖」和「竖着走的砖」沿一条**斜接线**拼起来，线的两侧各用各的。
+ *
+ * 这是真砌墙的做法（两块砖在转角处斜着对口），也是用户说的「拐角要有拐角的效果」：
+ * 只画一条亮线没用，得让**砖缝真的换向**，否则看起来还是两段直墙交叉。
+ *
+ * 斜接线 = 两条相连边中点之间的那条线；线靠近「角」的那一小块用竖直方向的砖，
+ * 其余用水平方向的砖（四种转角都是一个竖臂 + 一个横臂，所以这个分配是通用的）。
+ */
+export function joinCorner(
+  horizontal: Bitmap,
+  vertical: Bitmap,
+  sideA: "N" | "E" | "S" | "W",
+  sideB: "N" | "E" | "S" | "W",
+  thickness = 2
+): Bitmap {
+  const { width, height } = horizontal;
+  const rgba = Buffer.alloc(width * height * 4);
+  const midA = sideMidpoint(sideA, width, height);
+  const midB = sideMidpoint(sideB, width, height);
+  // 角那一侧 = 两条边的公共角（N + W → 左上；N + E → 右上；S + E → 右下；S + W → 左下）。
+  const cornerX = sideA === "N" || sideA === "S" ? (sideB === "W" ? 0 : width - 1) : sideA === "W" ? 0 : width - 1;
+  const cornerY = sideA === "E" || sideA === "W" ? (sideB === "N" ? 0 : height - 1) : sideA === "N" ? 0 : height - 1;
+  const line = Math.max(1, Math.round(thickness));
+  const span = Math.max(1, Math.hypot(midB.x - midA.x, midB.y - midA.y));
+  const towardsCorner = (midB.x - midA.x) * (cornerY - midA.y) - (midB.y - midA.y) * (cornerX - midA.x);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      // 叉积的符号就是「在哪一侧」，不用开方也算得出距离。
+      const cross = (midB.x - midA.x) * (y - midA.y) - (midB.y - midA.y) * (x - midA.x);
+      const cornerSide = Math.sign(cross) === Math.sign(towardsCorner);
+      const source = cornerSide ? vertical : horizontal;
+      const offset = (y * width + x) * 4;
+      rgba[offset] = source.rgba[offset];
+      rgba[offset + 1] = source.rgba[offset + 1];
+      rgba[offset + 2] = source.rgba[offset + 2];
+      rgba[offset + 3] = source.rgba[offset + 3];
+      const distance = Math.abs(cross) / span;
+      if (distance <= line * 0.5) {
+        // 斜接缝本身：提亮一线，读起来是两块砖在这里对口。
+        for (let channel = 0; channel < 3; channel++) rgba[offset + channel] = clamp255(Math.round(rgba[offset + channel] * 1.28));
+      } else if (distance <= line * 2.5) {
+        // 缝两侧一点点压暗（渐淡），给拐角一点体积感，不至于像贴纸。
+        const factor = 1 - 0.18 * (1 - (distance - line * 0.5) / (line * 2));
+        for (let channel = 0; channel < 3; channel++) rgba[offset + channel] = clamp255(Math.round(rgba[offset + channel] * factor));
+      }
+    }
+  }
+  return { width, height, rgba };
+}
+
+/** 把 `joinCorner` 的结果写回已有的块（省一次分配）。 */
+function joinCornerInto(target: Bitmap, horizontal: Bitmap, vertical: Bitmap, sideA: "N" | "E" | "S" | "W", sideB: "N" | "E" | "S" | "W", thickness: number): void {
+  const joined = joinCorner(horizontal, vertical, sideA, sideB, thickness);
+  joined.rgba.copy(target.rgba);
+}
+
+/** 0~255 夹紧。 */
+function clamp255(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+/** 一条边的中点（画斜接用）。 */
+function sideMidpoint(side: "N" | "E" | "S" | "W", width: number, height: number): { x: number; y: number } {
+  if (side === "N") return { x: (width - 1) / 2, y: 0 };
+  if (side === "S") return { x: (width - 1) / 2, y: height - 1 };
+  if (side === "W") return { x: 0, y: (height - 1) / 2 };
+  return { x: width - 1, y: (height - 1) / 2 };
+}
+
 export function corner16SheetFromTile(tile: Bitmap, cell: { width: number; height: number }, clarity: AssetClarity = "sharp"): Bitmap {
   const blockW = Math.max(1, Math.floor(cell.width));
   const blockH = Math.max(1, Math.floor(cell.height));
   const sheet: Bitmap = { width: blockW * CORNER16_BLOCKS, height: blockH * CORNER16_BLOCKS, rgba: Buffer.alloc(blockW * CORNER16_BLOCKS * blockH * CORNER16_BLOCKS * 4) };
   const thickness = capThicknessFor(Math.min(blockW, blockH));
+  // 斜接按块大小走：32px 一格约 2px 线，128px（4 倍留图）时约 7px。
+  const miterSize = Math.max(1, Math.round(Math.min(blockW, blockH) / 18));
   const base = resampleToSize(tile, blockW, blockH, clarity);
+  /**
+   * **方向感知**：整格是「墙体」用法（拼块才是「材质」用法），所以砖缝要跟着墙的走向。
+   *
+   * - 南北直线（N+S，掩码 5）：把砖顺时针转 90° —— 墙竖起来，砖缝也得竖起来；
+   * - 转角（N+E / E+S / S+W / W+N）：在两条相连边的中点之间画斜接，拐角才有「转角」的样子；
+   * - 其它（直线东西、端头、T 字、十字、孤立）：直接用砖本身。
+   *
+   * 这一步做在 compose 阶段（16 块烘进素材图），渲染器一行不用改 —— 它照旧按掩码挑块。
+   */
+  const vertical = rotate90(base, true);
   for (let mask = 0; mask < CORNER16_BLOCKS * CORNER16_BLOCKS; mask++) {
-    const block: Bitmap = { width: blockW, height: blockH, rgba: Buffer.from(base.rgba) };
+    const block: Bitmap = { width: blockW, height: blockH, rgba: Buffer.from((mask === (CORNER_SIDES.N | CORNER_SIDES.S) ? vertical : base).rgba) };
+    // 转角：横竖两版沿斜接线拼起来（真砌墙的转角做法）；收口照旧落在断开的那几边。
+    if (mask === (CORNER_SIDES.N | CORNER_SIDES.W)) joinCornerInto(block, base, vertical, "N", "W", miterSize);
+    else if (mask === (CORNER_SIDES.N | CORNER_SIDES.E)) joinCornerInto(block, base, vertical, "N", "E", miterSize);
+    else if (mask === (CORNER_SIDES.E | CORNER_SIDES.S)) joinCornerInto(block, base, vertical, "E", "S", miterSize);
+    else if (mask === (CORNER_SIDES.S | CORNER_SIDES.W)) joinCornerInto(block, base, vertical, "S", "W", miterSize);
     // 位序 N=1 / E=2 / S=4 / W=8：**没置位**的那几边就是「断」，要收口。
     if ((mask & 1) === 0) shadeSide(block, "N", thickness);
     if ((mask & 2) === 0) shadeSide(block, "E", thickness);

@@ -1167,7 +1167,12 @@ export class GameStudioGateway extends TypertRemoteService {
       // 会动的素材怎么循环（校验在 mapgen.parseAssetLoop 里）。
       loop: input.loop
     });
-    return { tilesets: result.tilesets.map(mapTilesetBrief), warnings: result.warnings };
+    // `rev` 不在 project.json 里（派生数据），要在回给界面时现取 —— 少了它重烘后界面会拿旧缓存图。
+    const revisions = await mapgen.tilesetRevisions(asString(input.projectId));
+    return {
+      tilesets: result.tilesets.map((tileset) => ({ ...mapTilesetBrief(tileset), rev: revisions.get(tileset.id) })),
+      warnings: result.warnings
+    };
   }
   /** 内置素材：本机现算，零成本（4 张自动连接图 + 1 张道具图）。 */
   async importSampleTileset(payload: any) {
@@ -1191,6 +1196,13 @@ export class GameStudioGateway extends TypertRemoteService {
       shape: input.shape,
       cell: input.cell,
       animRows: input.animRows === true ? true : input.animRows === false ? false : undefined
+    });
+  }
+  async recomposeMapTileset(payload: any) {
+    const input = asRecord(payload);
+    return mapgen.recomposeMapTileset(asString(input.projectId), asString(input.tilesetId), {
+      files: Array.isArray(input.files) ? input.files.map((file: unknown) => String(file)) : undefined,
+      clarity: input.clarity
     });
   }
   async saveMapTileset(payload: any) {
@@ -2336,6 +2348,8 @@ function mapTilesetBrief(tileset: {
   variants: number;
   /** 会动的素材怎么循环（正放 / 倒放 / 来回）。 */
   loop?: string;
+  /** 素材图版本号（文件 mtime）：界面拼 URL 时带 `?v=`，重烘之后才会重新拉图。 */
+  rev?: number;
   /** 导入时用的清晰度（图像已烘进去，这里只作显示 / 排查）。 */
   clarity?: string;
   /** 素材自己的播放速度（帧/秒）；省略 = 跟「设置 → 动画速度」走。 */
@@ -2355,6 +2369,7 @@ function mapTilesetBrief(tileset: {
     animRows: tileset.animRows,
     variants: tileset.variants,
     loop: tileset.loop,
+    rev: tileset.rev,
     clarity: tileset.clarity,
     fps: tileset.fps,
     builtin: tileset.builtin === true ? true : undefined,

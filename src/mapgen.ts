@@ -822,7 +822,16 @@ interface RegisterInput {
   name: string;
   bytes: Buffer;
   /** 内置素材那条路：形态与格子是**生成时就知道的**，不走自动识别。 */
-  known?: { shape: TilesetShape; cell: { width: number; height: number }; animRows: boolean; builtin?: boolean };
+  known?: {
+    shape: TilesetShape;
+    cell: { width: number; height: number };
+    animRows: boolean;
+    builtin?: boolean;
+    /** 重新整理时沿用素材原来的这些表现层属性（不给就走默认）。 */
+    fps?: number;
+    loop?: AssetLoop;
+    clarity?: AssetClarity;
+  };
   /**
    * 新增素材时用户手填的属性（都是可选的，留空 = 走自动识别）。
    * 在**量到真实尺寸之后**才套上去 —— 校验用同一套 `normalizeCell` / `parseTilesetShape`，
@@ -843,6 +852,80 @@ interface RegisterInput {
  *
  * `opts` 里留空的项走自动识别；给了就用用户的（值不合法就退回识别，不静默改）。
  */
+/**
+ * **原地重新整理**一张 AI 素材：用同一份源图按现在的规则重烘一遍，**保留素材 id 与图块数**。
+ *
+ * 为什么要有它：整格 / 拼块的 16 块是**烘进素材图**的（收口、竖段换向、转角斜接都在里面），
+ * 生成规则一改，已有素材不会自动变。而「删掉再导一次」会把画在那张素材上的格子清空
+ * （宿主按图块序号重映射，素材没了自然就空了）—— 用户的地图就废了。
+ * 这条路径按 id 原地替换图片 + 重建 16 块，图块序号一个都不动。
+ *
+ * 前置条件：非内置素材、给了至少一张源图、形态与格子沿用素材自己的（不让这里改几何）。
+ */
+export async function recomposeMapTileset(
+  projectId: string,
+  tilesetId: string,
+  input: { files?: string[]; clarity?: unknown } = {}
+): Promise<{ tileset: MapViewTileset; warnings: string[] }> {
+  const project = await readProjectOrThrow(projectId);
+  const index = project.tilesets.findIndex((tileset) => tileset.id === tilesetId);
+  if (index < 0) throw new Error(`没有这块素材：${tilesetId}`);
+  const tileset = project.tilesets[index];
+  if (tileset.builtin === true) throw new Error("内置素材不能重新整理（它们是程序化生成的，删掉重装即可）");
+  const files = (input.files ?? []).map((file) => String(file)).filter((file) => file !== "");
+  if (files.length === 0) throw new Error("重新整理需要源图：files 里给至少一张图片的绝对路径");
+  if (tileset.shape === "corner16" && files.length !== 1) {
+    throw new Error("整格只要**一块**无缝砖：files 给 1 张（整格没有帧这一维）");
+  }
+  const clarity = input.clarity === undefined ? parseClarity(tileset.clarity) : parseClarity(input.clarity);
+  /** 先按 4 倍分辨率烘，再按清晰度缩到格子 —— 与 `composeMapAsset` 同一条口径（细节只丢一次）。 */
+  const scale = MAX_ASSET_SCALE;
+  const bigCell = { width: tileset.cell.width * scale, height: tileset.cell.height * scale };
+  const frames: Bitmap[] = [];
+  for (const file of files) frames.push(trimUniformBorder(await decodeFile(file)).bitmap);
+  const plan = sheetPlanOf(tileset.shape, bigCell, frames.length);
+  const big = composeAssetSheet(frames, plan, "smooth");
+  const fitted = resampleToSize(big, big.width / scale, big.height / scale, clarity);
+  /**
+   * ⚠️ **写盘之前**先对尺寸：重烘只能把「本来就是 AI 整理出来的素材」重新烘一遍。
+   * 手动导的图集（例如一张 2×2 的普通图 = 4 块）用 `composeMapAsset` 的口径烘出来只有 1 块，
+   * 尺寸一变，图块序号就整体错位、地图上画过的地方全会变形 —— 这种必须明确拒绝，而不是写下去。
+   */
+  if (fitted.width !== tileset.imageWidth || fitted.height !== tileset.imageHeight) {
+    throw new Error(
+      `重烘出来的尺寸和原素材不一样（${fitted.width}×${fitted.height} vs ${tileset.imageWidth}×${tileset.imageHeight}）：` +
+        `这块素材不是按「AI 生成素材」的方式整理的（整格 1 张 / 拼块 N 张 / 普通 N 帧），不能原地重烘 —— ` +
+        `源图数量或用法对不上。`
+    );
+  }
+  const warnings: string[] = [];
+  const rebuilt = await registerTileset(projectId, {
+    id: tileset.id,
+    name: tileset.name,
+    bytes: encodeBitmap(fitted),
+    known: {
+      shape: tileset.shape,
+      cell: { width: tileset.cell.width, height: tileset.cell.height },
+      animRows: tileset.animRows,
+      fps: tileset.fps,
+      loop: tileset.loop,
+      clarity,
+      builtin: false
+    },
+    projectGrid: { width: project.grid.tileWidth, height: project.grid.tileHeight }
+  }, warnings);
+  await patchMapProject(projectId, (fresh) => {
+    const at = fresh.tilesets.findIndex((entry) => entry.id === tileset.id);
+    if (at >= 0) fresh.tilesets[at] = rebuilt;
+    appendJobLog(fresh.logs, "info", `重新整理素材：${rebuilt.name}（按现在的规则重烘，图块序号不变，地图不用改）`);
+  });
+  // 用真实视图回给界面（调色板 / 说明都要现算，别在这里手搓一份）。
+  const view = await mapView(await readMapProject(projectId));
+  const fresh = view.tilesets.find((entry) => entry.id === rebuilt.id);
+  if (fresh === undefined) throw new Error("重新整理后找不到这块素材，请刷新页面");
+  return { tileset: fresh, warnings };
+}
+
 export async function importMapTileset(
   projectId: string,
   name: string,
@@ -1815,6 +1898,13 @@ export interface MapViewTileset {
   clarity?: AssetClarity;
   /** 素材自己的播放速度（帧/秒）；`undefined` = 跟「设置 → 动画速度」走。 */
   fps?: number;
+  /**
+   * 素材图的**版本号**（文件 mtime，毫秒）：界面拼 URL 时带上 `?v=rev`。
+   *
+   * 少了它，「原地重烘」（`recomposeMapTileset`）之后浏览器会继续用缓存里的旧图 ——
+   * 表现是「重烘跑完了，画面一点没变」，只能靠硬刷新救。所有产物图都该有这个。
+   */
+  rev?: number;
   tileCount: number;
   /** 识别说明（中文、人话）。 */
   reason: string;
@@ -1879,6 +1969,31 @@ export interface MapProjectView {
  * `options` 里的 `projectId` / `origin` 是旧调用的兼容位（**视图一律用相对路径**，
  * 绝对 URL 由 `mapSnapshot` 拼给模型）—— 留着是为了不改动已有的调用点签名。
  */
+/**
+ * 每张素材图的版本号（文件 mtime，毫秒）：界面拼 URL 时带 `?v=`。
+ *
+ * 少了它，`recomposeMapTileset`（原地重烘）之后浏览器会继续用缓存里的旧图 ——
+ * 表现是「重烘跑完了，画面一点没变」，只能靠硬刷新救。
+ */
+export async function tilesetRevisions(projectId: string): Promise<Map<string, number | undefined>> {
+  const project = await readProjectOrThrow(projectId);
+  return new Map(
+    await Promise.all(
+      project.tilesets.map(async (tileset) => [tileset.id, await fileRevision(join(mapProjectDir(projectId), tileset.file))] as const)
+    )
+  );
+}
+
+/** 文件 mtime（毫秒）；取不到就给 undefined（界面那边会退化成不带 `?v=`）。 */
+async function fileRevision(path: string): Promise<number | undefined> {
+  try {
+    const info = await stat(path);
+    return Math.round(info.mtimeMs);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function mapView(p: MapProject, options: { projectId?: string; origin?: string } = {}): Promise<MapProjectView> {
   void options;
   const doc = await theDocOrFresh(p.id);
@@ -1886,6 +2001,8 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
   const listing = await readExportListingRelative(p);
   const state = historyState(p.id);
   const layers = doc.layers.map((layer) => ({ id: layer.id, name: layer.name, filled: filledCount(doc, layer.id) }));
+  // 素材图的版本号（mtime）先批量取好：`map` 里不能用 await，只能先算。
+  const revisions = await tilesetRevisions(p.id);
   return {
     id: p.id,
     name: p.name,
@@ -1907,6 +2024,7 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
       clarity: tileset.clarity,
       fps: tileset.fps,
       tileCount: tileset.tiles.length,
+      rev: revisions.get(tileset.id),
       builtin: tileset.builtin === true ? true : undefined,
       reason: layoutFor(tileset.shape, tileset.cell, tileset.imageWidth, tileset.imageHeight).reason,
       palette: paletteFor(tileset, flat)

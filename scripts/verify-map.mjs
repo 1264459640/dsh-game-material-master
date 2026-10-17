@@ -728,6 +728,45 @@ section("11) AI 素材的帧整理（fitFrameToCell / stackFrames / safeAssetSte
     check("parseAssetFps：小数保留两位（2.345 → 2.35）", tiles.parseAssetFps(2.345) === 2.35, String(tiles.parseAssetFps(2.345)));
   }
 
+  // ⑪b 方向感知：竖段换向 + 转角斜接（否则「竖着的墙花纹接不上、拐角没拐角」）
+  {
+    /** 2×3 的标记图：左上=1、右上=2、左下=3、右下=4、中间=5、右上角… 用单通道值当指纹。 */
+    const marker = { width: 2, height: 3, rgba: Buffer.alloc(2 * 3 * 4) };
+    for (let i = 0; i < 6; i++) marker.rgba[i * 4] = i + 1;
+    const cw = tiles.rotate90(marker, true);
+    check("rotate90：宽高互换（2×3 → 3×2）", cw.width === 3 && cw.height === 2, `${cw.width}×${cw.height}`);
+    // 顺时针：新的左上角来自原图的**左下角**（(0, h-1) = 第 5 格，值 5）。
+    check("rotate90：顺时针把左下角转到左上角", cw.rgba[0] === 5, String(cw.rgba[0]));
+    check("rotate90：转两次 = 转 180°（每个像素都对）", JSON.stringify([...tiles.rotate90(tiles.rotate90(marker, true), true).rgba]) === JSON.stringify([...tiles.rotate90(tiles.rotate90(marker, false), false).rgba]));
+    check("rotate90：逆时针 = 顺时针转三次", JSON.stringify([...tiles.rotate90(marker, false).rgba]) === JSON.stringify([...tiles.rotate90(tiles.rotate90(tiles.rotate90(marker, true), true), true).rgba]));
+
+    // 斜接：左半红、右半蓝两块平色，转角（N+W）那一侧应当取竖直那版。
+    const flat = (r, g, b) => { const rgba = Buffer.alloc(8 * 8 * 4); for (let i = 0; i < 8 * 8; i++) { rgba[i*4]=r; rgba[i*4+1]=g; rgba[i*4+2]=b; rgba[i*4+3]=255; } return { width: 8, height: 8, rgba }; };
+    const horizontal = flat(200, 40, 40), vertical = flat(40, 40, 200);
+    const joined = tiles.joinCorner(horizontal, vertical, "N", "W", 1);
+    const px = (b, x, y) => { const o = (y * b.width + x) * 4; return [b.rgba[o], b.rgba[o+1], b.rgba[o+2]]; };
+    check("joinCorner：靠角（左上）那块取竖直方向的砖", px(joined, 0, 0)[2] > 150 && px(joined, 0, 0)[0] < 120, JSON.stringify(px(joined, 0, 0)));
+    check("joinCorner：远离角（右下）那块用水平方向的砖", px(joined, 7, 7)[0] > 150 && px(joined, 7, 7)[2] < 120, JSON.stringify(px(joined, 7, 7)));
+    // 斜接线从 N 中点 (3.5,0) 到 W 中点 (0,3.5)：找整张图最亮的那个像素，它必须在线上（红 200×1.28 会夹到 255）。
+    let brightest = { value: -1, x: 0, y: 0 };
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { const value = px(joined, x, y)[0]; if (value > brightest.value) brightest = { value, x, y }; }
+    check("joinCorner：斜接线上提亮（不是一道黑缝）", brightest.value > 240 && brightest.x + brightest.y <= 5, JSON.stringify(brightest));
+
+    /** 条纹砖：横条纹时，竖着走的那一段必须变成竖条纹。 */
+    const striped = { width: 16, height: 16, rgba: Buffer.alloc(16 * 16 * 4) };
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const o = (y*16+x)*4; const on = Math.floor(y / 4) % 2 === 0; striped.rgba[o] = on ? 240 : 30; striped.rgba[o+1] = on ? 220 : 40; striped.rgba[o+2] = 60; striped.rgba[o+3] = 255; }
+    const sheet = tiles.corner16SheetFromTile(striped, { width: 16, height: 16 }, "sharp");
+    const blockOf = (mask) => { const rgba = Buffer.alloc(16 * 16 * 4); for (let y = 0; y < 16; y++) { const from = (((Math.floor(mask / 4) * 16) + y) * sheet.width + (mask % 4) * 16) * 4; sheet.rgba.copy(rgba, y * 16 * 4, from, from + 16 * 4); } return { width: 16, height: 16, rgba }; };
+    /** 沿 x 方向的变化量 vs 沿 y 方向的变化量：横条纹的 y 变化大，转 90° 后反过来。 */
+    const variation = (b) => { let dx = 0, dy = 0, n = 0; for (let y = 2; y < 14; y++) for (let x = 2; x < 14; x++) { const o=(y*16+x)*4; dx += Math.abs(b.rgba[o]-b.rgba[o-4]); dy += Math.abs(b.rgba[o]-b.rgba[o-64]); n++; } return { dx: dx/n, dy: dy/n }; };
+    const horizontalRun = variation(blockOf(10)); // E+W：横着走
+    const verticalRun = variation(blockOf(5));    // N+S：竖着走
+    check("mask 10（横着走）保持横条纹：纵向变化明显大于横向", horizontalRun.dy > horizontalRun.dx * 2, JSON.stringify(horizontalRun));
+    check("★ mask 5（竖着走）换向 90°：变成竖条纹（横向变化 > 纵向）", verticalRun.dx > verticalRun.dy * 2, JSON.stringify(verticalRun));
+    check("★ 转角块（N+W）和直墙块不一样（斜接真的画进去了）", JSON.stringify([...blockOf(9).rgba]) !== JSON.stringify([...blockOf(15).rgba]));
+    check("反向验证：十字块（15）与直线块（10）的中间几列像素一致（不该被乱动）", (() => { const a = blockOf(15), b = blockOf(10); for (let y = 6; y < 10; y++) for (let x = 6; x < 10; x++) { const o=(y*16+x)*4; if (a.rgba[o] !== b.rgba[o]) return false; } return true; })());
+  }
+
   // ⑪c 自动裁边：模型爱在四周留一圈白边，裁的时候不能把内容裁坏
   {
     /** 白边框 + 深色内容（真实素材就是这种）。 */

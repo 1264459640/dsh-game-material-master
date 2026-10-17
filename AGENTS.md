@@ -88,10 +88,10 @@ node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115
 node scripts/verify-tile-gateway.mjs   # 地图地块走真实网关（81 项：payload / 验收 / 作废边界 / 建筑 / 布局冻住 / 保存往返）
 node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项，拦「遮罩没出现」「地图不显示」这类静默问题）
 
-node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点 / AI 素材按形态规整与「收口 + 无缝」/ 播放速度 / 清晰度重采样 / 循环方式 / 自动裁边的内核（201 项，含反向验证与术语黑名单）
-node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（352 项，含 A2 每格 4 条 op、动画循环、翻页图调色板每列一条、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
-node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（192 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透 / `ai/` 白名单 / AI 素材的形态透传与 openUrl）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（394 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证，以及「AI 生成素材」（提示词的形态判据与「一块无缝砖」约定 / 用法控件 / 帧数为 1 时视频模型点不动 / 点生成时用假 sessions 断言建的会话与发出去的正文 / 回链按 shape 预填「新增素材」））
+node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点 / AI 素材按形态规整与「收口 + 无缝」/ 播放速度 / 清晰度重采样 / 循环方式 / 自动裁边 / 换向与斜接的内核（212 项，含反向验证与术语黑名单）
+node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（363 项，含 A2 每格 4 条 op、动画循环、翻页图调色板每列一条、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
+node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（196 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透 / `ai/` 白名单 / AI 素材的形态透传与 openUrl）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（397 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证，以及「AI 生成素材」（提示词的形态判据与「一块无缝砖」约定 / 用法控件 / 帧数为 1 时视频模型点不动 / 点生成时用假 sessions 断言建的会话与发出去的正文 / 回链按 shape 预填「新增素材」））
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的
@@ -255,13 +255,29 @@ agent 再把这个形态原样传给 `composeMapAsset`；宿主按它**规整几
 ② **内置素材**是按 32 画的，`importSampleTileset` 现在按 `项目网格 / 32` 重采样（整数倍放大用最近邻，缩小 / 非整数倍用面积平均）
 —— 不缩放的话图块只有半格，看起来像缩小了一圈；③ `importMapTileset` **不给 cell 时仍按自动识别**（手动导「8×8 个 32px 小格」
 是常见用法，拿网格当默认会把小格切成 4 倍大小），但**素材格子 ≠ 地图网格时会给一条明确告警**（`verify-map-pipeline` 第 20 节盯着）。
+⚠️ **整格是「墙体」用法，所以它带方向**（`corner16SheetFromTile`）：南北直线（掩码 5）用**转 90° 的砖**、
+四个转角用 **`joinCorner` 把横向砖与竖向砖沿斜接线拼起来**（真砌墙的转角做法），其余照旧。
+这条来自真机反馈：「竖过来的部分花纹没拼」「拐角没有拐角的效果」——只画一条亮线没用，得让砖缝真的换向。
+⚠️ 方向只在 **compose** 阶段烘进那 16 块，改规则后**已有素材不会自动变**；而「删掉再导」会把画在那张素材上的
+格子清空。所以有了 **`recomposeMapTileset({projectId, tilesetId, files})`**：按同一份源图原地重烘，
+**保留素材 id 与图块数**（`verify-map-pipeline` 第 21 节断言重烘前后 `map.json` 的每格值一模一样、只换图片）。
+⚠️ 重烘只换图，**图的 URL 得跟着变**：素材视图带 `rev`（文件 mtime），界面拼 `?v=rev`。
+少了它浏览器会继续用缓存里的旧图 —— 表现是「重烘跑完了，画面一点没变」，而 `rev` 又是**派生数据、不落盘**，
+所以 `importMapTileset` 的回包里也要现取一次（`mapgen.tilesetRevisions`），只改 `mapTilesetBrief` 不够。
+
+⚠️ **提示词要按一格的像素写「细节尺寸」**（真机翻车过：一张 2K 的细密砖墙缩到 32px 只剩一片红雾 —— 实测细节量
+32px 8.9 / 64px 14.6，用户看到的就是「宫廷围墙不像墙」）。所以 `buildAssetRequestPrompt` 现在会说
+「任何细节不能小于一格的 1/4」「砖块这类重复单元一格最多排 3/4/5 排」，并且**一格 ≤32px 时直接劝退**：
+按大砖画 + 在回答里告诉用户「做成一格 64px 再生成，同样一幅画能留 4 倍细节」。
+⚠️ 画得再准也救不了 32px 的细砖纹 —— 那是分辨率问题，只能靠 64 格（或接受简化画法）。
+
 自检：`verify-map`（`trimUniformBorder` 的六条正反用例）、`verify-map-pipeline`（第 17 节自动裁边、第 20 节 16/32/64 网格与内置素材缩放）、
 `verify-map-gateway`（`createMapProject.grid` 过 schema）、`verify-map-client`（新建对话框的四档 / 说明 / 建出来真的是 64 网格，建完即删并切回 32）。同批还加了：深链接意图的 `dialog` / `asset` / `frames` / `shape` 四个参数、
 `getImageJob` / `getSequenceJob` 返回的 `dir`（本机绝对目录，agent 拼帧路径用）、
 工具描述与系统提示词里的「AI 生成素材」固定流程。⚠️ **宿主半区改了，要重启 DSH**。
 自检项数：verify-host 385 / verify-client 352 / verify-tools 153 → **169** / verify-pipeline 40 / verify-feedback 203 /
-verify-i18n 9 / verify-map 123 → **201** / verify-map-pipeline 276 → **352** / verify-map-gateway 160 → **192** /
-verify-map-client 298 → **394**。
+verify-i18n 9 / verify-map 123 → **212** / verify-map-pipeline 276 → **363** / verify-map-gateway 160 → **196** /
+verify-map-client 298 → **397**。
 
 另外，相对已发布的 0.7.0，还多出一个**本地 ComfyUI 视频后端**
 （`feat(comfy)`，可选、不影响默认链路）：设置页新增「本地 ComfyUI（图生视频）」，勾选后**只有「图生视频」这一步**
