@@ -250,6 +250,9 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 包已发布到 npm：[dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
 （当前 `0.7.0`，`latest`）。本包没有运行时依赖，`dsh plugin add` 拉下来即可用。
 
+**DSH 版本**：`>=0.2.0-rc.2 <0.3.0`（`package.json` 的 `engines.dsh`；DSH 0.2.1 起插件管理器优先按它判断兼容性）。
+Web 部署用 `--public-url https://host/prefix/` 时，深链接与产物地址会跟着补路径前缀。
+
 装完**重启 DSH**（宿主半区在启动时装入）。浏览器半区按磁盘上的 `lib/client.js` 现取，
 刷新浏览器即可生效。
 

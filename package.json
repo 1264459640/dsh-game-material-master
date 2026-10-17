@@ -29,6 +29,9 @@
     }
   },
   "license": "MIT",
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
   "files": [
     "lib",
     "README.md",
@@ -41,12 +44,12 @@
     "verify:rig:runtime": "node scripts/verify-rig-runtime.mjs"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/dsh-typert-protocol": "^0.2.1-rc.2",
     "@esotericsoftware/spine-core": "4.2.120",
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-typert-protocol": "*",
     "@types/node": "^26.2.0",
     "typescript": "^7.0.2",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "keywords": [
     "dsh",

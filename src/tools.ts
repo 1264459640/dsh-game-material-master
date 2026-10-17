@@ -37,7 +37,7 @@ import { listTileProjects, readTileProject, tileSnapshot } from "./tilegen.js";
 import { listMapProjects, mapSnapshot, readMapProject } from "./mapgen.js";
 import { listMusicJobs, musicSnapshot, readMusicJob } from "./musicgen.js";
 import { TOOL_METHODS } from "./wire.js";
-import { MUSIC_STAGES, MAP_STAGES, PANEL_KEY, STUDIO_MODULES, buildOpenLink, originForLinks, type OpenIntent } from "./links.js";
+import { MUSIC_STAGES, MAP_STAGES, PANEL_KEY, STUDIO_MODULES, assetBasePath, buildOpenLink, originForLinks, type OpenIntent } from "./links.js";
 import { loadConfig } from "./config.js";
 
 /**
@@ -399,7 +399,7 @@ function cellsOf(
 }
 
 function spriteSnapshot(project: any) {
-  const assetBase = `${ROUTE_PREFIX}/assets/${project.id}/`;
+  const assetBase = assetBasePath(`${ROUTE_PREFIX}/assets/${project.id}/`);
   // 「还有没有活在跑」= 节点状态 + 宿主的后台任务表。只看节点不行：批量任务是
   // 一个方向一个方向开工的（抽帧并发只有 2），任务刚登记时八个方向可能都还不是
   // running，只看节点会让 game_material_wait 立刻返回 settled=true，
@@ -501,7 +501,7 @@ function spriteSnapshot(project: any) {
 }
 
 function imageSnapshot(job: any) {
-  const assetBase = `${ROUTE_PREFIX}/image-assets/${job.id}/`;
+  const assetBase = assetBasePath(`${ROUTE_PREFIX}/image-assets/${job.id}/`);
   const items = (job.items ?? []).map((item: any) => ({
     index: item.index,
     status: item.status,
@@ -535,7 +535,7 @@ function imageSnapshot(job: any) {
 }
 
 function sequenceSnapshot(job: any) {
-  const assetBase = `${ROUTE_PREFIX}/sequence-assets/${job.id}/`;
+  const assetBase = assetBasePath(`${ROUTE_PREFIX}/sequence-assets/${job.id}/`);
   const steps = [
     { step: "video", title: "① 生成视频", status: job.video?.status, approved: job.video?.approved === true, url: assetUrl(assetBase, job.video?.file), error: job.video?.error },
     { step: "frames", title: "② 抽帧 + 抠像", status: job.frames?.status, approved: job.frames?.approved === true, files: (job.frames?.files ?? []).map((file: string) => assetUrl(assetBase, file)), keyed: (job.frames?.keyed ?? []).map((file: string) => assetUrl(assetBase, file)), stale: job.frames?.stale === true, error: job.frames?.error },

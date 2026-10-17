@@ -72,6 +72,8 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 内置默认提示词（`src/directions.ts`）中英各一份，改一份必须改另一份 | 它会真的发给生图 / 视频模型，不是界面装饰。`verify-host.mjs` 的 5b 段按语言逐条比对两侧 |
 | 转圈截帧的首帧一律走 `src/pipeline.ts` 的 `turnFirstFrame()`：它除了「正面绿幕图优先」，还会拿文件时间兜一道（正面图比源图旧 → 退回源图） | 换源图会作废派生产物，但历史项目 / 手工替换的文件仍可能带着旧角色的 `images/front.png`。那一张就是交给视频模型的首帧，「新角色配旧脸」既不报错也不缺图，只能肉眼看出来 |
 | 起 ffmpeg / ffprobe 一律走 `src/media.ts` 的 `ffmpegPath()` / `ffprobePath()`，别写死 `"ffmpeg"`、也别只读 `process.env` | Windows 上 ffmpeg 常常「装了但不在 `PATH` 里」，而 `setx` 设的环境变量又继承不到已经在跑的进程。这两个函数会继续查注册表与 WinGet / Scoop / Chocolatey 的常见位置——绕过它们就是「自检全绿、真机报找不到 ffmpeg」 |
+| `engines.dsh` 与 devDependencies 里的 `cordis` / `typert-protocol` **必须一起跟 DSH 版本走** | DSH 0.2.1 起插件兼容性**优先看 `engines.dsh`**（声明了就不再回退 peerDependencies），本插件声明 `>=0.2.0-rc.2 <0.3.0-0`；`<0.3.0-0` 是必需的，因为 DSH 用 `includePrerelease` 判范围，写 `<0.3.0` 会放行 0.3.0 的 rc。开发依赖是**开发期契约**：0.2.1 对应 `cordis ~4.0.5` / `dsh-typert-protocol 0.2.1-rc.2`，版本太旧时自检会对着旧契约全绿、真机却挂 |
+| 回给浏览器的 `assetBase` 一律走 `src/links.ts` 的 `assetBasePath()`，深链接一律走 `buildOpenLink()` 的默认 origin | DSH 0.2.1 的 `--public-url https://host/prefix/` 会由反代**剥掉路径前缀**再转给 DSH；宿主只拼 `origin + /dsh-game-material-master/...` 时，浏览器会请求反代根路径 → 图片全裂、回链落到根页。浏览器半区把 `location.pathname` 一起报上来（`reportClientOrigin({origin,path})`），宿主拼 URL 时补回去。绕过 `assetBasePath` 的字符串拼接就是「本地全对、反代后面图裂」 |
 
 ---
 
@@ -85,9 +87,9 @@ npm run typecheck    # 只做类型检查
 纯本地自检（不联网、不花钱），改完代码**至少跑这几个**：
 
 ```bash
-node scripts/verify-host.mjs       # 宿主全链路（385 项）
+node scripts/verify-host.mjs       # 宿主全链路（387 项）
 node scripts/verify-client.mjs     # 浏览器半区契约（353 项）
-node scripts/verify-tools.mjs      # 对话调用面（171 项）
+node scripts/verify-tools.mjs      # 对话调用面（179 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
 node scripts/verify-feedback.mjs   # 浏览器半区真渲染（203 项，含功能管理、侧栏菜单、生图后端设置页与语义保存错误）
 node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
@@ -344,9 +346,18 @@ agent 再把这个形态原样传给 `composeMapAsset`；宿主按它**规整几
 `verify-map-gateway`（`createMapProject.grid` 过 schema）、`verify-map-client`（新建对话框的四档 / 说明 / 建出来真的是 64 网格，建完即删并切回 32）。同批还加了：深链接意图的 `dialog` / `asset` / `frames` / `shape` 四个参数、
 `getImageJob` / `getSequenceJob` 返回的 `dir`（本机绝对目录，agent 拼帧路径用）、
 工具描述与系统提示词里的「AI 生成素材」固定流程。⚠️ **宿主半区改了，要重启 DSH**。
-自检项数：verify-host 385 / verify-client 353 / verify-tools 153 → **171** / verify-pipeline 40 / verify-feedback 203 / music 82 / music-gateway 37 / music-client 46 /
+自检项数：verify-host 387 / verify-client 353 / verify-tools 153 → **179** / verify-pipeline 40 / verify-feedback 203 / music 82 / music-gateway 37 / music-client 46 /
 verify-i18n 9 / verify-map 123 → **238** / verify-map-pipeline 276 → **416** / verify-map-gateway 160 → **216** /
 verify-map-client 298 → **457**。
+
+另有一批 **DSH 0.2.1 适配**（`fix(dsh)` / `feat(compat)`）：`package.json` 补 `engines.dsh`（`>=0.2.0-rc.2 <0.3.0-0`）；
+开发依赖对齐 0.2.1 的 `cordis ~4.0.5` / `dsh-typert-protocol 0.2.1-rc.2`（旧的自检树还停在 protocol 0.1.0-rc.6，
+等于在拿旧契约验收）；移除 DSH 0.2.1 已废弃的 `@deepseek-ai/dsh-invariants` 开发依赖（本插件从未 import）。
+另外支持 `--public-url https://host/prefix/`：浏览器半区把 `location.pathname` 一起报给宿主
+（`reportClientOrigin({origin,path})`），宿主用 `links.assetBasePath()` 给所有 `assetBase` 补路径前缀、
+`buildOpenLink()` 默认拼 `origin + /prefix`；`verify-host` 与 `verify-tools` 各加了几条前缀断言。
+⚠️ 宿主半区改了，**要重启 DSH**；浏览器半区刷新即可。
+自检项数：verify-host **387** / verify-tools **179**（其余不变）。
 
 另外，相对已发布的 0.7.0，还多出一个**本地 ComfyUI 视频后端**
 （`feat(comfy)`，可选、不影响默认链路）：设置页新增「本地 ComfyUI（图生视频）」，勾选后**只有「图生视频」这一步**

@@ -110,6 +110,7 @@ import {
   type SemanticsIssue
 } from "./rigsemantics.js";
 import type { NodeStatus } from "./store.js";
+import { assetBasePath } from "./links.js";
 
 export type RigStageKey = "parts" | "layout" | "rig" | "atlas";
 
@@ -1066,7 +1067,7 @@ function lossless<T>(value: T): T {
 }
 
 export function rigSnapshot(job: RigJob, origin = "") {
-  const assetBase = `${origin}/dsh-game-material-master/rig-assets/${job.id}/`;
+  const assetBase = `${origin}${assetBasePath(`/dsh-game-material-master/rig-assets/${job.id}/`)}`;
   const url = (relative: string | undefined): string | undefined =>
     typeof relative === "string" && relative !== "" ? `${assetBase}${relative}` : undefined;
   const items = job.layout.items;

@@ -78,7 +78,7 @@ import {
   type MusicEditOps
 } from "./musicaudio.js";
 import { zipEntries } from "./zip.js";
-import { buildOpenLink, originForLinks } from "./links.js";
+import { assetBasePath, buildOpenLink, originForLinks } from "./links.js";
 
 export type MusicStage = "generate" | "edit" | "export";
 export const MUSIC_STAGES: readonly MusicStage[] = ["generate", "edit", "export"];
@@ -581,7 +581,7 @@ async function requireApi(): Promise<MusicApiConfig> {
 // ── 任务视图 ────────────────────────────────────────────────────────────
 
 export function musicAssetBase(id: string): string {
-  return `/dsh-game-material-master/music-assets/${id}/`;
+  return assetBasePath(`/dsh-game-material-master/music-assets/${id}/`);
 }
 
 function absUrl(origin: string, assetBase: string, relative?: string): string | undefined {

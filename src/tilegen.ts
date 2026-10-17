@@ -55,6 +55,7 @@ import {
 } from "./tilegeom.js";
 import { assembleMap, cropBitmap, emptyMapState, measureAssemblyBounds, pickVariantIndex, shapeOfEntry, trimTransparent, type TileMapState } from "./tilemap.js";
 import { decodeFile, encodeBitmap, pngSize, sniffImageExt, type Bitmap } from "./bitmap.js";
+import { assetBasePath } from "./links.js";
 
 /**
  * 用户可见的阶段。
@@ -1691,7 +1692,7 @@ export function tileView(project: TileProject): TileProjectView {
   return {
     ...project,
     job: jobs.get(project.id),
-    assetBase: `/dsh-game-material-master/tile-assets/${project.id}/`,
+    assetBase: assetBasePath(`/dsh-game-material-master/tile-assets/${project.id}/`),
     progress: tileProgress(project),
     // 参考图预览（原「① 模板」阶段，现在是 ② 里的只读面板）。
     //
@@ -1939,7 +1940,7 @@ export function tileAnchorY(project: TileProject): number {
  * 这里给模型用绝对 URL。两者都只带「判断所需的最小字段」，不是整个 project.json。
  */
 export function tileSnapshot(project: TileProject, origin: string) {
-  const assetBase = `${origin}/dsh-game-material-master/tile-assets/${project.id}/`;
+  const assetBase = `${origin}${assetBasePath(`/dsh-game-material-master/tile-assets/${project.id}/`)}`;
   const url = (relative: string | undefined): string | undefined =>
     typeof relative === "string" && relative !== "" ? `${assetBase}${relative}` : undefined;
   const items = project.items.map((item) => ({

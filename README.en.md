@@ -299,6 +299,9 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 The package is published to npm: [dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
 (currently `0.7.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
 
+**DSH version**: `>=0.2.0-rc.2 <0.3.0` (the `engines.dsh` field; since DSH 0.2.1 the plugin manager checks it first).
+When a Web deployment uses `--public-url https://host/prefix/`, deep links and asset URLs include that path prefix.
+
 After installing, **restart DSH** (the host half is loaded at startup). The browser half is read from
 `lib/client.js` on disk on each request, so refreshing the browser is enough for it to take effect.
 

@@ -505,12 +505,13 @@ const setRigSemanticsSchema = z.object({
 });
 
 /**
- * 浏览器半区上报自己真实的 `location.origin`。
+ * 浏览器半区上报自己真实的 `location.origin`（`path` = 应用路径前缀）。
  *
  * 宿主不知道对外 origin（可能被反代改写过），而模型要在回复里贴出可点的
- * 深链接，只能由页面自己上报一次。见 src/links.ts。
+ * 深链接，只能由页面自己上报一次。DSH 0.2.1 起 `--public-url` 允许带路径
+ * 前缀，`path` 就是给这种情况用的。见 src/links.ts。
  */
-const reportOriginSchema = z.object({ origin: z.string() });
+const reportOriginSchema = z.object({ origin: z.string(), path: z.string().optional() });
 
 interface MethodSpec {
   method: string;

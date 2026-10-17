@@ -14,8 +14,10 @@
  * 连 <a> 都不生成，模型写了也点不动。
  *
  * 为什么带 origin：
- * 浏览器半区在 apply 时把自己真实的 `location.origin` 报给宿主（reportClientOrigin），
- * 宿主据此拼出可点链接。宿主自己并不知道对外 origin（可能被反代改写过）。
+ * 浏览器半区在 apply 时把自己真实的 `location.origin` 与 `location.pathname`
+ * 报给宿主（reportClientOrigin），宿主据此拼出可点链接。宿主自己并不知道对外
+ * origin（可能被反代改写过）；DSH 0.2.1 的 `--public-url` 还允许带路径前缀，
+ * 所以 `pathname` 也要一起报。
  * 没收到过上报时退化成 http://localhost —— 即使 origin 不对也没关系：
  * 浏览器半区装了一个捕获阶段的点击拦截器，只按 **路径与查询参数** 匹配，
  * 命中就 preventDefault 并原地切面板，根本不会发生跳转。
@@ -141,9 +143,33 @@ export function isSafeAssetPath(value: unknown): value is string {
 }
 
 let clientOrigin = "";
+/**
+ * 应用挂在哪个路径前缀下（DSH 0.2.1 的 `--public-url https://host/prefix/`）。
+ *
+ * 反代把 `/prefix/*` 剥掉再转给 DSH，所以浏览器看到的地址是
+ * `https://host/prefix/`，而宿主只知道根路径。界面挂载时把自己的
+ * `location.pathname` 一起报上来，宿主拼深链接与产物 URL 时补回去。
+ * 空串 = 挂在根路径（本地默认）。
+ */
+let clientBasePath = "";
 
-/** 浏览器半区上报真实 origin。只接受 http(s)，其它一律忽略。 */
-export function rememberClientOrigin(origin: unknown): boolean {
+/** 把 `location.pathname` 收敛成「不带尾部斜杠、也不带 /index.html」的前缀。 */
+function normalizeBasePath(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const raw = value.trim();
+  if (raw === "" || raw === "/") return "";
+  if (!raw.startsWith("/") || raw.includes("\\") || raw.includes("..")) return "";
+  const path = raw.replace(/\/index\.html?$/iu, "").replace(/\/+$/u, "");
+  return path === "" || path === "/" ? "" : path;
+}
+
+/**
+ * 浏览器半区上报真实 origin（可选带应用路径前缀）。只接受 http(s)，其它一律忽略。
+ *
+ * `basePath` 省略时退回 `origin` 自带的路径：传 `https://host/prefix` 与
+ * `{ origin: "https://host", basePath: "/prefix" }` 等价。
+ */
+export function rememberClientOrigin(origin: unknown, basePath?: unknown): boolean {
   if (typeof origin !== "string") return false;
   let parsed: URL;
   try {
@@ -153,12 +179,29 @@ export function rememberClientOrigin(origin: unknown): boolean {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   clientOrigin = parsed.origin;
+  clientBasePath = normalizeBasePath(basePath === undefined ? parsed.pathname : basePath);
   return true;
 }
 
 /** 已上报的 origin；没有就返回空串。 */
 export function clientOriginOf(): string {
   return clientOrigin;
+}
+
+/** 已上报的应用路径前缀（`""` = 根路径）。 */
+export function appBasePath(): string {
+  return clientBasePath;
+}
+
+/**
+ * 把宿主里的根路径（`/dsh-game-material-master/...`）补上应用前缀。
+ *
+ * 所有回给浏览器的 `assetBase` 都走这里：反代只把 `/prefix/*` 转给 DSH，
+ * 少了前缀就会 404（界面表现为「图裂了」）。
+ */
+export function assetBasePath(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return `${clientBasePath}${normalized}`;
 }
 
 /**
@@ -224,8 +267,14 @@ export function intentQuery(intent: OpenIntent | undefined): string {
   return params.toString();
 }
 
-/** 拼出可点击的绝对链接。 */
-export function buildOpenLink(intent: OpenIntent | undefined, origin = originForLinks()): string {
+/**
+ * 拼出可点击的绝对链接。
+ *
+ * 默认用 `origin + 应用前缀`：DSH 0.2.1 的 `--public-url` 允许带路径前缀，
+ * 只拼 origin 会让回链落到反代根路径而不是应用本身。显式传 `origin` 的
+ * 调用点（自检 / 测试）保持原语义，不会额外补前缀。
+ */
+export function buildOpenLink(intent: OpenIntent | undefined, origin = `${originForLinks()}${clientBasePath}`): string {
   return `${origin}/?${intentQuery(intent)}`;
 }
 

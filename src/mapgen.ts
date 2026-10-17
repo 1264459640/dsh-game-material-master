@@ -126,6 +126,7 @@ import {
   assertStampFitsProject,
 } from "./maptiles.js";
 import { exportMap, safeFileName, type ExportFormatOptions, type ExportManifest } from "./mapexport.js";
+import { assetBasePath } from "./links.js";
 import { primeSampleTextures, renderSampleTilesets } from "./mapsamplegen.js";
 
 export type MapStage = "assets" | "rules" | "paint" | "export";
@@ -2145,7 +2146,7 @@ export async function mapPlan(
 // ── 视图 ──────────────────────────────────────────────────────────────────
 
 export function mapAssetBase(projectId: string): string {
-  return `/dsh-game-material-master/map-assets/${projectId}/`;
+  return assetBasePath(`/dsh-game-material-master/map-assets/${projectId}/`);
 }
 
 export interface MapViewTileset {
@@ -2632,7 +2633,7 @@ export interface MapSnapshot extends Omit<MapProjectView, "assetBase" | "tileset
 }
 
 function absoluteAssetUrl(projectId: string, origin: string, relative: string): string {
-  return `${origin}/dsh-game-material-master/map-assets/${projectId}/${relative}`;
+  return `${origin}${assetBasePath(`/dsh-game-material-master/map-assets/${projectId}/`)}${relative}`;
 }
 
 /**
@@ -2657,7 +2658,7 @@ export async function mapSnapshot(project: MapProject, origin: string, options: 
   if (nextActions.length === 0) nextActions.push({ step: "done", why: "素材、地图、导出都有产物了。可以继续改地图，或 runMapPreview({projectId}) 重新出验收图。" });
   return {
     ...rest,
-    assetBase: `${origin}/dsh-game-material-master/map-assets/${project.id}/`,
+    assetBase: `${origin}${mapAssetBase(project.id)}`,
     tilesets: view.tilesets.map((tileset) => ({ ...tileset, url: absoluteAssetUrl(project.id, origin, tileset.file) })),
     previewUrls: preview.map((relative) => absoluteAssetUrl(project.id, origin, relative)),
     exportBaseUrl: listing?.base ?? "",

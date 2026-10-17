@@ -496,8 +496,15 @@ async function main() {
   // 浏览器半区上报 origin：宿主据此拼出模型贴给用户的深链接。
   const originOk = await studio.reportClientOrigin({ origin: "http://127.0.0.1:43120" });
   check("接受 http origin 上报", originOk.ok === true && originOk.origin === "http://127.0.0.1:43120", JSON.stringify(originOk));
+  // DSH 0.2.1 `--public-url` 的路径前缀：宿主据此拼回链与 assetBase。
+  const prefixed = await studio.reportClientOrigin({ origin: "https://game.example", path: "/prefix/" });
+  check("接受带路径前缀的 origin 上报", prefixed.ok === true && prefixed.path === "/prefix/", JSON.stringify(prefixed));
+  const prefixedProject = await studio.getProject({ projectId });
+  check("带前缀时 assetBase 补上前缀", prefixedProject.assetBase === "/prefix/dsh-game-material-master/assets/" + projectId + "/", prefixedProject.assetBase);
   const originBad = await studio.reportClientOrigin({ origin: "file:///etc/passwd" });
   check("拒绝非 http(s) origin", originBad.ok === false, JSON.stringify(originBad));
+  // 后面的断言按本地根路径继续。
+  await studio.reportClientOrigin({ origin: "http://127.0.0.1:43120", path: "/" });
 
   // ── 6. 阶段前置校验 ────────────────────────────────────────────────────
   console.log("6) 前置校验（缺素材时给出可读错误）");

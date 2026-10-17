@@ -225,6 +225,9 @@ async function main() {
   check("setReviewMode payload 完整", reviewMode.reviewMode === "manual" && reviewMode.module === "sprite", JSON.stringify(reviewMode));
   const originPayload = specOf("reportClientOrigin").payload.parse({ origin: "http://127.0.0.1:43120" });
   check("reportClientOrigin payload 完整", originPayload.origin === "http://127.0.0.1:43120", JSON.stringify(originPayload));
+  // DSH 0.2.1 的 --public-url 路径前缀：path 不在 schema 里会被静默丢掉。
+  const originPathPayload = specOf("reportClientOrigin").payload.parse({ origin: "https://game.example", path: "/prefix" });
+  check("reportClientOrigin 保留 path（路径前缀）", originPathPayload.path === "/prefix", JSON.stringify(originPathPayload));
   const prompts = specOf("savePrompts").payload.parse({ projectId: "p1", suffix: "不要出现文字" });
   check("savePrompts 保留 suffix", prompts.suffix === "不要出现文字", JSON.stringify(prompts));
 
@@ -618,6 +621,47 @@ async function main() {
   check("未上报 origin 时退化成 http://localhost", links.originForLinks() === "http://localhost", links.originForLinks());
   check("上报后 origin 生效", links.rememberClientOrigin("http://127.0.0.1:43120") && links.originForLinks() === "http://127.0.0.1:43120");
   check("非法 origin 被拒绝", links.rememberClientOrigin("file:///x") === false && links.originForLinks() === "http://127.0.0.1:43120");
+  /**
+   * DSH 0.2.1 的 `--public-url https://host/prefix/`：反代会把前缀剥掉，
+   * 所以宿主拼回链与产物地址时必须把它补回去。少了前缀的表现是「点回链
+   * 落到反代根路径」/「面板里的图全裂」，都不报错。
+   */
+  check(
+    "路径前缀：origin 带前缀时自动识别",
+    links.rememberClientOrigin("https://game.example/prefix/") && links.originForLinks() === "https://game.example" && links.appBasePath() === "/prefix",
+    `${links.originForLinks()} + ${links.appBasePath()}`
+  );
+  check(
+    "路径前缀：深链接补在 origin 后面",
+    links.buildOpenLink({ module: "sprite", projectId }) === `https://game.example/prefix/?dsh-gmm=1&module=sprite&project=${projectId}`,
+    links.buildOpenLink({ module: "sprite", projectId })
+  );
+  check(
+    "路径前缀：产物 assetBase 也补前缀（否则反代后面图裂）",
+    links.assetBasePath("/dsh-game-material-master/assets/p1/") === "/prefix/dsh-game-material-master/assets/p1/",
+    links.assetBasePath("/dsh-game-material-master/assets/p1/")
+  );
+  check(
+    "路径前缀：非法值（.. / 反斜杠 / 相对路径）一律退回根路径",
+    links.rememberClientOrigin("https://game.example", "/a/../b") && links.appBasePath() === "" &&
+      links.rememberClientOrigin("https://game.example", "prefix") && links.appBasePath() === "" &&
+      links.rememberClientOrigin("https://game.example", "/a\\b") && links.appBasePath() === "",
+    links.appBasePath()
+  );
+  check(
+    "路径前缀：显式传 origin 的调用点保持原语义（不重复补前缀）",
+    links.buildOpenLink({ module: "sprite", projectId }, "http://127.0.0.1:43120") === `http://127.0.0.1:43120/?dsh-gmm=1&module=sprite&project=${projectId}`,
+    links.buildOpenLink({ module: "sprite", projectId }, "http://127.0.0.1:43120")
+  );
+  links.rememberClientOrigin("https://game.example", "/prefix/");
+  const prefixedStatus = await run("game_material_status", { module: "sprite", id: projectId });
+  check(
+    "路径前缀：status 里的 assetBase 也补前缀（工具面与界面走同一份）",
+    JSON.stringify(prefixedStatus).includes("/prefix/dsh-game-material-master/assets/"),
+    JSON.stringify(prefixedStatus).slice(0, 160)
+  );
+  // 后面的断言按本地根路径继续，把状态复位。
+  check("复位到根路径", links.rememberClientOrigin("http://127.0.0.1:43120") && links.appBasePath() === "" && links.originForLinks() === "http://127.0.0.1:43120");
 
   /**
    * ── 「AI 生成素材」回链的四个参数（dialog / asset / frames / shape）────────

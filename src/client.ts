@@ -3093,19 +3093,22 @@
     }
 
     /**
-     * 把真实 origin 报给宿主：宿主不知道对外地址（可能被反代改写），
-     * 而模型要在回复里贴出可点的绝对链接。失败不影响任何功能。
+     * 把真实 origin 与应用路径前缀报给宿主：宿主不知道对外地址（可能被反代改写），
+     * 而模型要在回复里贴出可点的绝对链接。`path` 让 DSH 0.2.1 的
+     * `--public-url https://host/prefix/` 部署也能拼对回链与产物地址。
+     * 失败不影响任何功能。
      */
     function reportClientOrigin(api) {
       if (typeof window === "undefined" || window.location === undefined) return;
       const origin = window.location.origin;
       if (typeof origin !== "string" || origin === "" || origin === "null") return;
+      const path = typeof window.location.pathname === "string" ? window.location.pathname : "";
       // 宿主刚重启时插件可能比远程服务先就绪：失败就退避重试几次，
       // 否则 `clientOrigin` 会一直空着，所有绝对产物地址都变成 `http://localhost`。
       const send = (attempt) => {
         let pending;
         try {
-          pending = api.reportClientOrigin({ origin });
+          pending = api.reportClientOrigin({ origin, path });
         } catch {
           pending = Promise.reject(new Error("reportClientOrigin failed"));
         }

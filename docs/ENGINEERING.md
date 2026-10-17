@@ -140,6 +140,10 @@ agent 会把它原样写成 Markdown 链接贴出来。用户点一下：
 又因为宿主不知道对外 origin（可能被反代改写），浏览器半区会在挂载时把自己真实的
 `location.origin` 上报给宿主（`reportClientOrigin`）。没收到上报时退化成
 `http://localhost` —— 拦截是按参数匹配的，origin 不对也不影响点击。
+DSH 0.2.1 的 `--public-url https://host/prefix/` 允许带路径前缀（反代把前缀剥掉再转给 DSH），
+所以 `location.pathname` 也一起上报；宿主用 `links.assetBasePath()` 给所有 `assetBase`
+补前缀、`buildOpenLink()` 默认拼 `origin + /prefix`。漏掉这一层的表现是「本地全对、
+反代后面板里的图全裂、回链落到根页」，而且不报任何错。
 
 拦截器只认 `dsh-gmm` 参数，其余链接（含站外的）一律放行。
 
@@ -2563,7 +2567,7 @@ node scripts/dsh-web-cookie.mjs 127.0.0.1:43121 --json
 | `node scripts/e2e-map.mjs` | 模块六**真实链路端到端**（不联网、不花钱）：内置素材（5 张，含 4 张 A2）→ 再合成导入一张 A2 与一张普通图 → 画满 24×24（自动连接长边）→ 叠一层普通图块 → 断言计划里「一格四条 op」→ 查一次跨边界的视口（环绕时 `visibleKeys` 会出现负数 key）→ 撤销 / 重做 → 一键生成三种地图 → 预览 → 导出，**故意留下产物**并打印绝对路径，方便人眼验收 |
 | `node scripts/verify-custom-image.mjs` | **自定义生图后端**（**68 项**）：起一台本地假服务端把 OpenAI / ComfyUI / SD WebUI 三种协议都模拟出来，全程离线零计费。断言的重点不是「有没有返回字节」而是**请求真的长对了**：端点路径、body 字段名（`cfg_scale` / `denoise` / `init_images`…）、参考图的形态（multipart / 纯 base64 / 上传后的文件名）、`images/edits` 端点不存在时退回 `generations` 的 `image` 字段、ComfyUI 的轮询（第一次故意返回空）、**占位符的 JSON 类型**（`{{width}}` 必须是数字，写成字符串 ComfyUI 会报 type 错；提示词里的引号换行不能破坏工作流 JSON）、没写 `{{image}}` 时自动改 `LoadImage` 节点，以及 `imageProvider` 一个字段切换后所有调用点真的换了端点（Ark 那边一次都没打）。另含配置归一化（脏数据按上下限收敛）与「报错要讲清改哪里」 |
 | `node scripts/verify-comfy.mjs` | 本地 ComfyUI 后端（**124 项**，纯本地、不联网、不花钱、**不需要真装 ComfyUI**）：脚本自己用 `node:http` 在随机端口起一个 mock，覆盖地址归一化与注入点解析、`parseComfyWorkflow` 的 **UI 格式自动转换**（官方 All-in-One 形状的夹具：控件值按 `widgets_values` 顺序取、`randomize` 不当种子、连线写成 `[来源节点, 槽位]`、没连的 `first` 留给探测、便签与静音节点丢掉、`droppedWidgets` 计数、新版对象形式的 `links`）、探测的**四级顺序**（显式覆盖回退 / 已有字面量量 / 已有 `LoadImage` / `object_info` 声明的 optional IMAGE）、两个 `LoadImage` 时首尾各用其一、注入的纯函数性与「插入节点只写 `image` 一个键」、`first_frame_reference` 自动打开、无首帧位置报错、以及 HTTP 层（`/system_stats`、`/queue` 排队中、`/history` 执行失败带出 node_type、上传 multipart、`node_errors` / `error` 两条失败路径、从 outputs 挑 mp4 而不挑 png、只有图片时判失败、Cookie 的归一化与「每个请求都真的带上了这个头」） |
-| `node scripts/verify-host.mjs` | 宿主半区全链路（**385 项**）：六个模块的本地链路、**阶段①的转圈截帧（合成一段「转动」视频跑真实 ffmpeg，覆盖截帧位置、按比例换算、下游作废、切换生成方式）**、**换源图后由旧源图派生的产物整体作废（状态清空 + 磁盘文件真的删掉）**、**转圈首帧的时间兜底（正面图比源图旧时改用源图）**、**模块五的资源路由（真起一台 server 走 HTTP 取回 `tile-assets` 的模板图，并验证 403 与目录穿越）**、资源路由（含 `turn/` 白名单）、预览页的 `text/html`、目录穿越与 id 前缀校验、**本地自选视频（真实 ffmpeg 造的 MP4 走 `uploadVideo`：容器嗅探 / 槽位校验 / 下游作废 / 转圈导入后自动抽帧 / 摘掉在跑的远端任务号）与中间图片 zip（自检里带一个真解包的 ZIP 读取器：逐条比 CRC 与长度、断言八方向图 / 转圈候选帧 / 绿幕帧 / 抠像帧 / 整图都在包里，并真起一台 server 把 zip 下载回来）** |
+| `node scripts/verify-host.mjs` | 宿主半区全链路（**387 项**）：六个模块的本地链路、**阶段①的转圈截帧（合成一段「转动」视频跑真实 ffmpeg，覆盖截帧位置、按比例换算、下游作废、切换生成方式）**、**换源图后由旧源图派生的产物整体作废（状态清空 + 磁盘文件真的删掉）**、**转圈首帧的时间兜底（正面图比源图旧时改用源图）**、**模块五的资源路由（真起一台 server 走 HTTP 取回 `tile-assets` 的模板图，并验证 403 与目录穿越）**、资源路由（含 `turn/` 白名单）、预览页的 `text/html`、目录穿越与 id 前缀校验、**本地自选视频（真实 ffmpeg 造的 MP4 走 `uploadVideo`：容器嗅探 / 槽位校验 / 下游作废 / 转圈导入后自动抽帧 / 摘掉在跑的远端任务号）与中间图片 zip（自检里带一个真解包的 ZIP 读取器：逐条比 CRC 与长度、断言八方向图 / 转圈候选帧 / 绿幕帧 / 抠像帧 / 整图都在包里，并真起一台 server 把 zip 下载回来）** |
 | `node scripts/verify-tile.mjs` | 模块五几何内核（**147 项**）：模板比例严格 2:1、合成图菱形测量、规整后无缺口/无越界、装饰锚点与遮挡、拼图无洞与同种子逐像素一致、PNG 往返。含**两条反向验证**——把模板几何改回硬编码错误值必须产生透明缺口、把抠底换回硬阈值必须留下近白像素；修复一旦被回退，这两条会红 |
 | `node scripts/verify-tile-pipeline.mjs` | 模块五数据层与流水线（**98 项**）：项目 CRUD（含非法单元格尺寸被拒）、参考图自动准备与几何、指纹复用、用**研究期真实 2K 图**喂规整（不花钱）、拼图与导出的产物、同种子重拼逐像素一致、换种子结果不同、**`map.pixel`**（叠层对齐用的裁剪偏移与交付尺寸）、**失效传播**（作废 generate 要清空变体与地图；只作废 map 时已花钱的地块必须保住）、**手改布局必须被保留**（传 `decorDensity` 等覆盖参数不能把它冲掉）、**全部为空的布局要走 fill 而不是渲染一张空画布**、**相对路径一律正斜杠**（`join()` 在 Windows 上给 `cell\…`，它会被拼进 URL）、提示词构造、快照给界面是相对路径而给对话工具是绝对 URL |
 | `node scripts/verify-tile-gateway.mjs` | 模块五**走真实网关**（**78 项**）：payload 解析、中英默认清单、模板作业、验收回写、`saveTileProject` 的**作废边界**（只改标签产物必须保住；改内容只废那一个；改画风全废）、**增删改地块**（新增计入 progress、改用途/家族/占格/变体数生效、删除后数量正确、提交空清单不能清空项目、`resetItemsToDefault` 中英各一份）、**手动改布局**（写回 cells/rows/cols/seed、不作废地块、带空格能重铺、空 cells 不清空）、拼图/导出、错误路径、`setReviewMode` 支持 tile。纯函数与直接调 tilegen 都测不到这一层——实测它抓出过「验收一个地块就崩」与「任何一次保存都清空全部（花钱生成的）产物」 |
@@ -2582,7 +2586,7 @@ npm run build          # tsc → lib/，并剥掉浏览器束结尾的 export {}
 node scripts/verify-minimax.mjs    # MiniMax 协议层（85 项，含请求体逐字段断言）
 node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（124 项，自起 mock ComfyUI，纯本地不花钱）
 node scripts/verify-pipeline.mjs   # 抽帧/抠像/合成链路（40 项，含回归用例）
-node scripts/verify-host.mjs       # 宿主冒烟（385 项，真实 cordis + 真实 HTTP；含内置默认提示词的语言切换、hiddenModules 落盘与收敛、生图后端两组配置与阻塞判断、模块五资源路由）
+node scripts/verify-host.mjs       # 宿主冒烟（387 项，真实 cordis + 真实 HTTP；含内置默认提示词的语言切换、hiddenModules 落盘与收敛、生图后端两组配置与阻塞判断、模块五资源路由）
 node scripts/verify-custom-image.mjs # 自定义生图后端三协议（68 项，本地假服务端；离线、零计费）
 node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（124 项，自起 mock ComfyUI，纯本地、不用装 ComfyUI）
 node scripts/verify-client.mjs     # 浏览器半区契约（352 项：阶段 ctx 键必须被转发、每个生成类调用点都带 loading 反馈、转圈时间轴与八圆圈、手动装配的四个坑、拆件质检 / IK 约束组件、功能管理 / 侧栏菜单的文本与样式契约）
