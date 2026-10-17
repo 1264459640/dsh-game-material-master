@@ -176,15 +176,18 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 | `0.3.0` | 2026-10-05 12:56 | 新增**多语言支持**（界面文案与内置提示词跟随 DSH 语言设置，中 / 英，`feat(i18n)`，README 增加英文版）；新增模块五「**45°地图地块生成**」（实验性：等距地块 → 拼成整张地图，`feat(tile)`）；另有 `fix(tools)` 工具返回值统一过 `jsonSafe`、`fix(scripts)` verify-live-bundle 兼容 |
 | `0.4.0` | 2026-10-09 14:12 | 设置页新增「**功能管理**」（`feat(settings)`）：逐个开关五个模块，隐藏后界面上不再出现它的页签与侧栏菜单项，**对话工具面同样拒绝调用**（`game_material_call` / `status` / `intake` / `upload` / `wait` / `review` / `approve`），且可见性只能由用户在设置页里改；侧栏「游戏素材大师」入口上新增**快捷菜单按钮**，点击直接弹出五个功能 |
 | `0.6.0` | 2026-10-15 08:50 | **模块六「地图编辑器」推倒重做**（`feat(map)`，实验性，**全本地零计费**）：参照 [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) 的 **RPG Map Maker** 改成**一屏、纯图标、零术语**（左侧素材调色板 + 12 个图标按钮，右侧画布，选一张素材图就能开画）；素材形态（RPG Maker A2 拼块 / 整格 16 块 / 普通图块）由尺寸**自动识别**；**地图四周环绕**（相机 / 命中 / 绘制范围 / 脏块 / 邻域判断全部取模）；一格的 A2 自动连接由宿主展开成 **4 条象限 op**（客户端仍只 `drawImage`）；**动画地块**走 op 上的 `cycle` + 全局帧号；自带**程序化生成的内置素材**（4 张 A2 + 1 张道具，水有 2 帧动画；AsLib 的 pipo 素材是第三方版权，不打包）；新增**一键生成**（随机铺满 / 迷宫 / 大陆，同种子逐字节可复现）；编辑协议新增 **`dropKeys`**（界面把缓存 chunk key 报上来，宿主只回真正失效的那几个），`mapPlan` 改成按视口查询（`view` + `have`）；「**翻页图**」给自己的普通素材开逐行动画；**导出窗口按正常操作逻辑重做**（内容三只复选框多选 / 只有一个「导出」/ 多产物自动打一个 `<地图名>.zip`，`src/zip.ts` 手写且时间戳写死所以可复现 / 卡片写出本机绝对路径、「另存为…」走浏览器原生保存框）；**删除**：2:1 等距、多地图、图层高度 / 不透明度 / 类型 / 锁定、地形族与掩码编辑器、掩码覆盖率、Tiled `.tmj` `.tsj` 导出、带图例的自有 JSON、切片 contact sheet（`map-jobs/<id>/maps/` 目录消失，单张地图直接落 `map.json`）；wire 方法删 4 个（`saveMapFamilies` / `createMapDoc` / `deleteMapDoc` / `duplicateMapDoc`）、加 2 个（`runMapGenerate` / `importSampleTileset`）；自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。⚠️ 改完必须重启 DSH（宿主半区）。（`0.5.0` 从未发布，其模块六实现已被本次重做整体取代） |
-
 | `0.7.0` | 2026-10-16 08:27 | **生图后端可选自定义服务**（`feat(image)`）：设置页新增「生图后端」，默认火山方舟 Seedream，也可换成用户自己的服务，协议三选一（**OpenAI 兼容** / **ComfyUI** / **Stable Diffusion WebUI**）；新增 `src/imageprovider.ts`（唯一分发层 `generateImageWithProvider`，模块里自己判 `imageProvider` 会被自检拦）与 `src/customimage.ts`（三协议各自发请求：OpenAI 的 `/images/generations`、带参考图先走 `/images/edits` 且端点不存在时退回 `image` 字段；SD WebUI 的 `txt2img` / `img2img` 与 `user:pass` 走 HTTP Basic；ComfyUI 的上传参考图 → `/prompt` → 轮询 `/history` → `/view`，工作流按 **JSON 树**替换占位符、没写 `{{image}}` 时自动改 `LoadImage` 节点）；配置项 `imageProvider` / `customProtocol` / `customBaseUrl` / `customApiKey`（脱敏回传）/ `customModel` / `customSize` / 负面提示词 / 步数 / CFG / 采样器 / 重绘强度 / 种子 / 超时 / ComfyUI 工作流；设置页 ark 与 custom 两组同时渲染（没配火山方舟 Key 也能先配本地服务并点「测试连接」），新增远程方法 `testCustomImage`；新增自检 `scripts/verify-custom-image.mjs`（68 项，起本地假服务端把三种协议都模拟出来，离线零计费）。**模块六「地图编辑器」转正**（全本地零计费，几何与导出都有像素级自检兜底）：去掉页签角标、进入弹窗与模块内常驻提示条，`verify-map-client.mjs` 反过来逐条钉住这三处不能出现、并断言模块⑤仍带实验性标记。**生成视频的两处都能自选本地视频**（`feat(sprite)`：阶段①转圈视频与阶段②八方向行走视频，导入产物与远端生成只差 `origin` / `originalName` 两个字段，阶段③④一行不用改；容器按**文件头**识别、上限 100MB；导入时作废该槽位已有的下游产物并**摘掉在跑的远端 `taskId`**）；新增 `exportImages`（八方向图 / 候选帧与条带 / 抠像帧 / 整图打成 zip 落 `out/`），界面上每张产物都有单独「保存」、候选帧另有「保存全部图片（zip）」；对话面 `game_material_upload` 新增 `kind=video` + `key`。**模块六：图层可改名换序 + 标记层**（`feat(map)`：默认三层「地理层 / 装饰层 / 建筑层」，图层卡里就地改名 / ↑↓ 换序 / 删层；`MapDoc.markers` 每格一个可命名标记，不进 `layer.data`，op 四态（add / remove / move / rename）走同一条 `applyMapOps`，画成圆圈里的数字、编号连续删了自动重排，导出 `map.json` 加 `markers` 且格式升到 `dsh-gem-map@3`）；`fix(mapgeom)` 视口比地图大时不画最后一列 / 最后一行。自检项数：host 367 / client 352 / tools 153 / feedback 203 / map 123 / map-pipeline 274 / map-gateway 160 / map-client 263。⚠️ 改到了宿主半区：要让设置页显示新的生图后端分组，必须重启 DSH。 |
+| `0.8.0` | 2026-10-17 15:00 | **新增第七个模块「音乐生成编辑」**（`feat(music)`，谱乐 AI：灵感/歌词 → 不挂靠项目的新对话 → 四引擎生成 → 回界面裁剪 / 音量 / 淡入淡出 / loudnorm / 版本 / 导出；另有**谱曲模式**：方案 → scoremill 本地写 MIDI → 试听 → 逐版修改 → 可选交 Suno，谱曲本地免费）；**地图编辑器「AI 生成素材」**（自动判形态、只画一块无缝砖、播放速度 / 清晰度 / 循环方式 / 自动裁边 / 整图多格印花）；**图生视频可选本地 ComfyUI**；**DSH 0.2.1 适配**（`engines.dsh`、`--public-url`）。自检项数：host 387 / client 353 / tools 179 / feedback 203 / music 82 / music-score 46 / music-gateway 51 / music-client 66 / map 238 / map-pipeline 416 / map-gateway 216 / map-client 457。详见下方「0.8.0 发布说明」。 |
 
-下一次发布请**在表中追加一行**，写明版本、UTC 时间与内容。
+下一次发布请**在表中追加一行**，写明版本、UTC 时间与内容；详细说明可以另起一节（格式参照下面的「0.8.0 发布说明」）。
 
-### ⏳ 尚未发布：下一版
+### 0.8.0 发布说明（2026-10-17）
 
-`package.json` 目前是 `0.7.0`（0.7.0 已发布；是否发下一版由用户决定）。相对已发布的 0.7.0，还多出一个
-**模块六「AI 生成素材」**（`feat(map)`）：素材卡片上多一颗按钮，点开填「提示词 / 素材名字 / 动画帧数（默认 1）/ 动画生成方式（生图模型 | 视频模型）」，
+`package.json` 是 `0.8.0`。相对已发布的 0.7.0，0.8.0 的内容如下。
+
+#### 模块六「AI 生成素材」
+
+素材卡片上多一颗按钮，点开填「提示词 / 素材名字 / 动画帧数（默认 1）/ 动画生成方式（生图模型 | 视频模型）」，
 点「生成」**不在插件里生成图**，而是**开一个新对话**（`sessions.create({})`：不给 workspaceId / cwd = 不挂靠项目）→
 切到对话界面 → 把拼好的需求作为第一句话发进去（`buildAssetRequestPrompt`，逐行 `T()` 拼，别整段塞进一条 `T()`）；
 对话里的 agent 用**现成工具**生成（帧数 1 = 图片生成 count:1；帧数 > 1 + 生图模型 = count:N；
@@ -365,7 +368,7 @@ verify-map-client 298 → **457**。
 ⚠️ 宿主半区改了，**要重启 DSH**；浏览器半区刷新即可。
 自检项数：verify-host **387** / verify-tools **179**（其余不变）。
 
-另外，相对已发布的 0.7.0，还多出一个**本地 ComfyUI 视频后端**
+0.8.0 还包括一个**本地 ComfyUI 视频后端**
 （`feat(comfy)`，可选、不影响默认链路）：设置页新增「本地 ComfyUI（图生视频）」，勾选后**只有「图生视频」这一步**
 改走 ComfyUI（替代 MiniMax）——工作流收 JSON（**API 格式**直通，编辑器里保存的界面格式会先自动转成 API 格式），
 注入点（提示词 / 宽高 / 时长 / 种子 / 首尾帧）自动探测，工作流里没连的 optional `IMAGE` 输入按 `/object_info`
@@ -410,7 +413,7 @@ ffmpeg / ffprobe 的路径查找（Windows 上读注册表与常见安装位置�
 手工 MIDI + 内置合成器 + mock 上传/cover）；`verify-music-gateway` 37 → **51**、`verify-music-client`
 46 → **66**、`verify-host` 方法数 158 → **163**。⚠️ 改到了宿主半区：**要重启 DSH**。
 
-发布时按下面的流程走，并**把这段挪进上面的「已发布版本」表**（补上 UTC 时间）。
+发布下一版时按下面的流程走，并在「已发布版本」表里追加一行（补上 UTC 时间），详细说明另起一节。
 
 ### 流程
 
@@ -465,7 +468,7 @@ npm view dsh-game-material-master dist-tags
   代价是仓库内改图后要跟着改 URL，别写成相对路径「图方便」。
 - **截图不进 npm tarball。** `files` 白名单只有 `lib` / `README.md` / `README.en.md` /
   `cordis.patch.yml`，`docs/` 不发布——这也是上一条必须用绝对 URL 的原因。
-  tarball 约 916 kB / 55 个文件（0.7.0 + 未发布的音乐模块实测；0.7.0 发布时是 704 kB / 48 个文件，0.6.0 时是 665 kB / 46 个文件，0.1.1 时是 415 kB / 32 个文件）。
+  tarball 约 978 kB / 59 个文件（0.8.0 实测；0.7.0 发布时是 704 kB / 48 个文件，0.6.0 时是 665 kB / 46 个文件，0.1.1 时是 415 kB / 32 个文件）。
 - **两份 README 要成对改。** `README.md` 是中文原文，`README.en.md` 是英文版，
   两边顶部各有一条指向对方的**绝对**链接（npm 包页面解析不了相对路径，理由同上一条）。
   改了结构或数字（自检项数、tarball 大小等）就两边一起改。

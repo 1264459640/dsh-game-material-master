@@ -12,6 +12,13 @@ third-party service.
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+> **🆕 What's new in 0.8.0**: a seventh module, [**Music generation & editing**](#-music-generation--editing-puyue-ai)
+> (Puyue AI generation plus local post-processing, and a **compose mode** that writes MIDI, previews and revises
+> it locally); **Generate with AI** in the map editor (it picks plain / whole-cell / quadrant itself and asks the
+> model for one seamless tile) plus **stamps** (one picture covering N x M cells); an optional **local ComfyUI**
+> backend for image-to-video; and full **DSH 0.2.1** support (`engines.dsh`, `--public-url` path prefix).
+> See the [release notes in AGENTS.md](https://github.com/universe-st/dsh-game-material-master/blob/main/AGENTS.md#已发布版本).
+
 ![Game Material Master · workbench](https://raw.githubusercontent.com/universe-st/dsh-game-material-master/main/docs/images/gmm-00-workbench.png)
 
 > **Up and running in 30 seconds**: `dsh plugin --profile web add dsh-game-material-master` → restart DSH →
@@ -332,7 +339,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 The package is published to npm: [dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-(currently `0.7.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
+(currently `0.8.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
 
 **DSH version**: `>=0.2.0-rc.2 <0.3.0` (the `engines.dsh` field; since DSH 0.2.1 the plugin manager checks it first).
 When a Web deployment uses `--public-url https://host/prefix/`, deep links and asset URLs include that path prefix.

@@ -10,6 +10,12 @@
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+> **🆕 0.8.0 更新**：新增第七个模块 [**音乐生成编辑**](#-音乐生成编辑谱乐-ai)（谱乐 AI 生成 + 本地后期，
+> 另有**谱曲模式**：本地 MIDI 写谱、试听、逐版修改）；地图编辑器加入 **AI 生成素材**（自动判断
+> 普通 / 整格 / 拼块，只让模型画一块无缝砖）与 **整图**（一张画一次占 N×M 格）；图生视频可改走
+> **本地 ComfyUI**；全面适配 **DSH 0.2.1**（`engines.dsh`、`--public-url` 路径前缀）。
+> 完整变更见 [AGENTS.md 发布记录](https://github.com/universe-st/dsh-game-material-master/blob/main/AGENTS.md#已发布版本)。
+
 ![游戏素材大师 · 工作台](https://raw.githubusercontent.com/universe-st/dsh-game-material-master/main/docs/images/gmm-00-workbench.png)
 
 > **30 秒上手**：`dsh plugin --profile web add dsh-game-material-master` → 重启 DSH →
@@ -272,7 +278,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 包已发布到 npm：[dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-（当前 `0.7.0`，`latest`）。本包没有运行时依赖，`dsh plugin add` 拉下来即可用。
+（当前 `0.8.0`，`latest`）。本包没有运行时依赖，`dsh plugin add` 拉下来即可用。
 
 **DSH 版本**：`>=0.2.0-rc.2 <0.3.0`（`package.json` 的 `engines.dsh`；DSH 0.2.1 起插件管理器优先按它判断兼容性）。
 Web 部署用 `--public-url https://host/prefix/` 时，深链接与产物地址会跟着补路径前缀。
