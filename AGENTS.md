@@ -22,7 +22,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 骨骼动画生成 | `rig` | **实验性**（页签带角标、进入弹窗、模块内常驻提示条） |
 | 45°地图地块生成 | `tile` | **实验性**（45° 等距地块 → 拼成地图；AI 生成地块） |
 | 地图编辑器 | `map` | 正式（参照 AsLib 的 RPG Map Maker：一屏、纯图标、零术语；素材列表 + 新增（属性一次定死）、内置素材默认在列表且可删可恢复、地图环绕、自动连接、动画地块（翻页图）、一键生成；默认三层「地理层 / 装饰层 / 建筑层」且图层可改名换序；**标记层**（每格一个标记、可命名、地图上画成圆圈里的数字、编号连续删了重排）；导出是「内容多选 → 一个「导出」按钮 → 一个 zip 下载 / 另存为」；**全本地零计费**） |
-| 音乐生成编辑 | `music` | 正式（谱乐 AI：灵感/歌词 → 不挂靠项目的新对话 → agent 读内置指南、选引擎/模式生成 → 回界面裁剪/音量/淡入淡出/标准化/导出；**生成按平台积分计费**） |
+| 音乐生成编辑 | `music` | 正式（谱乐 AI：灵感/歌词 → 不挂靠项目的新对话 → agent 读内置指南、选引擎/模式生成 → 回界面裁剪/音量/淡入淡出/标准化/导出；**生成按平台积分计费**。另有**谱曲模式**：对话里先给方案 → scoremill 本地写 MIDI → 宿主渲染试听 → 逐版修改 → 可选交 Suno；**谱曲/试听/导出本地免费**） |
 
 生图后端是可切换的：默认火山方舟 Seedream，也可以换成用户自己的服务
 （OpenAI 兼容 / ComfyUI / Stable Diffusion WebUI 三种协议；
@@ -55,6 +55,11 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 音乐模块：界面文案全走 `T()`，模块级 `MUSIC_ENGINES` / `MUSIC_PHASES` 进 `staticTextRebuilders` | 否则切英文后引擎名 / 阶段名停在中文；`verify-i18n.mjs` 会拦词条，`verify-music-client.mjs` 拦模块表 |
 | 音乐模块：**界面里的产物地址一律从 `job.assetBase` 拼相对 URL**，不要直接用 snapshot 里的绝对 `url` | 宿主拼绝对地址依赖浏览器上报的 `location.origin`；插件刚重载 / 新宿主刚起来时上报可能还没到，宿主会退化成 `http://localhost`，表现就是**封面全裂、播放键点了没反应、下载链打不开**（真机踩过）。`musicAssetUrl` / `musicDownloadUrl` 优先用 `file` / `coverFile` 拼相对路径；`reportClientOrigin` 失败要退避重试。`verify-music-client` 钉住封面、版本下载与 origin 重试 |
 | 音乐模块：**新对话不挂靠项目**（`sessions.create({})`），jobId 由界面先建好 | 与「AI 生成素材」同一条桥；首条消息必须带 jobId、用户原文、指南、生成/回链/审核模式要求。`verify-music-client.mjs` 用假 sessions 断言 |
+| 音乐谱曲模式：**scoremill 由本机 Python 执行，插件不打包 Python** | `runMusicScore` 用参数数组、无 shell 的 `spawn` 跑 agent 写的 `compose.py`；cwd 是该版 `scores/<c…>/`；环境变量白名单、**不传任何 API Key**；180 秒超时杀进程组；必须产出 `score.mid`。缺 Python/scoremill 时 `detectScoreDeps` 给安装命令，界面禁用谱曲 |
+| 音乐谱曲模式：**试听优先 FluidSynth + SoundFont，缺了必须退回内置合成器** | 不能因为用户没装 SoundFont 就让「试听」不可用；`midipreview.ts` 是兜底。`GMM_SCORE_RENDERER=builtin` 强制内置音源（自检 / 排障）。`scores` 必须进 `SERVABLE_MUSIC_DIRS` |
+| 音乐谱曲模式：**每版都是新 `MusicComposition`，永不覆盖** | 修改意见 → 新目录 `scores/<c…>/`；旧 MIDI/试听/脚本保留。失败只把 `stages.compose` 标 error，不新增版本 |
+| 音乐谱曲模式：**Suno 不接受 MIDI 原文件，但接受音频** | `submitMusicScoreToSuno` 先把这一版试听音频 `POST /v1/suno/audio/upload`（multipart，标准上传免费）拿参考 song id，再走 `POST /v1/suno/generate/cover`；判定版权时返回 `needsCopyrightConsent`，用户确认后传 `copyrightAudio:true` 走付费通道。强制 `confirm:true`；已有歌曲必须 `regenerate:true`；结果不会逐音一致。**绝不自动提交**（真实计费） |
+| 音乐谱曲模式：**方案先落盘再谱曲** | `runMusicScore` 要求 `scorePlan`（或内联 `plan`）；manual 模式在方案后停下等确认。方案字段（含 `structure` / `instrumentation` 嵌套）必须逐个写进 `wire.ts`，否则 typert 静默丢键 |
 | 音乐模块：创作指南来源要保留 **CC0-1.0** 致谢 | `src/musicguide.ts` 头部、README 中英文、设置页文案三处都写；原仓库 `bitwize-music-studio/claude-ai-music-skills`，只吸收方法论、不搬运原文 |
 | 新增产物子目录时，`SERVABLE_DIRS`（`src/index.ts`）必须同步加一条 | 静态资源路由按**第一段路径**比对白名单，漏掉就 403。界面只表现为「图裂了」、不报错——转圈截帧的 `turn/` 就踩过。模块六的子目录白名单**唯一真源是 `mapgen.SERVABLE_MAP_DIRS`**（`index.ts` 的资源路由直接引用它，别再各写一份）；scope 级那三处（`AssetScope` 类型 / `resolveAssetTarget` 分支 / `SCOPES` 数组）改 scope 时要同步。`verify-map-gateway.mjs` 会真调一遍路由（含 `ai/` 的 200 与未列入目录的 403） |
 | 模块六：**客户端只能执行宿主下发的绘制计划**，不许自己算变体 / 形状 / chunk / 坐标变换 | 界面里唯一允许复刻的是 `MAP_pointToCell` / `MAP_cellAnchor` / `MAP_cellTopLeft` / `MAP_lineCells` 四个坐标函数（命中测试必需），且有黄金对照盯着；**连「哪些 chunk 可见」都由宿主算**（`mapPlan({view})` 回 `visibleKeys`）。多写一套口径就是旧模块「预览好看、导出位移」的老路，`verify-map-client.mjs` 会扫源码拦 |
@@ -96,8 +101,9 @@ node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
 node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（124 项，自起 mock ComfyUI，纯本地、不用装 ComfyUI）
 node scripts/verify-custom-image.mjs  # 自定义生图后端三协议（68 项：起本地假服务端，离线、零计费）
 node scripts/verify-music.mjs      # 音乐生成编辑：mock 谱乐 AI 的生成/轮询/下载/编辑/导出/工具/路由（82 项）
-node scripts/verify-music-gateway.mjs  # 音乐走真实网关：wire schema 不丢键、工具面、深链接、隐藏模块（37 项）
-node scripts/verify-music-client.mjs   # 音乐界面真渲染 + 新对话桥 + 静态契约（46 项）
+node scripts/verify-music-score.mjs   # 谱曲模式：方案 / 假 Python / 内置试听 / 乐谱包 / Suno 上传+cover mock（46 项，纯本地）
+node scripts/verify-music-gateway.mjs  # 音乐走真实网关：wire schema 不丢键、工具面、深链接、隐藏模块、谱曲字段（51 项）
+node scripts/verify-music-client.mjs   # 音乐界面真渲染 + 新对话桥 + 谱曲卡 + 静态契约（66 项）
 node scripts/verify-rig-runtime.mjs  # 骨骼改动：官方 Spine 4.2 实际加载/IK/Path/FFD/顶点求值（开发依赖）
 node scripts/verify-tile.mjs       # 地图地块几何内核（147 项，含反向验证）
 node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115 项；⚠️ 需要先跑过 e2e-tile-live 生成过地块，否则会在拼图阶段直接抛）
@@ -346,7 +352,7 @@ agent 再把这个形态原样传给 `composeMapAsset`；宿主按它**规整几
 `verify-map-gateway`（`createMapProject.grid` 过 schema）、`verify-map-client`（新建对话框的四档 / 说明 / 建出来真的是 64 网格，建完即删并切回 32）。同批还加了：深链接意图的 `dialog` / `asset` / `frames` / `shape` 四个参数、
 `getImageJob` / `getSequenceJob` 返回的 `dir`（本机绝对目录，agent 拼帧路径用）、
 工具描述与系统提示词里的「AI 生成素材」固定流程。⚠️ **宿主半区改了，要重启 DSH**。
-自检项数：verify-host 387 / verify-client 353 / verify-tools 153 → **179** / verify-pipeline 40 / verify-feedback 203 / music 82 / music-gateway 37 / music-client 46 /
+自检项数：verify-host 387 / verify-client 353 / verify-tools 153 → **179** / verify-pipeline 40 / verify-feedback 203 / music 82 / music-score 46 / music-gateway 51 / music-client 66 /
 verify-i18n 9 / verify-map 123 → **238** / verify-map-pipeline 276 → **416** / verify-map-gateway 160 → **216** /
 verify-map-client 298 → **457**。
 
@@ -383,6 +389,26 @@ ffmpeg / ffprobe 的路径查找（Windows 上读注册表与常见安装位置�
 生图 / 抠像 / 抽帧 / 合图不变。
 
 另有一个**新模块「音乐生成编辑」**（`feat(music)`，谱乐 AI，**生成按平台积分计费**）：设置页新增「音乐生成（谱乐 AI）」分组（API Key 脱敏、Base URL、默认模型、请求超时、生成等待超时；「测试连接」读一页历史、不生成）；新增 `src/musicmodels.ts`（四个引擎 / 模式 / 模型与参数枚举）、`src/musicapi.ts`（谱乐 AI OpenAPI 客户端：Suno / Mureka / MiniMax / ACE-Step 生成、query / wav / LRC / 历史 / 分轨 / MIDI / 乐谱 / 风格分析 / 转码、下载与 URL 安全）、`src/musicguide.ts`（中英双语创作指南，**来自 claude-ai-music-skills，CC0-1.0，已在 README 与源码头部致谢**）、`src/musicaudio.ts`（ffmpeg 裁剪 / 增益 / 淡入淡出 / loudnorm / 波形）、`src/musicgen.ts`（任务存储、生成轮询与下载、工具任务、版本、导出、`SERVABLE_MUSIC_DIRS`）。新增 22 个远程方法（`testMusic` + 21 个 music 方法），wire 方法数 136 → **158**。客户端新增第七个模块页签：灵感/歌词 → `createMusicJob` → 开一个**不挂靠项目**的新对话（`sessions.create({})`）→ agent 按内置指南扩写/选引擎/生成 → 回链接进界面裁剪/调音量/淡入淡出/标准化/保存版本/导出，路由支持 Range 与 `?download=1`。新增自检 `verify-music`（82 项，mock 谱乐 AI + 真 ffmpeg）、`verify-music-gateway`（37 项，wire schema 不丢键 / 工具面 / 隐藏模块）、`verify-music-client`（46 项，界面真渲染 + 新对话桥）。⚠️ 改到了宿主半区：**要重启 DSH**。
+
+另有一个**「谱曲模式」**（`feat(music)`，`workflow: "compose"`，**谱曲/试听/导出本地免费，只有交 Suno 计费**）：
+新建音乐卡的 `AI 生成 / 谱曲模式` 两个页签；谱曲模式的对话流程是「分析 → 用用户语言输出方案 →
+`saveMusicScorePlan` →（manual 停下）→ 写 `compose.py` → `runMusicScore` → 宿主跑 Python/scoremill、
+解析 MIDI、渲染试听 → 贴 `openUrl` 让用户听 → 逐版修改 → 用户明确要求才 `submitMusicScoreToSuno`」。
+新增 `src/midifile.ts`（SMF 0/1 解析 + WAV）、`src/midipreview.ts`（内置 GM 近似合成器兜底）、
+`src/musicscore.ts`（方案归一化 / 依赖探测 / 脚本执行 / FluidSynth 或内置渲染 / Suno 参数 / 乐谱包）、
+`src/musicscoreguide.ts`（中英 scoremill 指南，来源 scoremill MIT + Midra 思路）；`musicgen.ts` 增加
+`workflow` / `scorePlan` / `compositions` / `currentScoreId` / `stages.compose` 与五个方法
+（`getMusicScoreGuide` / `testMusicScore` / `saveMusicScorePlan` / `runMusicScore` /
+`submitMusicScoreToSuno`），wire 方法数 158 → **163**；设置页增加依赖探测与
+`musicPythonPath` / `musicFluidsynthPath` / `musicSoundfontPath`。⚠️ **Suno 不接受 MIDI 原文件，
+但接受音频**：交 Suno 时先把这一版试听音频 `POST /v1/suno/audio/upload`（multipart，标准上传免费）
+拿参考 song id，再走 `POST /v1/suno/generate/cover`；判定版权时返回 `needsCopyrightConsent`，
+用户确认后传 `copyrightAudio:true` 走付费版权通道。结果不会逐音一致；界面与提示词都写明。
+⚠️ 谱曲脚本由宿主以参数数组、无 shell 跑，环境变量白名单、不传 API Key、180 秒超时；
+`score.mid` 缺失/解析失败会返回原始 stderr（常带小节号），失败不新增版本。
+`GMM_SCORE_RENDERER=builtin` 可强制内置音源。新增自检 `verify-music-score`（46 项，假 Python +
+手工 MIDI + 内置合成器 + mock 上传/cover）；`verify-music-gateway` 37 → **51**、`verify-music-client`
+46 → **66**、`verify-host` 方法数 158 → **163**。⚠️ 改到了宿主半区：**要重启 DSH**。
 
 发布时按下面的流程走，并**把这段挪进上面的「已发布版本」表**（补上 UTC 时间）。
 

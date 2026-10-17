@@ -2864,7 +2864,7 @@ running 落在下一次 `getProject` 里**：
 
 ### 对话面
 
-- `game_material_call` 暴露全部 22 个方法；`intake` 对 `music` 有专用问题与 blocker；
+- `game_material_call` 暴露全部 27 个方法；`intake` 对 `music` 有专用问题（含「直接生成 / 谱曲模式」与谱曲依赖状态），缺谱乐 Key 不再硬阻塞谱曲；
   `status` 列表带 `musicJobs`；`review` / `wait` / `approve` 都有 music 分支。
 - `runMusicGeneration` / `renderMusicEdit` / `exportMusic` 的 `openUrl` 自动带
   `stage=generate|edit|export`，用户点回就落在对应卡片。
@@ -2897,9 +2897,45 @@ running 落在下一次 `getProject` 里**：
 
 - `verify-music.mjs`：mock 谱乐 AI + 真 ffmpeg，82 项（端点映射、状态机、计费闸门、下载、
   编辑/淡入淡出/loudnorm、波形、工具、导出 zip、路由 200/206/403/下载头、402/429/坏 JSON）。
-- `verify-music-gateway.mjs`：走真实网关，37 项（wire schema 逐键不丢、工具面、深链接、隐藏模块）。
-- `verify-music-client.mjs`：真渲染 + 假 sessions，41 项（创建卡、歌曲/编辑/版本/导出、
-  新对话不挂靠项目、提示词步骤、功能管理）。
+- `verify-music-score.mjs`：谱曲模式，46 项（方案归一化、假 Python 脚本、脚本报错/不产出 MIDI、
+  MIDI 元数据、内置试听、逐版修改、波形、乐谱包、Suno mock 的音频上传/cover/confirm/regenerate/
+  版权通道/scoreId、老任务迁移、深链接）。纯本地、零计费。
+- `verify-music-gateway.mjs`：走真实网关，51 项（wire schema 逐键不丢、工具面、深链接、
+  隐藏模块、谱曲字段与依赖状态）。
+- `verify-music-client.mjs`：真渲染 + 假 sessions，65 项（创建卡、歌曲/编辑/版本/导出、
+  谱曲创建卡 / 谱曲卡 / 提示词 / 深链接、新对话不挂靠项目、功能管理）。
+
+### 谱曲模式（本地 MIDI）
+
+- 数据：`music-jobs/<a…>/scores/<c…>/` 下 `plan.json` / `compose.py` / `score.mid` /
+  `preview.mp3|wav` / `report.json` / `run.log`；`scores` 已加入
+  `SERVABLE_MUSIC_DIRS`。`MusicStage` 增加 `compose`，老任务读出来自动补。
+- 方案：`saveMusicScorePlan` 只存方案，不产生 MIDI；`runMusicScore` 要求已有方案
+  （或本次内联 `plan`），先方案后谱曲。每版 `MusicComposition` 独立，旧版保留。
+- 执行：`runMusicScore` 用**参数数组、无 shell** 的 `spawn` 跑 agent 写的
+  `compose.py`；cwd = 该版目录；环境变量白名单，**不传任何 API Key**；180 秒超时
+  杀进程组；stdout/stderr 各 1MB；必须产出 `score.mid`。报错原文（常带小节号）
+  回给 agent，失败只把 `stages.compose` 标 error，不新增版本。
+- 依赖：`detectScoreDeps` 探测 Python（能 `import scoremill`）、scoremill 版本、
+  FluidSynth、SoundFont、ffmpeg；`testMusicScore` 强制刷新；配置项
+  `musicPythonPath` / `musicFluidsynthPath` / `musicSoundfontPath`（空 = 自动探测）。
+  设置页与工具面共用同一份状态。`GMM_SCORE_RENDERER=builtin` 可强制内置音源。
+- 试听：FluidSynth + SF2 优先；缺任一用 `midipreview.ts` 的 GM 近似合成器
+  （按 program family 选波形、通道 9 鼓、CC7/CC10、峰值归一 -1 dBFS，不压缩），
+  再经 `media.runFfmpeg` 转 192k MP3；失败保留 WAV。`midifile.ts` 只解析 SMF 0/1。
+- 交 Suno：**Suno 不接受 MIDI 原文件，但接受音频**。`submitMusicScoreToSuno` 先把这一版
+  试听音频 `POST /v1/suno/audio/upload`（multipart；标准上传免费）拿参考 song id，再用
+  `POST /v1/suno/generate/cover` 生成。标准通道被判定版权时返回 `needsCopyrightConsent`，
+  用户确认后传 `copyrightAudio:true` 走付费版权通道（`copyright_audio_flag=1` + 轮询
+  `GET /v1/suno/audio/upload/{taskId}`）。强制 `confirm:true`，已有歌曲必须
+  `regenerate:true`；`MusicGeneration.scoreId` / `sourceClipId` 记录来源。超过 360 秒按
+  360 秒提交并 warning。界面与提示词都要写明「不会逐音一致」。
+- 界面：新建卡的两种工作流；谱曲卡（方案 / 逐版试听 / MIDI 下载 / 通过 / 交 Suno /
+  导出乐谱包 / 查看 compose.py）；设置页依赖状态与路径；深链接
+  `stage=compose&score=c…`。
+- 自检：`verify-music-score.mjs`（46 项，假 Python + 手工 MIDI + 内置合成器 + mock
+  上传/cover），`verify-music-gateway` 钉住所有新 payload 字段不丢，`verify-music-client`
+  钉住谱曲卡与提示词。
 
 ## 许可
 

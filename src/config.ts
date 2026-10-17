@@ -323,6 +323,16 @@ export interface Config {
   musicTimeoutMs: number;
   /** 一次生成从提交到「不再等待」的总时长（毫秒）。 */
   musicPollTimeoutMs: number;
+  /**
+   * **谱曲模式（本地 MIDI）**的依赖路径。空串 = 自动探测。
+   *
+   * - `musicPythonPath`：能 `import scoremill` 的 Python 解释器（venv 里的也行）。
+   * - `musicFluidsynthPath`：FluidSynth 可执行文件；找不到就用内置简易音源。
+   * - `musicSoundfontPath`：.sf2 音源；找不到同样退回内置音源。
+   */
+  musicPythonPath: string;
+  musicFluidsynthPath: string;
+  musicSoundfontPath: string;
 
   /**
    * **被隐藏的功能模块**（`links.ts` 的 `STUDIO_MODULES` 子集）。
@@ -406,6 +416,9 @@ export const DEFAULT_CONFIG: Config = {
   musicModel: MUSIC_DEFAULT_MODEL,
   musicTimeoutMs: 120000,
   musicPollTimeoutMs: 900000,
+  musicPythonPath: "",
+  musicFluidsynthPath: "",
+  musicSoundfontPath: "",
 
   cellWidth: 256,
   cellHeight: 256,
@@ -572,6 +585,9 @@ export function normalizeConfig(input: unknown): Config {
     musicModel: asString(raw.musicModel, DEFAULT_CONFIG.musicModel).trim() || DEFAULT_CONFIG.musicModel,
     musicTimeoutMs: asInt(raw.musicTimeoutMs, DEFAULT_CONFIG.musicTimeoutMs, 10000, 900000),
     musicPollTimeoutMs: asInt(raw.musicPollTimeoutMs, DEFAULT_CONFIG.musicPollTimeoutMs, 60000, 3600000),
+    musicPythonPath: asString(raw.musicPythonPath, DEFAULT_CONFIG.musicPythonPath).trim(),
+    musicFluidsynthPath: asString(raw.musicFluidsynthPath, DEFAULT_CONFIG.musicFluidsynthPath).trim(),
+    musicSoundfontPath: asString(raw.musicSoundfontPath, DEFAULT_CONFIG.musicSoundfontPath).trim(),
 
     cellWidth: asInt(raw.cellWidth, DEFAULT_CONFIG.cellWidth, 16, 2048),
     cellHeight: asInt(raw.cellHeight, DEFAULT_CONFIG.cellHeight, 16, 2048),

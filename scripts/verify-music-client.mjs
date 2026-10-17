@@ -207,7 +207,8 @@ function renderMusic(slots) {
   return T.MusicModule({ api: new Proxy({}, { get: () => async () => ({}) }) });
 }
 const createTree = renderMusic([
-  0, null, config, [], null, null, null, false, true, "prompt", "8-bit battle", "", "", "", "", false, "", "auto", false, null,
+  0, null, config, [], null, null, null, false, true, "generate", "prompt", "8-bit battle", "", "", "", "", false, "", "auto", false, null,
+  null, null, false, false,
   { start: 0, end: 0, gainDb: 0, fadeIn: 0, fadeOut: 0, normalize: false, lufs: -14, truePeak: -1, format: "mp3", bitrate: 192 },
   null, "", false, false, null, null, null, false, false
 ]);
@@ -238,7 +239,8 @@ const job = {
   log: [{ at: 1, level: "info", message: "hello" }]
 };
 const jobTree = renderMusic([
-  0, null, config, [{ id: "a1", name: "测试音乐", songsReady: 1, songsTotal: 1, versions: 1, updatedAt: 1, busy: false }], "a1", job, null, false, false, "prompt", "", "", "", "", "", true, "", "auto", false, "song1",
+  0, null, config, [{ id: "a1", name: "测试音乐", songsReady: 1, songsTotal: 1, versions: 1, updatedAt: 1, busy: false }], "a1", job, null, false, false, "generate", "prompt", "", "", "", "", "", true, "", "auto", false, "song1",
+  null, null, false, false,
   { start: 0, end: 3, gainDb: 0, fadeIn: 0, fadeOut: 0, normalize: false, lufs: -14, truePeak: -1, format: "mp3", bitrate: 192 },
   [0.1, 0.5, 1], "http://x/song.mp3", false, false, null, null, null, false, false
 ]);
@@ -272,6 +274,133 @@ check("导出按钮出现", byTestId(jobTree, "music-export") !== undefined);
 check("波形由组件渲染（静态契约已覆盖）", source.includes('"data-testid": "music-wave"'));
 check("工具结果显示风格/标签", textOf(jobTree).includes("chiptune"));
 check("日志折叠出现", textOf(jobTree).includes("任务日志"));
+
+// ── 谱曲模式 ────────────────────────────────────────────────────────────
+section("4b) 谱曲模式：创建卡 / 谱曲卡 / 提示词 / 深链接");
+const composeConfig = {
+  ...config,
+  musicApiKeySet: true,
+  musicScoreStatus: {
+    ok: true,
+    renderer: "builtin",
+    python: { ok: true, path: "/usr/bin/python3", version: "3.12.0" },
+    scoremill: { ok: true, version: "0.5.0" },
+    fluidsynth: { ok: false },
+    soundfont: { ok: false },
+    ffmpeg: { ok: true, path: "ffmpeg", version: "8.1.1" },
+    blocker: null,
+    warnings: ["没找到 FluidSynth：试听会用插件内置的简易音源。"],
+    checkedAt: 1
+  }
+};
+const composeCreateTree = renderMusic([
+  0, null, composeConfig, [], null, null, null, false, true, "compose", "prompt", "一首战斗曲", "", "", "", "", true, "", "auto", false, null,
+  null, null, false, false,
+  { start: 0, end: 0, gainDb: 0, fadeIn: 0, fadeOut: 0, normalize: false, lufs: -14, truePeak: -1, format: "mp3", bitrate: 192 },
+  null, "", false, false, null, null, null, false, false
+]);
+check("★ 创建卡有「AI 生成 / 谱曲模式」两个页签", byTestId(composeCreateTree, "music-workflow-generate") !== undefined && byTestId(composeCreateTree, "music-workflow-compose") !== undefined);
+check("★ 谱曲模式显示想法输入框（不是歌词页签）", byTestId(composeCreateTree, "music-compose-prompt") !== undefined && byTestId(composeCreateTree, "music-prompt") === undefined);
+check("★ 谱曲模式显示依赖状态", textOf(composeCreateTree).includes("谱曲依赖") && textOf(composeCreateTree).includes("0.5.0"));
+check("★ 谱曲模式提交按钮文案", textOf(byTestId(composeCreateTree, "music-submit")).includes("开始谱曲"));
+check("★ 谱曲模式不因缺谱乐 Key 禁用（composeConfig 有 Key；静态上也不读 musicBlocker）", source.includes("compose ? scoreStatus === undefined || scoreBlocker !== null : config?.musicBlocker"));
+
+const composeIntent = T.parseIntents("?dsh-gmm=1&module=music&job=a1234&stage=compose&score=c123");
+check("★ 深链接解析 score", composeIntent?.stage === "compose" && composeIntent?.score === "c123", JSON.stringify(composeIntent));
+
+const composePrompt = T.buildComposeRequestPrompt({
+  jobId: "a1234",
+  jobName: "战斗曲",
+  prompt: "一首战斗曲",
+  lyrics: "",
+  note: "90 秒",
+  title: "Battle",
+  instrumental: true,
+  reviewMode: "manual",
+  lang: "zh",
+  scoreStatus: composeConfig.musicScoreStatus
+});
+check("★ 谱曲提示词要求先输出方案", composePrompt.includes("分析并输出方案") && composePrompt.includes("用用户的语言"));
+check("★ 谱曲提示词要求保存方案", composePrompt.includes("saveMusicScorePlan"));
+check("★ 谱曲提示词要求 local scoremill 脚本", composePrompt.includes("compose.py") && composePrompt.includes("runMusicScore") && composePrompt.includes("s.save('score.mid')"));
+check("★ 谱曲提示词要求 manual 停下等确认", composePrompt.includes("停下"));
+check("★ 谱曲提示词要求逐版修改且保留旧版", composePrompt.includes("basedOn") && composePrompt.includes("旧 MIDI"));
+check("★ 谱曲提示词说明 Suno 计费且先上传试听音频", composePrompt.includes("submitMusicScoreToSuno") && composePrompt.includes("试听音频") && composePrompt.includes("cover") && composePrompt.includes("copyrightAudio") && composePrompt.includes("绝不自动提交"));
+
+const composeJob = {
+  module: "music",
+  id: "a2",
+  name: "战斗曲",
+  assetBase: "/dsh-game-material-master/music-assets/a2/",
+  busy: false,
+  workflow: "compose",
+  reviewMode: "auto",
+  updatedAt: 1,
+  songsReady: 0,
+  songsTotal: 0,
+  source: { kind: "prompt", prompt: "一首战斗曲", lyrics: "", note: "90 秒", title: "Battle", tags: "", instrumental: true },
+  settings: { engine: "suno", mode: "custom", model: "chirp-v6" },
+  scorePlan: {
+    summary: "前 8 小节压抑，中段铜管主题，结尾 unresolved。",
+    style: "chiptune",
+    mood: "tense",
+    key: "D minor",
+    tempo: 150,
+    timeSignature: "4/4",
+    structure: [{ name: "INTRO", bars: 8, energy: "p" }, { name: "MAIN", bars: 16, energy: "f" }],
+    instrumentation: [{ name: "lead" }, { name: "bass" }],
+    instrumental: true
+  },
+  currentScoreId: "c1",
+  compositions: [{
+    id: "c1",
+    label: "第 1 版",
+    title: "Battle",
+    plan: { summary: "前 8 小节压抑，中段铜管主题，结尾 unresolved。", style: "chiptune", tempo: 150, timeSignature: "4/4", structure: [{ name: "INTRO", bars: 8 }], instrumentation: [{ name: "lead" }], instrumental: true },
+    script: "from scoremill import Song\n",
+    scriptFile: "scores/c1/compose.py",
+    midiFile: "scores/c1/score.mid",
+    midiUrl: "http://localhost/dsh-game-material-master/music-assets/a2/scores/c1/score.mid",
+    audioFile: "scores/c1/preview.mp3",
+    audioUrl: "http://localhost/dsh-game-material-master/music-assets/a2/scores/c1/preview.mp3",
+    audioRenderer: "builtin",
+    midi: { duration: 32, bars: 24, tempo: 150, timeSignature: "4/4", tracks: 1, channels: 2, notes: 120 },
+    status: "ready",
+    approved: false,
+    createdAt: 1,
+    updatedAt: 1
+  }],
+  stages: { compose: { status: "done" }, generate: { status: "idle" }, edit: { status: "idle" }, export: { status: "idle" } },
+  songs: [],
+  versions: [],
+  tools: [],
+  exports: [],
+  log: []
+};
+const composeJobTree = renderMusic([
+  0, null, composeConfig, [{ id: "a2", name: "战斗曲", workflow: "compose", songsReady: 0, songsTotal: 0, versions: 0, compositions: 1, updatedAt: 1, busy: false }], "a2", composeJob, null, false, false, "compose", "prompt", "", "", "", "", "", true, "", "auto", false, null,
+  "c1", [0.1, 0.4, 1], false, false,
+  { start: 0, end: 32, gainDb: 0, fadeIn: 0, fadeOut: 0, normalize: false, lufs: -14, truePeak: -1, format: "mp3", bitrate: 192 },
+  null, "", false, false, null, null, null, false, false
+]);
+check("★ 谱曲卡出现", byTestId(composeJobTree, "music-score") !== undefined);
+check("★ 谱曲方案与段落出现", textOf(composeJobTree).includes("前 8 小节压抑") && textOf(composeJobTree).includes("INTRO 8小节"));
+check("★ 谱曲版本卡出现", byTestId(composeJobTree, "music-score-c1") !== undefined);
+check("★ 谱曲版本有 MIDI 下载 / 试听 / Suno 按钮", textOf(composeJobTree).includes("下载 MIDI") && textOf(composeJobTree).includes("用这首音频生成 Suno 正式版") && textOf(composeJobTree).includes("导出乐谱包"));
+check("★ 谱曲试听走 assetBase 相对路径", [...nodes(byTestId(composeJobTree, "music-score-c1"))].some((node) => node.type === "audio" && String(node.props?.src).startsWith("/dsh-game-material-master/music-assets/a2/scores/c1/")));
+check("★ 谱曲版本可查看 compose.py", textOf(composeJobTree).includes("查看 compose.py"));
+const submitSunoSource = source.slice(source.indexOf("const submitScoreToSuno"), source.indexOf("const exportScore"));
+check(
+  "★ Suno 提交后用 loadJob 刷新（旧快照晚到会覆盖成「没歌」，切走再回来才恢复）",
+  submitSunoSource.includes("await loadJob(job.id)") && !submitSunoSource.includes("setJob(await api.getMusicJob"),
+  submitSunoSource.slice(0, 120)
+);
+const pollBlock = source.slice(source.indexOf("// 有任务在跑时轮询"), source.indexOf("const selectedSong"));
+check(
+  "★ 任务轮询用 setInterval 且不依赖 updatedAt（否则只刷新一次就停住）",
+  pollBlock.includes("setInterval") && pollBlock.includes("void loadJob(jobId)") && !pollBlock.includes("job?.updatedAt"),
+  pollBlock.slice(0, 160)
+);
 
 // ── 功能管理 ────────────────────────────────────────────────────────────
 section("5) 功能管理");

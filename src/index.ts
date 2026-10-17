@@ -84,6 +84,8 @@ import * as tilegen from "./tilegen.js";
 import * as mapgen from "./mapgen.js";
 import * as musicgen from "./musicgen.js";
 import { musicGuidePayload } from "./musicguide.js";
+import { musicScoreGuidePayload } from "./musicscoreguide.js";
+import { clearScoreDepsCache, detectScoreDeps } from "./musicscore.js";
 import { musicBlocker, musicEngineSummary, testMusicConnection } from "./musicapi.js";
 import { MANIFEST, METHODS, SERVICE_NAME } from "./wire.js";
 import { assetBasePath, originForLinks, rememberClientOrigin } from "./links.js";
@@ -234,6 +236,7 @@ const MIME_TYPES = {
   ".ogg": "audio/ogg",
   ".mid": "audio/midi",
   ".midi": "audio/midi",
+  ".py": "text/x-python; charset=utf-8",
   ".pdf": "application/pdf",
   ".xml": "application/xml; charset=utf-8",
   ".musicxml": "application/vnd.recordare.musicxml+xml; charset=utf-8",
@@ -345,6 +348,8 @@ export class GameStudioGateway extends TypertRemoteService {
       /** 音乐生成编辑（模块七）：引擎/模型预设、Key 阻塞原因、文档地址。 */
       musicEngines: musicEngineSummary(),
       musicBlocker: musicBlocker(config) ?? null,
+      /** 谱曲模式依赖（Python / scoremill / FluidSynth / SoundFont / ffmpeg）。 */
+      musicScoreStatus: await detectScoreDeps(config),
       musicDocsUrl: "https://api.yourmusic.fun/docs",
       musicConsoleUrl: "https://api.yourmusic.fun/dashboard",
       directions: DIRECTION_KEYS.map((key) => {
@@ -408,6 +413,10 @@ export class GameStudioGateway extends TypertRemoteService {
       "musicModel",
       "musicTimeoutMs",
       "musicPollTimeoutMs",
+      // 谱曲模式依赖路径（空 = 自动探测）。
+      "musicPythonPath",
+      "musicFluidsynthPath",
+      "musicSoundfontPath",
       "cellWidth",
       "cellHeight",
       "frameCount",
@@ -458,6 +467,8 @@ export class GameStudioGateway extends TypertRemoteService {
       patch.comfyCookies = "";
     const saved = await saveConfig(patch);
     this.ffmpegCache = undefined;
+    // 谱曲依赖路径可能变了；下一次 getConfig / testMusicScore 重新探测。
+    clearScoreDepsCache();
     return this.decorateConfig(saved);
   }
   async testArk() {
@@ -2352,6 +2363,46 @@ export class GameStudioGateway extends TypertRemoteService {
     return musicGuidePayload(typeof input.lang === "string" ? input.lang : undefined);
   }
 
+  async getMusicScoreGuide(payload: any) {
+    const input = asRecord(payload);
+    return musicScoreGuidePayload(typeof input.lang === "string" ? input.lang : undefined);
+  }
+
+  /** 谱曲依赖自检：强制重新探测（不生成、不计费）。 */
+  async testMusicScore() {
+    const config = await loadConfig();
+    return detectScoreDeps(config, { force: true });
+  }
+
+  async saveMusicScorePlan(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.saveMusicScorePlan(asString(input.jobId), input.plan);
+  }
+
+  async runMusicScore(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.runMusicScore(asString(input.jobId), {
+      title: typeof input.title === "string" ? input.title : undefined,
+      plan: input.plan,
+      script: asString(input.script),
+      basedOn: typeof input.basedOn === "string" ? input.basedOn : undefined,
+      label: typeof input.label === "string" ? input.label : undefined
+    });
+  }
+
+  async submitMusicScoreToSuno(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.submitMusicScoreToSuno(asString(input.jobId), {
+      scoreId: typeof input.scoreId === "string" ? input.scoreId : undefined,
+      confirm: input.confirm === true,
+      model: typeof input.model === "string" ? input.model : undefined,
+      params: input.params === undefined || input.params === null ? undefined : asRecord(input.params),
+      regenerate: input.regenerate === true,
+      copyrightAudio: input.copyrightAudio === true,
+      audioWeight: typeof input.audioWeight === "number" ? input.audioWeight : undefined
+    });
+  }
+
   async listMusicJobs() {
     return { jobs: await musicgen.listMusicJobs() };
   }
@@ -2362,7 +2413,8 @@ export class GameStudioGateway extends TypertRemoteService {
       name: typeof input.name === "string" ? input.name : undefined,
       source: input.source,
       settings: input.settings,
-      reviewMode: input.reviewMode === "manual" ? "manual" : input.reviewMode === "auto" ? "auto" : undefined
+      reviewMode: input.reviewMode === "manual" ? "manual" : input.reviewMode === "auto" ? "auto" : undefined,
+      workflow: input.workflow === "compose" ? "compose" : "generate"
     });
     return musicgen.musicSnapshot(job, originForLinks());
   }
@@ -2407,7 +2459,11 @@ export class GameStudioGateway extends TypertRemoteService {
       throw new Error(`未知阶段：${stage}（可选：${musicgen.MUSIC_STAGES.join(" / ")}）`);
     }
     const job = await musicgen.patchMusicJob(id, (current) => {
-      if (typeof input.versionId === "string" && input.versionId !== "") {
+      if (typeof input.scoreId === "string" && input.scoreId !== "") {
+        const composition = current.compositions.find((entry) => entry.id === input.scoreId);
+        if (composition === undefined) throw new Error(`谱曲版本不存在：${input.scoreId}`);
+        composition.approved = input.approved;
+      } else if (typeof input.versionId === "string" && input.versionId !== "") {
         const version = current.versions.find((entry) => entry.id === input.versionId);
         if (version === undefined) throw new Error(`版本不存在：${input.versionId}`);
         (version as any).approved = input.approved;
@@ -2419,6 +2475,7 @@ export class GameStudioGateway extends TypertRemoteService {
         (current.stages as any)[stage] = { ...(current.stages as any)[stage], approved: input.approved };
       } else {
         for (const song of current.songs) song.approved = input.approved;
+        for (const composition of current.compositions) composition.approved = input.approved;
         for (const key of musicgen.MUSIC_STAGES) (current.stages as any)[key] = { ...(current.stages as any)[key], approved: input.approved };
       }
       musicgen.musicLog(current, "info", `验收标记：${input.approved ? "通过" : "取消通过"}`);
@@ -2507,6 +2564,7 @@ export class GameStudioGateway extends TypertRemoteService {
       {
         songId: typeof input.songId === "string" ? input.songId : undefined,
         versionId: typeof input.versionId === "string" ? input.versionId : undefined,
+        scoreId: typeof input.scoreId === "string" ? input.scoreId : undefined,
         buckets: typeof input.buckets === "number" ? input.buckets : undefined
       },
       originForLinks()
@@ -2544,6 +2602,7 @@ export class GameStudioGateway extends TypertRemoteService {
       {
         songId: typeof input.songId === "string" ? input.songId : undefined,
         versionId: typeof input.versionId === "string" ? input.versionId : undefined,
+        scoreId: typeof input.scoreId === "string" ? input.scoreId : undefined,
         format: typeof input.format === "string" ? input.format : undefined,
         name: typeof input.name === "string" ? input.name : undefined,
         zip: input.zip === true

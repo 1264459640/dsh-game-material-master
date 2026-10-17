@@ -17,7 +17,7 @@
  */
 
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
@@ -460,6 +460,128 @@ export async function submitGeneration(config: MusicApiConfig, request: Generati
   return {
     taskId: typeof payload?.task_id === "string" ? payload.task_id : undefined,
     songs,
+    raw: payload
+  };
+}
+
+/**
+ * 上传一段本地音频，供 Suno 的音频条件生成（cover / sample）使用。
+ *
+ * 文档：`POST /v1/suno/audio/upload`（multipart），上限 300MB；标准上传免费。
+ * 如果 Suno 判定音频有版权，需要带 `copyright_audio_flag=1` 走**付费**版权通道；
+ * 那条路是异步任务，要轮询 `GET /v1/suno/audio/upload/{taskId}`，成功后
+ * `songs[0].id` 才是可用的 cover 参考 id。
+ */
+export interface SunoAudioUploadInput {
+  filePath: string;
+  fileName?: string;
+  /** true = 走付费版权通道（`copyright_audio_flag=1`）。 */
+  copyright?: boolean;
+  /** 版权通道等待上限（毫秒），默认 5 分钟。 */
+  pollTimeoutMs?: number;
+  pollIntervalMs?: number;
+}
+
+export interface SunoAudioUploadResult {
+  songId: string;
+  status: string;
+  /** 是否走的是付费版权通道。 */
+  copyright: boolean;
+  taskId?: string;
+  raw: unknown;
+}
+
+/** 上传文件的 MIME：只接受音乐模块实际会产出的格式。 */
+function audioMimeOf(file: string): string {
+  const ext = file.toLowerCase().split(".").pop() ?? "";
+  if (ext === "wav") return "audio/wav";
+  if (ext === "m4a") return "audio/mp4";
+  if (ext === "aac") return "audio/aac";
+  if (ext === "flac") return "audio/flac";
+  if (ext === "ogg") return "audio/ogg";
+  return "audio/mpeg";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function uploadSunoAudio(config: MusicApiConfig, input: SunoAudioUploadInput): Promise<SunoAudioUploadResult> {
+  let info;
+  try {
+    info = await stat(input.filePath);
+  } catch (error) {
+    throw new MusicApiError(`找不到要上传的音频：${input.filePath}（${error instanceof Error ? error.message : String(error)}）`);
+  }
+  if (!info.isFile() || info.size <= 0) throw new MusicApiError("要上传的音频文件是空的");
+  if (info.size > 300 * 1024 * 1024) throw new MusicApiError(`音频超过 300MB 上限（${(info.size / 1024 / 1024).toFixed(1)} MB）`);
+  const buffer = await readFile(input.filePath);
+  const fileName = input.fileName?.trim() || basename(input.filePath);
+  const form = new FormData();
+  form.append("file", new Blob([buffer], { type: audioMimeOf(fileName) }), fileName);
+  if (input.copyright === true) form.append("copyright_audio_flag", "1");
+  const url = new URL("/v1/suno/audio/upload", `${apiBase(config)}/`);
+  const timeout = AbortSignal.timeout(Math.max(30000, config.timeoutMs || 120000));
+  let response: Response;
+  try {
+    // 不要手动设 Content-Type：fetch 会带 multipart 的 boundary。
+    response = await fetch(url.toString(), {
+      method: "POST",
+      headers: authHeaders(config),
+      body: form,
+      signal: timeout
+    });
+  } catch (error) {
+    if (timeout.aborted) throw new MusicApiError(`上传参考音频超时（${Math.round((config.timeoutMs || 120000) / 1000)} 秒）`);
+    throw new MusicApiError(`无法上传参考音频：${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!response.ok) throw await readError(response);
+  const text = await response.text();
+  let payload: any = {};
+  if (text.trim() !== "") {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new MusicApiError(`谱乐 AI 上传接口返回了无法解析的 JSON：${text.slice(0, 300)}`, { status: response.status });
+    }
+  }
+  const taskId = typeof payload?.task_id === "string" ? payload.task_id : undefined;
+  if (taskId !== undefined) {
+    // 版权通道：异步任务，等 songs[0].id。
+    const deadline = Date.now() + Math.max(30000, input.pollTimeoutMs ?? 300000);
+    const interval = Math.max(500, input.pollIntervalMs ?? 3000);
+    for (;;) {
+      if (Date.now() >= deadline) {
+        throw new MusicApiError(`版权音频上传等待超时（task ${taskId}）；可以稍后用 listMusicHistory 或控制台查看。`);
+      }
+      await sleep(interval);
+      let status: any;
+      try {
+        status = await requestJson(config, `/v1/suno/audio/upload/${encodeURIComponent(taskId)}`);
+      } catch (error) {
+        // 版权任务刚建好时可能短暂 404；按「还没完成」继续等。
+        if (error instanceof MusicApiError && error.status === 404) continue;
+        throw error;
+      }
+      if (status?.status === "failed") {
+        const message = typeof status?.error_message === "string" && status.error_message !== "" ? status.error_message : "版权音频上传失败";
+        throw new MusicApiError(message);
+      }
+      const songs = Array.isArray(status?.songs) ? status.songs : [];
+      const songId = typeof songs[0]?.id === "string" ? songs[0].id : "";
+      if (songId !== "") {
+        return { songId, status: "succeeded", copyright: true, taskId, raw: status };
+      }
+    }
+  }
+  const songId = typeof payload?.id === "string" ? payload.id : "";
+  if (songId === "") {
+    throw new MusicApiError(`上传音频没有返回可用 id：${JSON.stringify(payload).slice(0, 400)}`);
+  }
+  return {
+    songId,
+    status: typeof payload?.status === "string" ? payload.status : "succeeded",
+    copyright: input.copyright === true,
     raw: payload
   };
 }

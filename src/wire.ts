@@ -816,10 +816,12 @@ const setMapApprovedSchema = z.object({
 const musicJobIdSchema = z.object({ jobId: z.string() });
 
 const setMusicApprovedSchema = z.object({  jobId: z.string(),
-  /** `generate` / `edit` / `export`；空 = 全部阶段。 */
+  /** `compose` / `generate` / `edit` / `export`；空 = 全部阶段。 */
   stage: z.string().optional(),
   songId: z.string().optional(),
   versionId: z.string().optional(),
+  /** 谱曲模式：只对某一版谱曲打通过。 */
+  scoreId: z.string().optional(),
   approved: z.boolean()
 });
 
@@ -862,7 +864,9 @@ const createMusicJobSchema = z.object({
   name: z.string().optional(),
   source: musicSourceSchema.optional(),
   settings: musicSettingsSchema.optional(),
-  reviewMode: z.enum(["auto", "manual"]).optional()
+  reviewMode: z.enum(["auto", "manual"]).optional(),
+  /** `generate`（默认）= 谱乐 AI 直接生成；`compose` = 本地 MIDI 谱曲模式。 */
+  workflow: z.enum(["generate", "compose"]).optional()
 });
 
 const getMusicJobSchema = z.object({ jobId: z.string(), lang: z.string().optional() });
@@ -874,6 +878,68 @@ const saveMusicJobSchema = z.object({
   reviewMode: z.enum(["auto", "manual"]).optional()
 });
 const getMusicGuideSchema = z.object({ lang: z.string().optional() });
+const getMusicScoreGuideSchema = z.object({ lang: z.string().optional() });
+
+/**
+ * 谱曲方案。**每个字段都要显式声明**：typert 会把 schema 外的键静默丢掉，
+ * 表现是「方案存进去了、界面上少了几段」，而且不报错。
+ */
+const musicScorePlanSchema = z.object({
+  summary: z.string().optional(),
+  style: z.string().optional(),
+  mood: z.string().optional(),
+  key: z.string().optional(),
+  tempo: z.number().optional(),
+  timeSignature: z.string().optional(),
+  lengthBars: z.number().optional(),
+  durationTarget: z.number().optional(),
+  instrumental: z.boolean().optional(),
+  structure: z.array(z.object({
+    name: z.string(),
+    bars: z.number().optional(),
+    energy: z.string().optional(),
+    description: z.string().optional()
+  })).optional(),
+  instrumentation: z.array(z.object({
+    name: z.string(),
+    program: z.number().optional(),
+    channel: z.number().optional(),
+    role: z.string().optional()
+  })).optional(),
+  motif: z.string().optional(),
+  notes: z.string().optional(),
+  lyrics: z.string().optional(),
+  sunoTags: z.string().optional(),
+  sunoPrompt: z.string().optional(),
+  negativeTags: z.string().optional()
+});
+
+const saveMusicScorePlanSchema = z.object({
+  jobId: z.string(),
+  plan: musicScorePlanSchema
+});
+
+const runMusicScoreSchema = z.object({
+  jobId: z.string(),
+  title: z.string().optional(),
+  plan: musicScorePlanSchema.optional(),
+  script: z.string(),
+  basedOn: z.string().optional(),
+  label: z.string().optional()
+});
+
+const submitMusicScoreToSunoSchema = z.object({
+  jobId: z.string(),
+  scoreId: z.string().optional(),
+  confirm: z.boolean().optional(),
+  model: z.string().optional(),
+  params: z.record(z.string(), z.unknown()).optional(),
+  regenerate: z.boolean().optional(),
+  /** Suno 判定版权后，走付费版权上传通道。 */
+  copyrightAudio: z.boolean().optional(),
+  /** cover 的参考音频权重 0–1。 */
+  audioWeight: z.number().optional()
+});
 
 /**
  * 提交一次生成。
@@ -907,6 +973,7 @@ const musicPeaksSchema = z.object({
   jobId: z.string(),
   songId: z.string().optional(),
   versionId: z.string().optional(),
+  scoreId: z.string().optional(),
   buckets: z.number().optional()
 });
 
@@ -947,6 +1014,8 @@ const exportMusicSchema = z.object({
   jobId: z.string(),
   songId: z.string().optional(),
   versionId: z.string().optional(),
+  /** 谱曲模式：导出某一版的乐谱包（MIDI + 试听 + 方案 + compose.py）。 */
+  scoreId: z.string().optional(),
   format: z.enum(["mp3", "wav", "m4a"]).optional(),
   name: z.string().optional(),
   zip: z.boolean().optional()
@@ -1107,10 +1176,15 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
 
   // 音乐生成编辑（模块七）
   { method: "getMusicGuide", payload: getMusicGuideSchema, result: jsonObject },
+  { method: "getMusicScoreGuide", payload: getMusicScoreGuideSchema, result: jsonObject },
+  { method: "testMusicScore", result: jsonObject },
   { method: "listMusicJobs", result: z.object({ jobs: z.array(jsonObject) }) },
   { method: "createMusicJob", payload: createMusicJobSchema, result: jsonObject },
   { method: "getMusicJob", payload: getMusicJobSchema, result: jsonObject },
   { method: "saveMusicJob", payload: saveMusicJobSchema, result: jsonObject },
+  { method: "saveMusicScorePlan", payload: saveMusicScorePlanSchema, result: jsonObject },
+  { method: "runMusicScore", payload: runMusicScoreSchema, result: jsonObject },
+  { method: "submitMusicScoreToSuno", payload: submitMusicScoreToSunoSchema, result: jsonObject },
   { method: "deleteMusicJob", payload: musicJobIdSchema, result: okSchema },
   { method: "setMusicApproved", payload: setMusicApprovedSchema, result: jsonObject },
   { method: "revealMusicJob", payload: musicJobIdSchema, result: okSchema },

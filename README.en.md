@@ -35,7 +35,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 | **③ Sequence frames** | First/last frame or a reference video → generate video → extract frames → key | A horizontally laid out, loopable sequence |
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
 | **⑥ Map editor** (**fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon; three default layers — terrain / decor / buildings — that you can rename and reorder; a **marker layer**: one nameable marker per cell, drawn as a numbered circle; **Generate with AI** lives in the assets window: give a prompt, a name, a frame count, a method and a usage, and the plugin **opens a new chat** to generate it — it picks the tile type (plain / whole-cell / quadrant) from the prompt itself, asks the model for **one seamless tile** and assembles all 16 connections / 5 shape rows in code (so the tiles actually line up on the map). Animated assets use quadrant tiles (frames become variants, still auto-connecting) or plain tiles (flipbook), and each asset can be given its own playback speed in "Add asset" (otherwise it follows the global speed in Settings) plus a **clarity** mode for the 2K-to-32px downscale (area average / nearest / average + sharpen) , a **loop mode** (forward / reverse / ping-pong), and **stamps** (one picture stamping N x M cells at once - statues, murals, carpets - rotated with a right-click, green screen keyed to transparency, with per-cell walkability set at import), a **tile size** choice when creating a project (16 / 32 / 48 / 64 - pick 48 / 64 for sharper AI assets) and automatic trimming of the white border models like to add; whole-cell tiles are just 16 connection cases with no animation, so the dialog locks the frame count and the video model, then posts a link; click it and the image and its usage are already filled in on "Add asset") | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles, markers); tick what to export and multiple files come as one ZIP download |
-| **⑦ Music generation & editing** (Puyue AI) | An inspiration prompt or full lyrics → a new chat that is **not attached to any project**; the agent there reads the built-in creation guide, expands the prompt, chooses Suno / Mureka / MiniMax / ACE-Step and a mode, generates → back in the UI, trim / adjust gain / fade / normalize → save versions and export | MP3 / WAV / M4A (multiple outputs can be zipped); the original is kept and every edit is a new version |
+| **⑦ Music generation & editing** (Puyue AI) | An inspiration prompt or full lyrics → a new chat that is **not attached to any project**; the agent there reads the built-in creation guide, expands the prompt, chooses Suno / Mureka / MiniMax / ACE-Step and a mode, generates → back in the UI, trim / adjust gain / fade / normalize → save versions and export. Also **Compose mode**: analyse the idea, present a style/key/section/instrumentation plan, write MIDI with scoremill, render a local preview, revise version by version, then optionally hand it to Suno | MP3 / WAV / M4A (multiple outputs can be zipped); compose mode also exports a score bundle (MIDI / preview / plan / compose.py). The original is kept and every edit or score version is new |
 | ~~④ Rigged animation~~ | Part extraction → assembly → skeletal animation → Spine / DragonBones atlas | **Experimental, not covered in this document** |
 
 > 💡 **Module ⑤ "Map tile generation" is built on one idea: geometry by code, content by AI.**
@@ -262,6 +262,41 @@ Clicking the link returns to the music page: preview (the asset route supports R
 waveform, trim, gain, fades, normalization to -14 LUFS / -1 dBTP, save as a new version, and export to
 MP3 / WAV / M4A (multiple outputs are zipped automatically). The original is never overwritten. Generation is
 billed by Puyue AI credits; the plugin does not collect payment and never re-submits just to check status.
+
+### Compose mode (local MIDI; composing and previewing are free)
+
+The New Music card has a **"Compose mode (local MIDI)"** tab. It does not ask an audio model for a song.
+Instead:
+
+1. the agent in the chat analyses your idea: use, emotional arc, style, key and tonic, BPM, meter,
+   section map, instrumentation, motif;
+2. it **writes the plan in your language and shows it to you first**, then saves it with
+   `saveMusicScorePlan` (manual review mode stops here for confirmation);
+3. it writes a `compose.py` using [scoremill](https://github.com/CharlesCNorton/scoremill) (MIT, text
+   notation → MIDI), and the plugin runs it locally to produce `score.mid`;
+4. the host parses the MIDI and renders a preview with **FluidSynth + SoundFont** (or the built-in synth
+   when those are missing);
+5. back in the UI you can preview every version, see its waveform, download the MIDI / preview, mark it
+   approved, and export a score bundle (MIDI + preview + `plan.md` + `compose.py`);
+6. when you say "too loud / too slow / too many drums / the second section is too long", the agent changes
+   only that section; **every revision is a new version**, old versions are kept;
+7. when you are happy you can click **"Generate a Suno version from this audio (billed)"**. The plugin first
+   **uploads this version's preview audio** to Suno as a reference (standard upload is free), then generates a
+   **cover**. Suno does not accept MIDI files, but it does accept audio, so the chain is
+   "MIDI → rendered audio → upload → cover"; this stays much closer to your instrumentation and sections than
+   text tags alone. If Suno flags the audio as copyrighted, you'll be asked to confirm the paid copyright
+   channel. The result is still a re-performance, not note-for-note.
+
+**Dependencies** (the plugin detects them and lets you set paths under Settings → Game Material Master →
+Compose mode):
+
+- `python3 -m pip install scoremill` — required to write MIDI;
+- `fluidsynth` plus a `.sf2` (looks for `~/Library/Audio/SoundFonts/FluidR3_GM.sf2` by default) — optional,
+  for a better preview;
+- `ffmpeg` — for MP3 conversion / export (the music module already needs it).
+
+Composing, previewing and exporting are fully local and **do not consume Puyue AI credits**; only the final
+Suno handoff is billed.
 
 ## Driving it from chat
 
@@ -547,6 +582,11 @@ The screenshots in this document were taken by Playwright against the real UI; t
   engineering, lyric writing and review, Suno model selection, mastering loudness targets) and rewrites it as
   a bilingual built-in guide (`src/musicguide.ts`); it does not copy the repository's code or long passages.
   Original rights belong to its authors. With thanks.
+- **Compose mode uses [CharlesCNorton/scoremill](https://github.com/CharlesCNorton/scoremill)** (**MIT**),
+  a text-notation → MIDI library. The plugin does not bundle scoremill; the built-in guide absorbs its
+  notation and pitfalls, and the user's/agent's `compose.py` is executed by the local Python. The product
+  idea also references [XIAODUOLU/Midra](https://github.com/XIAODUOLU/Midra) ("prompt-to-code MIDI,
+  editable, then decide whether to generate audio"). All rights remain with the original authors. With thanks.
 - ⚠️ **The `Picture/MapChip/*_pipo.png` tiles shipped in the AsLib repository belong to a third party and are
   not bundled here** (its README states "Third party content is copyrighted by its respective owners").
   The built-in tileset is generated procedurally on this machine by `scripts/make-map-sample-tileset.mjs`,

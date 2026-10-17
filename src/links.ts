@@ -41,7 +41,7 @@ export type StudioModule = (typeof STUDIO_MODULES)[number];
 export const SPRITE_STAGES = ["images", "videos", "frames", "sheet"] as const;
 
 /** 音乐生成编辑（模块七）的三个阶段：生成 / 编辑 / 导出。 */
-export const MUSIC_STAGES = ["generate", "edit", "export"] as const;
+export const MUSIC_STAGES = ["compose", "generate", "edit", "export"] as const;
 
 /**
  * 地图地块的四个阶段。
@@ -69,8 +69,10 @@ export interface OpenIntent {
   projectId?: string;
   /** 模块二 / 三 / 四 / 五 / 六 / 七的任务 id（i… / s… / r… / t… / m… / a…）。 */
   jobId?: string;
-  /** 阶段：八方向图 images/videos/frames/sheet；地图地块 generate/review/map/export；地图编辑器 assets/rules/paint/export；音乐 generate/edit/export。 */
+  /** 阶段：八方向图 images/videos/frames/sheet；地图地块 generate/review/map/export；地图编辑器 assets/rules/paint/export；音乐 compose/generate/edit/export。 */
   stage?: string;
+  /** 音乐谱曲模式：打开时选中哪一版（`score` 查询参数）。 */
+  scoreId?: string;
   /** 需要刻意高亮的方位（八方向图）。 */
   direction?: string;
   /**
@@ -224,6 +226,7 @@ export function normalizeIntent(intent: OpenIntent | undefined): OpenIntent {
   if (typeof intent.projectId === "string" && intent.projectId !== "") out.projectId = intent.projectId;
   if (typeof intent.jobId === "string" && intent.jobId !== "") out.jobId = intent.jobId;
   if (typeof intent.stage === "string" && intent.stage !== "") out.stage = intent.stage;
+  if (typeof intent.scoreId === "string" && intent.scoreId !== "") out.scoreId = intent.scoreId;
   if (typeof intent.direction === "string" && intent.direction !== "") out.direction = intent.direction;
   if (typeof intent.dialog === "string" && (OPEN_DIALOGS as readonly string[]).includes(intent.dialog)) out.dialog = intent.dialog;
   if (isSafeAssetPath(intent.asset)) out.asset = intent.asset.trim();
@@ -243,13 +246,15 @@ export function intentQuery(intent: OpenIntent | undefined): string {
   const normalized = normalizeIntent(intent);
   const params = new URLSearchParams();
   params.set(OPEN_QUERY_KEY, "1");
-  for (const key of ["module", "project", "job", "stage", "direction", "dialog", "asset", "frames", "shape", "scale", "cols", "rows", "keyed"] as const) {
+  for (const key of ["module", "project", "job", "stage", "score", "direction", "dialog", "asset", "frames", "shape", "scale", "cols", "rows", "keyed"] as const) {
     const value =
       key === "project"
         ? normalized.projectId
         : key === "job"
           ? normalized.jobId
-          : key === "frames"
+          : key === "score"
+            ? normalized.scoreId
+            : key === "frames"
             ? normalized.frames === undefined
               ? undefined
               : String(normalized.frames)
@@ -295,6 +300,8 @@ export function parseIntentQuery(query: string): OpenIntent | undefined {
   if (jobId !== null) intent.jobId = jobId;
   const stage = params.get("stage");
   if (stage !== null) intent.stage = stage;
+  const scoreId = params.get("score");
+  if (scoreId !== null) intent.scoreId = scoreId;
   const direction = params.get("direction");
   if (direction !== null) intent.direction = direction;
   const dialog = params.get("dialog");

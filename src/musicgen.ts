@@ -25,7 +25,7 @@
  * 改名/保存同时发生时，后写的不会把前一次改动覆盖掉。
  */
 
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -64,6 +64,7 @@ import {
   submitStemSplit,
   submitStyleAnalysis,
   toolTask,
+  uploadSunoAudio,
   type GenerationRequest,
   type GenerationRequestInput,
   type MusicApiConfig,
@@ -79,9 +80,23 @@ import {
 } from "./musicaudio.js";
 import { zipEntries } from "./zip.js";
 import { assetBasePath, buildOpenLink, originForLinks } from "./links.js";
+import {
+  buildScoreBundle,
+  buildScoreSunoParams,
+  detectScoreDeps,
+  normalizeScorePlan,
+  renderScoreAudio,
+  runScoreScript,
+  scorePlanReady,
+  type MusicComposition,
+  type MusicScorePlan
+} from "./musicscore.js";
 
-export type MusicStage = "generate" | "edit" | "export";
-export const MUSIC_STAGES: readonly MusicStage[] = ["generate", "edit", "export"];
+export type { MusicComposition, MusicScorePlan } from "./musicscore.js";
+
+export type MusicWorkflow = "generate" | "compose";
+export type MusicStage = "compose" | "generate" | "edit" | "export";
+export const MUSIC_STAGES: readonly MusicStage[] = ["compose", "generate", "edit", "export"];
 
 export interface MusicStageState {
   status: "idle" | "running" | "done" | "error";
@@ -154,6 +169,10 @@ export interface MusicGeneration {
   engine: MusicEngine;
   mode: MusicMode;
   model: string;
+  /** 这一批来自哪一版谱曲（compose 工作流才有）。 */
+  scoreId?: string;
+  /** 音频条件生成用的参考曲 id（Suno 上传后的 song id）。 */
+  sourceClipId?: string;
   endpoint: string;
   summary: string;
   request: Record<string, unknown>;
@@ -204,6 +223,8 @@ export interface MusicExport {
   createdAt: number;
   songId?: string;
   versionId?: string;
+  /** 乐谱包来自哪一版谱曲。 */
+  scoreId?: string;
   files?: string[];
 }
 
@@ -212,10 +233,17 @@ export interface MusicJob {
   name: string;
   createdAt: number;
   updatedAt: number;
+  /** 直接生成 / 谱曲模式。建任务时定死；老任务默认 generate。 */
+  workflow: MusicWorkflow;
   source: MusicSource;
   settings: MusicSettings;
   reviewMode?: "auto" | "manual";
   stages: Record<MusicStage, MusicStageState>;
+  /** 最新的谱曲方案草稿（还没谱曲也可以有）。 */
+  scorePlan?: MusicScorePlan;
+  /** 每一版谱曲：MIDI + 试听 + 方案 + 脚本，永不覆盖。 */
+  compositions: MusicComposition[];
+  currentScoreId?: string;
   generations: MusicGeneration[];
   songs: MusicSong[];
   versions: MusicVersion[];
@@ -229,9 +257,12 @@ export interface MusicJobSummary {
   name: string;
   createdAt: number;
   updatedAt: number;
+  workflow: MusicWorkflow;
   songsReady: number;
   songsTotal: number;
   versions: number;
+  /** 已完成的谱曲版本数。 */
+  compositions: number;
   engines: string[];
   busy: boolean;
   reviewMode?: "auto" | "manual";
@@ -241,7 +272,7 @@ export interface MusicJobSummary {
 const JOB_ID_PATTERN = /^a[a-z0-9]{4,40}$/;
 
 /** 音乐任务可经资源路由读取的子目录（唯一真源，`index.ts` 直接引用）。 */
-export const SERVABLE_MUSIC_DIRS = new Set(["songs", "versions", "peaks", "tools", "out"]);
+export const SERVABLE_MUSIC_DIRS = new Set(["songs", "versions", "peaks", "tools", "out", "scores"]);
 
 export function musicJobDir(id: string): string {
   return join(musicJobsRoot(), id);
@@ -359,24 +390,29 @@ export async function createMusicJob(input: {
   source?: unknown;
   settings?: unknown;
   reviewMode?: "auto" | "manual";
+  workflow?: "generate" | "compose";
 } = {}): Promise<MusicJob> {
   const source = normalizeMusicSource(input.source);
   const name = (typeof input.name === "string" && input.name.trim() !== "" ? input.name.trim() : deriveMusicName(source)).slice(0, 80);
   const id = `a${Date.now().toString(36)}${randomUUID().slice(0, 6)}`;
   const timestamp = now();
+  const workflow: MusicWorkflow = input.workflow === "compose" ? "compose" : "generate";
   const job: MusicJob = {
     id,
     name,
     createdAt: timestamp,
     updatedAt: timestamp,
+    workflow,
     source,
     settings: normalizeMusicSettings(input.settings, source),
     reviewMode: input.reviewMode === "manual" ? "manual" : input.reviewMode === "auto" ? "auto" : undefined,
     stages: {
+      compose: { status: "idle" },
       generate: { status: "idle" },
       edit: { status: "idle" },
       export: { status: "idle" }
     },
+    compositions: [],
     generations: [],
     songs: [],
     versions: [],
@@ -384,10 +420,10 @@ export async function createMusicJob(input: {
     exports: [],
     log: []
   };
-  for (const sub of ["songs", "versions", "peaks", "tools", "out"]) {
+  for (const sub of ["songs", "versions", "peaks", "tools", "out", "scores"]) {
     await mkdir(join(musicJobDir(id), sub), { recursive: true });
   }
-  musicLog(job, "info", `新建音乐任务：${name}（${source.kind === "lyrics" ? "完整歌词" : "灵感提示词"}）`);
+  musicLog(job, "info", `新建音乐任务：${name}（${workflow === "compose" ? "谱曲模式" : source.kind === "lyrics" ? "完整歌词" : "灵感提示词"}）`);
   await writeJsonAtomic(musicJobFile(id), job);
   return job;
 }
@@ -402,7 +438,16 @@ export async function readMusicJob(id: string): Promise<MusicJob | undefined> {
   job.tools = Array.isArray(job.tools) ? job.tools : [];
   job.exports = Array.isArray(job.exports) ? job.exports : [];
   job.log = Array.isArray(job.log) ? job.log : [];
-  job.stages = job.stages ?? { generate: { status: "idle" }, edit: { status: "idle" }, export: { status: "idle" } };
+  job.workflow = job.workflow === "compose" ? "compose" : "generate";
+  job.compositions = Array.isArray(job.compositions) ? job.compositions : [];
+  const stages = (job.stages ?? {}) as Record<string, MusicStageState>;
+  for (const stage of MUSIC_STAGES) {
+    if (stages[stage] === undefined || stages[stage] === null) stages[stage] = { status: "idle" };
+  }
+  job.stages = stages as Record<MusicStage, MusicStageState>;
+  // 老任务没有 compose 字段；readMusicJob 已经补上，这里只保证类型完整。
+  if (job.scorePlan !== undefined && job.scorePlan !== null && typeof job.scorePlan !== "object") job.scorePlan = undefined;
+  if (typeof job.currentScoreId === "string" && !job.compositions.some((entry) => entry.id === job.currentScoreId)) job.currentScoreId = undefined;
   return job;
 }
 
@@ -462,9 +507,11 @@ export function summarizeMusicJob(job: MusicJob): MusicJobSummary {
     name: job.name,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
+    workflow: job.workflow,
     songsReady: ready.length,
     songsTotal: job.songs.length,
     versions: job.versions.filter((version) => version.status === "ready").length,
+    compositions: job.compositions.filter((entry) => entry.status === "ready").length,
     engines: [...new Set(job.songs.map((song) => song.engine))],
     busy: musicBusy(job.id, job),
     reviewMode: job.reviewMode,
@@ -481,11 +528,13 @@ export async function deleteMusicJob(id: string): Promise<void> {
     }
   }
   cancelMusicGeneration(id);
+  scoreRuns.delete(id);
   await rm(musicJobDir(id), { recursive: true, force: true });
   jobQueues.delete(id);
 }
 
 export function musicBusy(id: string, job?: MusicJob): boolean {
+  if (scoreRuns.has(id)) return true;
   if ((running.get(id)?.size ?? 0) > 0) return true;
   if (job === undefined) return false;
   if (job.generations.some((generation) => generation.status === "submitting" || generation.status === "polling")) return true;
@@ -500,12 +549,15 @@ export function musicBusy(id: string, job?: MusicJob): boolean {
 
 const running = new Map<string, Set<string>>();
 const controllers = new Map<string, AbortController>();
+/** 正在跑谱曲脚本的 job（runMusicScore 是同步的，用一个集合挡住并发）。 */
+const scoreRuns = new Set<string>();
 let disposed = false;
 
 /** DSH 重载插件时模块级 disposed 会留着，apply 时靠它复位。 */
 export function activateMusic(): void {
   disposed = false;
   running.clear();
+  scoreRuns.clear();
   for (const controller of controllers.values()) controller.abort();
   controllers.clear();
 }
@@ -515,6 +567,7 @@ export function disposeMusic(): void {
   for (const controller of controllers.values()) controller.abort();
   controllers.clear();
   running.clear();
+  scoreRuns.clear();
 }
 
 function trackMusicTask(id: string, key: string, run: () => Promise<void>): boolean {
@@ -614,6 +667,12 @@ export async function musicSnapshot(job: MusicJob, origin = originForLinks()): P
     url: absUrl(origin, assetBase, entry.file) ?? null,
     downloadUrl: absUrl(origin, assetBase, entry.file) === undefined ? null : `${absUrl(origin, assetBase, entry.file)}?download=1`
   }));
+  const compositions = job.compositions.map((entry) => ({
+    ...entry,
+    midiUrl: absUrl(origin, assetBase, entry.midiFile) ?? null,
+    audioUrl: absUrl(origin, assetBase, entry.audioFile) ?? null,
+    scriptUrl: absUrl(origin, assetBase, entry.scriptFile) ?? null
+  }));
   return {
     module: "music" as const,
     id: job.id,
@@ -622,11 +681,15 @@ export async function musicSnapshot(job: MusicJob, origin = originForLinks()): P
     assetBase,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
+    workflow: job.workflow,
     reviewMode: job.reviewMode ?? null,
     busy: musicBusy(job.id, job),
     blocker: musicBlocker(config) ?? null,
     source: job.source,
     settings: job.settings,
+    scorePlan: job.scorePlan ?? null,
+    currentScoreId: job.currentScoreId ?? null,
+    compositions,
     stages: job.stages,
     generations: job.generations.map((generation) => ({
       ...generation,
@@ -652,6 +715,10 @@ export interface StartGenerationInput {
   params?: Record<string, unknown>;
   regenerate?: boolean;
   by?: "human" | "ai";
+  /** 谱曲模式：这一批来自哪一版。 */
+  scoreId?: string;
+  /** 音频条件生成：上传后拿到的参考曲 id。 */
+  sourceClipId?: string;
 }
 
 function pickParam(params: Record<string, unknown>, ...keys: string[]): unknown {
@@ -761,6 +828,8 @@ export async function startMusicGeneration(
       endpoint: request.endpoint,
       summary: request.summary,
       request: request.body,
+      ...(typeof input.scoreId === "string" && input.scoreId !== "" ? { scoreId: input.scoreId } : {}),
+      ...(typeof input.sourceClipId === "string" && input.sourceClipId !== "" ? { sourceClipId: input.sourceClipId } : {}),
       status: "submitting",
       songIds: [],
       startedAt,
@@ -1106,6 +1175,293 @@ export function cancelMusicGeneration(id: string): boolean {
   return true;
 }
 
+// ── 谱曲模式 ────────────────────────────────────────────────────────────
+
+/** 保存/更新谱曲方案（草稿）。方案不产生 MIDI，先让用户看到再谱曲。 */
+export async function saveMusicScorePlan(id: string, plan: unknown): Promise<Record<string, unknown>> {
+  assertJobId(id);
+  const normalized = normalizeScorePlan(plan);
+  if (!scorePlanReady(normalized)) {
+    throw new Error("谱曲方案太短了：至少写清曲风、段落或一段给用户看的方案说明。");
+  }
+  const job = await patchMusicJob(id, (current) => {
+    if (current.workflow !== "compose") throw new Error("这个任务是「直接生成」模式；谱曲模式请在新建音乐时选择。");
+    current.scorePlan = normalized;
+    musicLog(current, "info", "谱曲方案已保存");
+    return current;
+  });
+  return musicSnapshot(job, originForLinks());
+}
+
+export interface RunMusicScoreInput {
+  title?: string;
+  plan?: unknown;
+  script: string;
+  basedOn?: string;
+  label?: string;
+}
+
+export interface RunMusicScoreResult {
+  ok: boolean;
+  jobId: string;
+  scoreId: string;
+  title: string;
+  duration: number;
+  bars: number;
+  midiUrl: string | null;
+  audioUrl: string | null;
+  audioRenderer?: "fluidsynth" | "builtin";
+  warnings: string[];
+  openUrl: string;
+}
+
+/**
+ * 执行一版谱曲：写 compose.py → 跑 Python/scoremill → 解析 score.mid →
+ * 渲染试听 → 追加一个 composition。
+ *
+ * ★ 本地免费。失败不新增版本，只把 stages.compose 标 error 并抛出带
+ * stderr 尾部的错误，方便 agent 按小节修正。
+ */
+export async function runMusicScore(id: string, input: RunMusicScoreInput): Promise<RunMusicScoreResult> {
+  assertJobId(id);
+  if (typeof input.script !== "string" || input.script.trim() === "") {
+    throw new Error("compose.py 是空的：请先写一份 scoremill 记谱脚本。");
+  }
+  if (scoreRuns.has(id)) throw new Error("这个任务已经有谱曲任务在跑，等它结束再提交。");
+  const job = await readMusicJob(id);
+  if (job === undefined) throw new Error(`音乐任务不存在：${id}`);
+  if (job.workflow !== "compose") throw new Error("这个任务是「直接生成」模式；谱曲模式请在新建音乐时选择。");
+
+  const inlinePlan = input.plan === undefined || input.plan === null ? undefined : normalizeScorePlan(input.plan);
+  const plan = scorePlanReady(inlinePlan) ? inlinePlan : job.scorePlan;
+  if (!scorePlanReady(plan)) {
+    throw new Error("还没有谱曲方案：先用 saveMusicScorePlan 保存方案（或在本次调用里传 plan），再谱曲。");
+  }
+  if (inlinePlan !== undefined && scorePlanReady(inlinePlan)) {
+    await patchMusicJob(id, (current) => {
+      current.scorePlan = inlinePlan;
+      return current;
+    });
+  }
+
+  const config = await loadConfig();
+  const deps = await detectScoreDeps(config);
+  if (!deps.ok) throw new Error(deps.blocker ?? "谱曲依赖不完整：请安装 Python 3 + scoremill。");
+  if (deps.python.ok !== true) throw new Error(deps.python.error ?? "找不到 Python 3");
+
+  const scoreId = `c${Date.now().toString(36)}${randomUUID().slice(0, 6)}`;
+  const scoreDir = join(musicJobDir(id), "scores", scoreId);
+  const relativePrefix = `scores/${scoreId}/`;
+  const title = (typeof input.title === "string" && input.title.trim() !== "" ? input.title.trim() : job.name).slice(0, 200);
+  const label = (typeof input.label === "string" && input.label.trim() !== "" ? input.label.trim() : `第 ${job.compositions.length + 1} 版`).slice(0, 80);
+  const startedAt = now();
+  scoreRuns.add(id);
+  try {
+    await mkdir(scoreDir, { recursive: true });
+    await writeJsonAtomic(join(scoreDir, "plan.json"), plan);
+    const ran = await runScoreScript({
+      scoreDir,
+      script: input.script,
+      pythonPath: deps.python.path ?? "python3",
+      pythonArgs: deps.python.args ?? []
+    });
+    if (disposed) throw new Error("插件已重载，谱曲中断；请重新提交。");
+    const audio = await renderScoreAudio({
+      midiPath: ran.midiPath,
+      outDir: scoreDir,
+      deps,
+      parsed: ran.parsed,
+      relativePrefix
+    });
+    const warnings = [...audio.warnings];
+    if (plan.lengthBars !== undefined && Math.abs(plan.lengthBars - ran.parsed.meta.bars) > 1) {
+      warnings.push(`方案写的是 ${plan.lengthBars} 小节，MIDI 实际 ${ran.parsed.meta.bars} 小节；如果是有意的请忽略。`);
+    }
+    const composition: MusicComposition = {
+      id: scoreId,
+      label,
+      title,
+      plan,
+      script: input.script,
+      scriptFile: `${relativePrefix}compose.py`,
+      midiFile: `${relativePrefix}${ran.midiPath.split(/[\\/]/u).pop() ?? "score.mid"}`,
+      ...(audio.audioFile === undefined ? {} : { audioFile: audio.audioFile }),
+      ...(audio.renderer === undefined ? {} : { audioRenderer: audio.renderer }),
+      ...(audio.error === undefined ? {} : { audioError: audio.error }),
+      midi: {
+        duration: ran.parsed.meta.duration,
+        bars: ran.parsed.meta.bars,
+        tempo: ran.parsed.meta.tempo,
+        timeSignature: ran.parsed.meta.timeSignature,
+        tracks: ran.parsed.meta.tracks,
+        channels: ran.parsed.meta.channels,
+        notes: ran.parsed.meta.notes
+      },
+      ...(ran.report === undefined ? {} : { report: ran.report }),
+      stdout: ran.stdout.slice(-8000),
+      status: "ready",
+      ...(typeof input.basedOn === "string" && input.basedOn !== "" ? { basedOn: input.basedOn } : {}),
+      createdAt: startedAt,
+      updatedAt: now()
+    };
+    await patchMusicJob(id, (current) => {
+      current.compositions.push(composition);
+      current.currentScoreId = composition.id;
+      current.stages.compose = { status: "done", at: now() };
+      musicLog(
+        current,
+        "info",
+        `谱曲完成：${composition.label}（${composition.midi.bars} 小节 / ${composition.midi.duration.toFixed(1)} 秒 / ${composition.midi.notes} 个音）`
+      );
+      for (const warning of warnings) musicLog(current, "warn", warning);
+      if (audio.error !== undefined) musicLog(current, "warn", `试听渲染失败：${audio.error}`);
+    });
+    return {
+      ok: true,
+      jobId: id,
+      scoreId,
+      title,
+      duration: composition.midi.duration,
+      bars: composition.midi.bars,
+      midiUrl: absUrl(originForLinks(), musicAssetBase(id), composition.midiFile) ?? null,
+      audioUrl: absUrl(originForLinks(), musicAssetBase(id), composition.audioFile) ?? null,
+      ...(composition.audioRenderer === undefined ? {} : { audioRenderer: composition.audioRenderer }),
+      warnings,
+      openUrl: musicOpenLink(id, "compose", scoreId)
+    };
+  } catch (error) {
+    const message = messageOf(error);
+    await patchMusicJob(id, (current) => {
+      current.stages.compose = { status: "error", error: message.slice(0, 4000), at: now() };
+      musicLog(current, "error", `谱曲失败：${message.slice(0, 1000)}`);
+    }).catch(() => undefined);
+    throw error;
+  } finally {
+    scoreRuns.delete(id);
+  }
+}
+
+export interface SubmitScoreToSunoInput {
+  scoreId?: string;
+  /** 必须显式为 true：这次会真实计费。 */
+  confirm?: boolean;
+  model?: string;
+  params?: Record<string, unknown>;
+  regenerate?: boolean;
+  /** true = Suno 判定版权后，走付费版权上传通道。 */
+  copyrightAudio?: boolean;
+  /** 参考音频权重 0–1（cover 的 audio_weight）。 */
+  audioWeight?: number;
+}
+
+/**
+ * 把某一版谱曲交给 Suno。
+ *
+ * 链路：这一版的试听音频（`preview.mp3` / `preview.wav`）→
+ * `POST /v1/suno/audio/upload` 拿参考 song id → `POST /v1/suno/generate/cover`。
+ * Suno 不接受 MIDI 原文件，但接受音频；标准上传免费，版权通道需用户确认。
+ *
+ * ⚠️ 真实计费；必须 `confirm:true`，已有歌曲时必须 `regenerate:true`。
+ */
+export async function submitMusicScoreToSuno(id: string, input: SubmitScoreToSunoInput = {}): Promise<Record<string, unknown>> {
+  assertJobId(id);
+  if (input.confirm !== true) {
+    throw new Error("交给 Suno 会真实消耗积分；确认要提交请传 confirm:true（并先向用户说明）。插件会先把这一版的试听音频上传给 Suno 作为参考（标准上传免费），再走 cover；Suno 不接受 MIDI 原文件。");
+  }
+  const job = await readMusicJob(id);
+  if (job === undefined) throw new Error(`音乐任务不存在：${id}`);
+  if (job.workflow !== "compose") throw new Error("这个任务不是谱曲模式，没有可提交的谱曲版本。");
+  const scoreId = typeof input.scoreId === "string" && input.scoreId !== "" ? input.scoreId : job.currentScoreId;
+  const composition = job.compositions.find((entry) => entry.id === scoreId);
+  if (composition === undefined) throw new Error(`谱曲版本不存在：${scoreId ?? "（空）"}`);
+  if (composition.status !== "ready") throw new Error("这一版谱曲还没有完成，无法提交。");
+  const config = await loadConfig();
+  const blocker = musicBlocker(config);
+  if (blocker !== undefined && blocker !== null) throw new Error(blocker);
+  // 先过计费/并发闸门，避免「明知不会启动还先上传一次」。
+  if (job.songs.some((song) => song.status === "succeeded") && input.regenerate !== true) {
+    return {
+      ok: false,
+      started: false,
+      reason: "这个任务已经有歌曲了。再生成一批会再计费；确认要重做请传 regenerate:true。",
+      scoreId: composition.id,
+      warnings: []
+    };
+  }
+  if (musicBusy(id, job)) {
+    return {
+      ok: false,
+      started: false,
+      reason: "这个任务已有生成/编辑任务在跑，等它结束再提交（重复提交会重复计费）。",
+      scoreId: composition.id,
+      warnings: []
+    };
+  }
+  if (typeof composition.audioFile !== "string" || composition.audioFile === "") {
+    throw new Error("这一版没有试听音频，无法作为 Suno 的参考。请先修复试听渲染（装 FluidSynth + SoundFont，或检查 ffmpeg），或下载 MIDI 自行处理。");
+  }
+  const audioPath = musicAssetPath(id, composition.audioFile);
+  let uploaded;
+  try {
+    uploaded = await uploadSunoAudio(apiConfigOf(config), {
+      filePath: audioPath,
+      fileName: composition.audioFile.split(/[\\/]/u).pop(),
+      copyright: input.copyrightAudio === true
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const errorCode = error instanceof MusicApiError ? `${error.code ?? ""} ${error.type ?? ""}` : "";
+    if (input.copyrightAudio !== true && error instanceof MusicApiError && /copyright|版权|拷贝/iu.test(`${message} ${errorCode}`)) {
+      return {
+        ok: false,
+        started: false,
+        needsCopyrightConsent: true,
+        scoreId: composition.id,
+        reason: `Suno 判定这段参考音频有版权，需要走付费版权上传通道（会扣积分）。确认后传 copyrightAudio:true 重试。原始错误：${message}`
+      };
+    }
+    throw error;
+  }
+  const built = buildScoreSunoParams({
+    job,
+    composition,
+    coverClipId: uploaded.songId,
+    audioWeight: input.audioWeight,
+    overrides: { ...(input.params ?? {}), ...(typeof input.model === "string" && input.model.trim() !== "" ? { model: input.model.trim() } : {}) }
+  });
+  const started = await startMusicGeneration(id, {
+    engine: "suno",
+    mode: built.mode,
+    model: built.model,
+    params: built.params,
+    regenerate: input.regenerate === true,
+    by: "human",
+    scoreId: composition.id,
+    sourceClipId: uploaded.songId
+  });
+  if (!started.started) {
+    return {
+      ok: false,
+      started: false,
+      reason: started.reason ?? "提交没有启动",
+      scoreId: composition.id,
+      warnings: built.warnings
+    };
+  }
+  return {
+    ok: true,
+    started: true,
+    generationId: started.generationId,
+    scoreId: composition.id,
+    mode: built.mode,
+    uploadedClipId: uploaded.songId,
+    copyrightAudio: input.copyrightAudio === true,
+    warnings: built.warnings,
+    message: "已上传这一版的试听音频作为参考并提交给 Suno（真实计费）。结果会基于这段音频重新演奏，但不会逐音一致。",
+    openUrl: musicOpenLink(id, "generate", composition.id)
+  };
+}
+
 /** 插件启动时接上未完成的任务（进程重启后没有内存里的后台任务）。 */
 export async function resumeMusicJobs(): Promise<void> {
   const jobs = await listMusicJobs();
@@ -1113,6 +1469,13 @@ export async function resumeMusicJobs(): Promise<void> {
     if (!summary.busy) continue;
     const job = await readMusicJob(summary.id);
     if (job === undefined) continue;
+    // 谱曲是同步调用：重启后还停在 running，说明进程在谱曲中途被杀了。
+    if (job.stages.compose?.status === "running") {
+      await patchMusicJob(job.id, (current) => {
+        current.stages.compose = { status: "error", error: "插件重启，谱曲中断；请重新谱曲。", at: now() };
+        musicLog(current, "warn", "谱曲中断：插件重启");
+      });
+    }
     const pendingGeneration = job.generations.find((generation) => generation.status === "polling" || generation.status === "submitting");
     if (pendingGeneration !== undefined && pendingGeneration.songIds.length > 0) {
       trackMusicTask(job.id, "generation", () => resumeGeneration(job.id, pendingGeneration.id));
@@ -1728,17 +2091,27 @@ export async function deleteMusicVersion(id: string, versionId: string): Promise
 
 export async function musicPeaks(
   id: string,
-  input: { songId?: string; versionId?: string; buckets?: number } = {},
+  input: { songId?: string; versionId?: string; scoreId?: string; buckets?: number } = {},
   origin = originForLinks()
 ): Promise<Record<string, unknown>> {
   assertJobId(id);
   const job = await readMusicJob(id);
   if (job === undefined) throw new Error(`音乐任务不存在：${id}`);
-  const version = typeof input.versionId === "string" ? job.versions.find((entry) => entry.id === input.versionId && entry.status === "ready") : undefined;
-  const song = version !== undefined ? job.songs.find((entry) => entry.id === version.songId) : pickSong(job, input.songId);
-  if (song === undefined) throw new Error("找不到对应歌曲");
-  if (version === undefined && song.localFile === undefined) await ensureLocalSong(id, song.id);
-  const relative = version?.file ?? song.localFile;
+  let relative: string | undefined;
+  if (typeof input.scoreId === "string" && input.scoreId !== "") {
+    const composition = job.compositions.find((entry) => entry.id === input.scoreId);
+    if (composition === undefined) throw new Error(`谱曲版本不存在：${input.scoreId}`);
+    if (typeof composition.audioFile !== "string" || composition.audioFile === "") {
+      throw new Error("这一版还没有试听音频，无法生成波形");
+    }
+    relative = composition.audioFile;
+  } else {
+    const version = typeof input.versionId === "string" ? job.versions.find((entry) => entry.id === input.versionId && entry.status === "ready") : undefined;
+    const song = version !== undefined ? job.songs.find((entry) => entry.id === version.songId) : pickSong(job, input.songId);
+    if (song === undefined) throw new Error("找不到对应歌曲");
+    if (version === undefined && song.localFile === undefined) await ensureLocalSong(id, song.id);
+    relative = version?.file ?? song.localFile;
+  }
   if (relative === undefined) throw new Error("这首歌还没有下载到本地，无法生成波形");
   const file = musicAssetPath(id, relative);
   const info = await stat(file).catch(() => undefined);
@@ -1766,6 +2139,7 @@ export async function musicPeaks(
 export interface ExportMusicInput {
   songId?: string;
   versionId?: string;
+  scoreId?: string;
   format?: string;
   name?: string;
   zip?: boolean;
@@ -1816,6 +2190,53 @@ export async function exportMusic(
   if (job === undefined) throw new Error(`音乐任务不存在：${id}`);
   const outDir = join(musicJobDir(id), "out");
   await mkdir(outDir, { recursive: true });
+
+  // 谱曲模式：导出一个「乐谱包」（MIDI + 试听 + 方案 + compose.py）。
+  if (typeof input.scoreId === "string" && input.scoreId !== "") {
+    const composition = job.compositions.find((entry) => entry.id === input.scoreId);
+    if (composition === undefined) throw new Error(`谱曲版本不存在：${input.scoreId}`);
+    if (composition.status !== "ready") throw new Error("这一版谱曲还没有完成，无法导出");
+    const entries = await buildScoreBundle({
+      job,
+      composition,
+      readFile: async (relative) => readFile(musicAssetPath(id, relative))
+    });
+    const zip = zipEntries(entries);
+    const stem = `${safeStem(input.name ?? composition.title ?? job.name)}-${safeStem(composition.label)}`;
+    const zipPath = await uniqueExportPath(outDir, stem, "zip");
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(zipPath, zip);
+    const zipRelative = `out/${zipPath.split(/[\\/]/u).pop()}`;
+    const record: MusicExport = {
+      id: `e${Date.now().toString(36)}${randomUUID().slice(0, 5)}`,
+      file: zipRelative,
+      format: "zip",
+      bytes: zip.length,
+      createdAt: now(),
+      scoreId: composition.id,
+      files: entries.map((entry) => entry.path)
+    };
+    await patchMusicJob(id, (current) => {
+      current.exports.push(record);
+      current.stages.export = { status: "done", at: now() };
+      musicLog(current, "info", `导出乐谱包：${zipRelative}（${entries.length} 个文件）`);
+    });
+    const origin = options.origin ?? originForLinks();
+    const assetBase = musicAssetBase(id);
+    return {
+      ok: true,
+      zip: true,
+      file: zipRelative,
+      path: zipPath,
+      url: absUrl(origin, assetBase, zipRelative) ?? null,
+      downloadUrl: absUrl(origin, assetBase, zipRelative) === undefined ? null : `${absUrl(origin, assetBase, zipRelative)}?download=1`,
+      bytes: zip.length,
+      files: entries.map((entry) => ({ path: entry.path, bytes: entry.data.length })),
+      name: `${stem}.zip`,
+      scoreId: composition.id
+    };
+  }
+
   const targets: ExportTarget[] = [];
 
   if (typeof input.versionId === "string") {
@@ -1993,8 +2414,13 @@ export async function musicJobExists(id: string): Promise<boolean> {
 }
 
 /** 给 `links.ts` / 工具面用的「打开任务」链接。 */
-export function musicOpenLink(id: string, stage?: MusicStage): string {
-  return buildOpenLink({ module: "music", jobId: id, ...(stage === undefined ? {} : { stage }) });
+export function musicOpenLink(id: string, stage?: MusicStage, scoreId?: string): string {
+  return buildOpenLink({
+    module: "music",
+    jobId: id,
+    ...(stage === undefined ? {} : { stage }),
+    ...(scoreId === undefined || scoreId === "" ? {} : { scoreId })
+  });
 }
 
 /** 任务里的引擎 key（避免界面重复实现）。 */
