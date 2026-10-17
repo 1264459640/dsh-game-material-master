@@ -405,6 +405,124 @@ try {
     (await failed(() => gw("recomposeMapTileset", { projectId, tilesetId: clarityTileset.id, files: [recomposeSource] }))).includes("不能原地重烘")
   );
 
+  /**
+   * ★ AI 那条路的整图：`composeMapAsset({shape:"stamp", stampCols, stampRows})` 与回链。
+   */
+  {
+    const frameDir = join(HOME, "stamp-ai");
+    await mkdir(frameDir, { recursive: true });
+    const frameFile = async (name, tint) => {
+      const rgba = Buffer.alloc(96 * 64 * 4);
+      for (let i = 0; i < 96 * 64; i++) {
+        rgba[i * 4] = 100 + tint;
+        rgba[i * 4 + 1] = 60;
+        rgba[i * 4 + 2] = 140;
+        rgba[i * 4 + 3] = 255;
+      }
+      const file = join(frameDir, name);
+      await writeFile(file, encodePng(rgba, 96, 64));
+      return file;
+    };
+    const f0 = await frameFile("f0.png", 0);
+    const f1 = await frameFile("f1.png", 20);
+    const composed = await gw("composeMapAsset", { projectId, name: "AI 雕像", files: [f0, f1], shape: "stamp", stampCols: 3, stampRows: 2 });
+    check("composeMapAsset(stamp)：形态 / 占格 / 帧数都回来了", composed.shape === "stamp" && composed.stamp?.cols === 3 && composed.stamp?.rows === 2 && composed.stamp?.frames === 2, JSON.stringify({ shape: composed.shape, stamp: composed.stamp }));
+    // 源图 = 3 列 × (2 行 × 2 帧 = 4 行) —— **不含**旋转烘焙（那是导入端的事）。
+    check("composeMapAsset(stamp)：源图是 3 列 × (2 行 × 2 帧) 格，不烘旋转", composed.width > 0 && composed.height === (composed.width / 3) * 4, `${composed.width}×${composed.height}`);
+    check("整图缺占格时明确报错（不按 3×3 静默猜）", (await failed(() => gw("composeMapAsset", { projectId, name: "乱来", files: [f0], shape: "stamp" }))).includes("占几格"));
+
+    /**
+     * ★ 整图抠绿幕：`composeMapAsset` 自己抠（回包带 `keyed`），手动导入那条路靠 `stampKey`。
+     * 两个字段都必须过 schema —— 少一个，用户点得再多也静默无效。
+     */
+    const greenBytes = (() => {
+      const rgba = Buffer.alloc(96 * 64 * 4);
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 96; x++) {
+          const offset = (y * 96 + x) * 4;
+          if (x > 24 && x < 72) {
+            rgba[offset] = 120;
+            rgba[offset + 1] = 110;
+            rgba[offset + 2] = 100;
+          } else {
+            rgba[offset + 1] = 224;
+          }
+          rgba[offset + 3] = 255;
+        }
+      }
+      return encodePng(rgba, 96, 64);
+    })();
+    const greenFile = join(HOME, "stamp-ai", "green.png");
+    await writeFile(greenFile, greenBytes);
+    // 同一张但背景是**蓝色**：抠不到绿，回链不该带 keyed。
+    const noGreenFile = join(HOME, "stamp-ai", "nongreen.png");
+    await writeFile(noGreenFile, (() => {
+      const rgba = Buffer.alloc(96 * 64 * 4);
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 96; x++) {
+          const offset = (y * 96 + x) * 4;
+          if (x > 24 && x < 72) {
+            rgba[offset] = 120;
+            rgba[offset + 1] = 110;
+            rgba[offset + 2] = 100;
+          } else {
+            rgba[offset + 2] = 220;
+          }
+          rgba[offset + 3] = 255;
+        }
+      }
+      return encodePng(rgba, 96, 64);
+    })());
+    const greenComposed = await gw("composeMapAsset", { projectId, name: "绿幕城门", files: [greenFile], shape: "stamp", stampCols: 3, stampRows: 2 });
+    check("★ composeMapAsset 抠到绿幕时回包带 keyed（回链据此不再抠第二遍）", typeof greenComposed.keyed === "number" && greenComposed.keyed > 0.05, String(greenComposed.keyed));
+    const greenImported = await gw("importMapTileset", { projectId, name: "手动绿幕", data: greenBytes.toString("base64"), stamp: { cols: 3, rows: 2, frames: 1, pass: [] }, stampKey: true });
+    check("★ importMapTileset 的 stampKey 过 schema 不丢（抠过的图左上角透明）", (() => {
+      const ts = greenImported.tilesets[0];
+      return ts.stamp !== undefined;
+    })());
+  }
+
+  /**
+   * ★ 整图（多格印花）：`stamp` 规格也要过 schema（少声明就被静默丢掉，
+   * 表现是「选了整图、导入出来却是普通素材」）。
+   */
+  const stampSheet = (() => {
+    const cell = 8, cols = 3, rows = 2;
+    const rgba = Buffer.alloc(cols * cell * rows * cell * 4);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        for (let y = 0; y < cell; y++) {
+          for (let x = 0; x < cell; x++) {
+            const offset = ((r * cell + y) * cols * cell + c * cell + x) * 4;
+            rgba[offset] = 30 + c * 60;
+            rgba[offset + 1] = 30 + r * 90;
+            rgba[offset + 2] = 120;
+            rgba[offset + 3] = 255;
+          }
+        }
+      }
+    }
+    return encodePng(rgba, cols * cell, rows * cell);
+  })();
+  const stampImported = await gw("importMapTileset", {
+    projectId,
+    name: "雕像",
+    data: stampSheet.toString("base64"),
+    stamp: { cols: 3, rows: 2, frames: 1, pass: [0, 0, 0, 1, 1, 2] }
+  });
+  const stampTileset = stampImported.tilesets[0];
+  check("★ importMapTileset.stamp 过 schema 不丢（形态 = stamp、规格带上）", stampTileset.shape === "stamp" && stampTileset.stamp?.cols === 3 && stampTileset.stamp?.rows === 2, JSON.stringify({ shape: stampTileset.shape, stamp: stampTileset.stamp }));
+  check("整图：格子被锁成地图网格（32）", stampTileset.cell.width === 32 && stampTileset.cell.height === 32, JSON.stringify(stampTileset.cell));
+  check("整图：调色板只出一条、缩略图是整张（3×2 格）", (await gw("getMapProject", { projectId })).tilesets.find((entry) => entry.id === stampTileset.id)?.palette?.length === 1);
+  const stampLayer = (await gw("getMapProject", { projectId })).layers[0].id;
+  const placed = await gw("applyMapOps", { projectId, ops: [{ kind: "stampPlace", layerId: stampLayer, tilesetId: stampTileset.id, r: 1, c: 1, rot: 0 }] });
+  check("★ stampPlace 走网关：一次占 6 格、stamps 计数 1", placed.changed === 6 && placed.stamps === 1, `changed ${placed.changed} / stamps ${placed.stamps}`);
+  const passPlan = await gw("mapPlan", { projectId, view: { x: 0, y: 0, width: 32 * 8, height: 32 * 8 }, have: [], pass: true });
+  check("★ mapPlan({pass:true}) 过 schema：回 6 格通行性、三态都有", Array.isArray(passPlan.pass) && passPlan.pass.length === 6 && new Set(passPlan.pass.map((cell) => cell.kind)).size === 3, JSON.stringify(passPlan.pass));
+  check("反向验证：不传 pass 时不带这个字段（不让客户端多算）", (await gw("mapPlan", { projectId, view: { x: 0, y: 0, width: 32 * 8, height: 32 * 8 }, have: [] })).pass === undefined);
+  const erased = await gw("applyMapOps", { projectId, ops: [{ kind: "paint", layerId: stampLayer, cells: [{ r: 2, c: 2, tile: 0 }] }] });
+  check("★ 擦一格 → 整张整图没了（stamps 1）", erased.stamps === 1);
+
   /** ★ 循环方式：同一个 schema 陷阱（字段不在 schema 里就被静默丢掉）。 */
   const loopImported = await gw("importMapTileset", { projectId, name: "倒放图", data: sheetPng(128, 128, 32).toString("base64"), animRows: true, loop: "reverse" });
   check("importMapTileset.loop 真的到宿主（素材上记着 reverse）", loopImported.tilesets[0].loop === "reverse", String(loopImported.tilesets[0].loop));
@@ -489,6 +607,20 @@ try {
   );
 
   // ══ 5. 编辑 / 计划 / 撤销（走网关，字段真的影响结果）════════════════════
+  /**
+   * ★ 素材属性：改名 / 播放速度 / 循环方式都要过 schema（少一个就是「改了没反应」）。
+   * 内置素材也允许改这三样，几何仍然拒绝。
+   */
+  const editable = (await gw("importMapTileset", { projectId, name: "属性自检", data: stampSheet.toString("base64"), stamp: { cols: 3, rows: 2, frames: 2, pass: [] } })).tilesets[0];
+  const renamed = await gw("saveMapTileset", { projectId, tilesetId: editable.id, name: "属性自检-改名", fps: 6, loop: "pingpong" });
+  check("★ saveMapTileset 的 name / fps / loop 都过 schema 不丢", renamed.tileset.name === "属性自检-改名" && renamed.tileset.fps === 6 && renamed.tileset.loop === "pingpong", JSON.stringify({ name: renamed.tileset.name, fps: renamed.tileset.fps, loop: renamed.tileset.loop }));
+  check("改名之后里表里就是新名字", (await gw("getMapProject", { projectId })).tilesets.some((entry) => entry.name === "属性自检-改名"));
+  const sampleTs = (await gw("getMapProject", { projectId })).tilesets.find((entry) => entry.builtin === true);
+  const sampleRenamed = sampleTs === undefined ? undefined : await gw("saveMapTileset", { projectId, tilesetId: sampleTs.id, name: "内置改名", fps: 3 });
+  check("★ 内置素材也能改名 / 改速度（走网关）", sampleRenamed === undefined || (sampleRenamed.tileset.name === "内置改名" && sampleRenamed.tileset.fps === 3), JSON.stringify({ name: sampleRenamed?.tileset?.name, fps: sampleRenamed?.tileset?.fps }));
+  const builtinRefused = sampleTs === undefined ? "跳过" : await failed(() => gw("saveMapTileset", { projectId, tilesetId: sampleTs.id, cell: { width: 64, height: 64 } }));
+  check("内置素材的格子仍然改不动（走网关也是明确报错）", sampleTs === undefined || builtinRefused.includes("不能改"), builtinRefused.slice(0, 40));
+
   section("5) 编辑 / 计划 / 撤销（走网关，字段真的影响结果）");
   const base = 1; // 第一块
   const docInfo = await gw("getMapProject", { projectId });
@@ -656,6 +788,42 @@ try {
     const parsed = links.parseIntentQuery(composedUrl.search);
     return parsed?.dialog === "add" && parsed?.asset === "ai/工具面AI素材.png" && parsed?.frames === 2 && parsed?.stage === "assets" && parsed?.shape === "plain";
   })(), JSON.stringify(links.parseIntentQuery(composedUrl.search)));
+  /**
+   * ★ 整图：回链要多带 `cols/rows` —— 少了它们「新增素材」只能按 3×3 猜，
+   * 图与占格对不上就被拉伸（而且这种拉伸一句提示都没有）。
+   */
+  const stampCall = await run("game_material_call", {
+    method: "composeMapAsset",
+    payload: { projectId, name: "工具面雕像", files: [frameA], shape: "stamp", stampCols: 4, stampRows: 3 }
+  });
+  const stampUrl = new URL(String(stampCall.openUrl));
+  check(
+    "★ call(composeMapAsset)：整图回链带 shape=stamp / cols=4 / rows=3",
+    stampUrl.searchParams.get("shape") === "stamp" && stampUrl.searchParams.get("cols") === "4" && stampUrl.searchParams.get("rows") === "3",
+    String(stampCall.openUrl)
+  );
+  check("整图回链解析回意图：cols / rows 也在", (() => {
+    const parsed = links.parseIntentQuery(stampUrl.search);
+    return parsed?.shape === "stamp" && parsed?.cols === 4 && parsed?.rows === 3;
+  })());
+  /**
+   * 绿幕那条：`composeMapAsset` 抠到了东西就带 `keyed=1` ——「新增素材」据此**取消**勾选，
+   * 免得抠第二遍（第二遍按已经没绿的图去采样背景色，会误伤画面里的深绿）。
+   */
+  // 那两张夹具图由上面的整图那一段写好（同一份路径，别重复造）。
+  const toolGreenFile = join(HOME, "stamp-ai", "green.png");
+  const toolNoGreenFile = join(HOME, "stamp-ai", "nongreen.png");
+  const keyedCall = await run("game_material_call", {
+    method: "composeMapAsset",
+    payload: { projectId, name: "工具面绿幕", files: [toolGreenFile], shape: "stamp", stampCols: 3, stampRows: 2 }
+  });
+  const keyedUrl = new URL(String(keyedCall.openUrl));
+  check("★ 抠过绿幕的回链带 keyed=1（界面据此不再抠）", keyedUrl.searchParams.get("keyed") === "1" && links.parseIntentQuery(keyedUrl.search)?.keyed === 1, String(keyedCall.openUrl));
+  const noKeyCall = await run("game_material_call", {
+    method: "composeMapAsset",
+    payload: { projectId, name: "工具面没绿幕", files: [toolNoGreenFile], shape: "stamp", stampCols: 3, stampRows: 2 }
+  });
+  check("反向验证：没抠到绿幕时不带 keyed（界面该怎么抠还怎么抠）", new URL(String(noKeyCall.openUrl)).searchParams.get("keyed") === null);
   const shapedCall = await run("game_material_call", {
     method: "composeMapAsset",
     payload: { projectId, name: "工具面拼块", files: [frameA, frameB, frameB], shape: "a2quad" }

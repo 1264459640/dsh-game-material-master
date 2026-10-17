@@ -728,6 +728,93 @@ section("11) AI 素材的帧整理（fitFrameToCell / stackFrames / safeAssetSte
     check("parseAssetFps：小数保留两位（2.345 → 2.35）", tiles.parseAssetFps(2.345) === 2.35, String(tiles.parseAssetFps(2.345)));
   }
 
+  // ⑪d 整图（多格印花）：规格、旋转占格、烘焙排版、切块
+  {
+    const spec = tiles.parseStampSpec({ cols: 4, rows: 3, frames: 2, pass: [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2] });
+    check("parseStampSpec：4×3、2 帧、12 格区域都收下来", spec.cols === 4 && spec.rows === 3 && spec.frames === 2 && spec.pass.length === 12, JSON.stringify(spec));
+    check("parseStampSpec：没给 cols/rows = 不是整图（返回 undefined）", tiles.parseStampSpec(undefined) === undefined && tiles.parseStampSpec({}) === undefined);
+    check("parseStampSpec：区域缺省 = 0（不可通过）", tiles.parseStampSpec({ cols: 2, rows: 2 }).pass.every((value) => value === 0));
+    /**
+     * 占格的上下限：下限 2；上限是**地图自己**（由 `assertStampFitsProject` 按项目校验），
+     * 这里只留一道「别把 9999 传进来」的硬上限（512）。所以 9 格现在是**合法**的。
+     */
+    check("反向验证：占格 < 2 抛错", throws(() => tiles.parseStampSpec({ cols: 1, rows: 3 })) && throws(() => tiles.parseStampSpec({ cols: 3, rows: 0 })));
+    check("占格 9 现在合法（旧限制是 8，地图够大就该允许）", tiles.parseStampSpec({ cols: 9, rows: 3 }).cols === 9);
+    check("占格超过硬上限（512）抛错", throws(() => tiles.parseStampSpec({ cols: 513, rows: 3 })));
+    check("★ assertStampFitsProject：比地图大就抛错，和地图一样大可以", (() => {
+      const spec = tiles.parseStampSpec({ cols: 12, rows: 10 });
+      let threw = false;
+      try {
+        tiles.assertStampFitsProject(spec, 12, 10);
+      } catch {
+        threw = true;
+      }
+      let small = false;
+      try {
+        tiles.assertStampFitsProject(spec, 11, 10);
+      } catch {
+        small = true;
+      }
+      return threw === false && small === true;
+    })());
+    check("反向验证：帧数越界抛错", throws(() => tiles.parseStampSpec({ cols: 3, rows: 3, frames: 0 })) && throws(() => tiles.parseStampSpec({ cols: 3, rows: 3, frames: 17 })));
+    check("反向验证：区域只能是 0/1/2（3 抛错，不静默当成不可通过）", throws(() => tiles.parseStampSpec({ cols: 2, rows: 2, pass: [0, 0, 3, 0] })));
+
+    check("stampSpan：0/2 档 = 原样，1/3 档长宽互换", JSON.stringify(tiles.stampSpan(spec, 0)) === JSON.stringify({ cols: 4, rows: 3 }) && JSON.stringify(tiles.stampSpan(spec, 1)) === JSON.stringify({ cols: 3, rows: 4 }) && JSON.stringify(tiles.stampSpan(spec, 3)) === JSON.stringify({ cols: 3, rows: 4 }));
+    check("stampSpan：转满一圈回到原样（4 档 = 0 档）", JSON.stringify(tiles.stampSpan(spec, 4)) === JSON.stringify(tiles.stampSpan(spec, 0)));
+
+    const blocks = tiles.stampBlocks(spec);
+    check("stampBlocks：每帧 4 块（2 帧 = 8 块），顺序是帧 → 旋转", blocks.length === 8 && blocks[0].rot === 0 && blocks[4].frame === 1, blocks.map((block) => `${block.frame}/${block.rot}`).join(" "));
+    check("stampBlocks：竖排的 y 累加正确（4×3 → 3+4+3+4 = 14 格一帧）", blocks[0].y === 0 && blocks[1].y === 3 && blocks[2].y === 7 && blocks[3].y === 10 && blocks[4].y === 14, blocks.map((block) => block.y).join(","));
+    check("stampSheetCells：宽度取长边、高度 = 帧数 × 14", JSON.stringify(tiles.stampSheetCells(spec)) === JSON.stringify({ cols: 4, rows: 28 }));
+
+    const stampTiles = tiles.buildTiles({ shape: "stamp", cell: { width: 10, height: 10 }, imageWidth: 40, imageHeight: 280, stamp: spec });
+    // 每帧 = (3×4) + (4×3) + (3×4) + (4×3) = 48 块；2 帧 = 96。
+    check("buildTiles(整图)：块数 = 每帧 48 块 × 2 帧 = 96", stampTiles.length === 96, String(stampTiles.length));
+    check("buildTiles(整图)：每块都带 frame / rot / r / c 元数据", stampTiles.every((tile) => tile.stamp !== undefined && Number.isInteger(tile.stamp.r) && Number.isInteger(tile.stamp.c)));
+    const rot1First = stampTiles.find((tile) => tile.stamp.rot === 1 && tile.stamp.r === 0 && tile.stamp.c === 0);
+    check("buildTiles(整图)：转 90° 那块从第 3 行开始（rot0 占 3 行）", rot1First !== undefined && rot1First.rect.y === 30 && rot1First.rect.x === 0, JSON.stringify(rot1First?.rect));
+
+    /** 烘焙：每格不同颜色 → 看旋转后哪一格跑到左上角。 */
+    const cols = 4, rows = 3, size = 4;
+    const source = { width: cols * size, height: rows * size, rgba: Buffer.alloc(cols * size * rows * size * 4) };
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const offset = ((r * size + y) * cols * size + c * size + x) * 4;
+            source.rgba[offset] = 20 + c * 50;
+            source.rgba[offset + 1] = 20 + r * 60;
+            source.rgba[offset + 2] = 100;
+            source.rgba[offset + 3] = 255;
+          }
+        }
+      }
+    }
+    const baked = tiles.bakeStampSheet(source, { cols, rows, frames: 1, pass: new Array(12).fill(0) }, { width: size, height: size });
+    const blockAt = (rot, r, c) => {
+      const block = tiles.stampBlocks({ cols, rows, frames: 1, pass: new Array(12).fill(0) })[rot];
+      const offset = (((block.y + r) * size) * baked.width + c * size) * 4;
+      return [baked.rgba[offset], baked.rgba[offset + 1]];
+    };
+    check("bakeStampSheet：0 档左上角 = 源图左上角", JSON.stringify(blockAt(0, 0, 0)) === JSON.stringify([20, 20]), JSON.stringify(blockAt(0, 0, 0)));
+    check("★ bakeStampSheet：顺时针 90° 后左上角 = 源图**左下角**（第 3 行第 1 列）", JSON.stringify(blockAt(1, 0, 0)) === JSON.stringify([20, 140]), JSON.stringify(blockAt(1, 0, 0)));
+    check("★ bakeStampSheet：180° 后左上角 = 源图右下角", JSON.stringify(blockAt(2, 0, 0)) === JSON.stringify([170, 140]), JSON.stringify(blockAt(2, 0, 0)));
+    check("bakeStampSheet：270° 后左上角 = 源图右上角", JSON.stringify(blockAt(3, 0, 0)) === JSON.stringify([170, 20]), JSON.stringify(blockAt(3, 0, 0)));
+    check("bakeStampSheet：旋转后的块宽高互换（1 档 = 3 列 × 4 行）", tiles.stampBlocks({ cols, rows, frames: 1, pass: new Array(12).fill(0) })[1].cols === 3 && tiles.stampBlocks({ cols, rows, frames: 1, pass: new Array(12).fill(0) })[1].rows === 4);
+
+    const plan = tiles.sheetPlanOf("stamp", { width: 8, height: 8 }, 1, spec);
+    /**
+     * ⚠️ `sheetPlanOf` 描述的是 **composeMapAsset 产出的源图**：`cols × rows*frames` 格，
+     * **不含**旋转烘焙（烘焙在导入端；两边都烘就会把 4 个旋转叠起来的图再压一次）。
+     */
+    check("sheetPlanOf(整图)：源图几何 = 4 列 × (3 行 × 2 帧 = 6 行)，不含旋转", plan.cols === 4 && plan.rows === 6, `${plan.cols}×${plan.rows}`);
+    check("stampSourceCells 与 stampSheetCells 是两件事（源图 vs 成品）", JSON.stringify(tiles.stampSourceCells(spec)) === JSON.stringify({ cols: 4, rows: 6 }) && JSON.stringify(tiles.stampSheetCells(spec)) === JSON.stringify({ cols: 4, rows: 28 }));
+    const layout = tiles.layoutFor("stamp", { width: 8, height: 8 }, 32, 224, spec);
+    check("layoutFor(整图)：切分数与规格一致", layout.cols === 4 && layout.rows === 28 && layout.count === 112, JSON.stringify({ cols: layout.cols, rows: layout.rows, count: layout.count }));
+    check("反向验证：整图没给规格时 layoutFor / buildTiles 明确抛错（不猜一个几何出来）", throws(() => tiles.layoutFor("stamp", { width: 8, height: 8 }, 32, 224)) && throws(() => tiles.buildTiles({ shape: "stamp", cell: { width: 8, height: 8 }, imageWidth: 32, imageHeight: 224 })));
+  }
+
   // ⑪b 方向感知：竖段换向 + 转角斜接（否则「竖着的墙花纹接不上、拐角没拐角」）
   {
     /** 2×3 的标记图：左上=1、右上=2、左下=3、右下=4、中间=5、右上角… 用单通道值当指纹。 */

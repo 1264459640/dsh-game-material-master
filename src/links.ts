@@ -93,17 +93,37 @@ export interface OpenIntent {
    * 格子大小，于是把一张 4 倍图切成 16 倍的碎块（而且不报错）。留空 = 1。
    */
   scale?: number;
+  /**
+   * 整图占几格（`shape=stamp` 时才有意义）。
+   *
+   * 生图前就定好的计划：回链带上它，「新增素材」会把「占几格」预填好 —— 少了它就只能
+   * 按默认 3×3 猜，图会被拉伸。
+   */
+  cols?: number;
+  rows?: number;
+  /**
+   * `1` = 这张整图**整理时已经抠过绿幕**（`composeMapAsset` 走的就是这条路）。
+   * 「新增素材」据此把「抠掉绿幕」取消勾选 —— 抠第二遍没有好处，只可能误伤画面里的绿。
+   */
+  keyed?: number;
 }
 
 /** 深链接里 `scale` 允许的取值范围（与 `maptiles.parseAssetScale` 同一套）。 */
 export const OPEN_SCALE_MIN = 1;
 export const OPEN_SCALE_MAX = 8;
 
+/**
+ * 深链接里整图占格的取值范围（与 `maptiles.STAMP_MIN_CELLS / STAMP_MAX_CELLS` 同一套）。
+ * 真正的业务上限是**地图大小**，那条由宿主按项目校验；这里只挡明显离谱的值。
+ */
+export const OPEN_STAMP_MIN = 2;
+export const OPEN_STAMP_MAX = 512;
+
 /** 深链接里 `dialog` 允许的取值（别的值一律丢掉，别把链接当任意指令用）。 */
 export const OPEN_DIALOGS = ["add"] as const;
 
 /** 深链接里 `shape` 允许的取值（与 `maptiles.TilesetShape` 同一套）。 */
-export const OPEN_SHAPES = ["plain", "corner16", "a2quad"] as const;
+export const OPEN_SHAPES = ["plain", "corner16", "a2quad", "stamp"] as const;
 
 /**
  * `asset` 必须是**项目资源目录下的相对路径**：不接受绝对路径、不接受 `..`
@@ -164,6 +184,11 @@ export function normalizeIntent(intent: OpenIntent | undefined): OpenIntent {
   if (typeof intent.frames === "number" && Number.isInteger(intent.frames) && intent.frames > 0) out.frames = intent.frames;
   if (typeof intent.shape === "string" && (OPEN_SHAPES as readonly string[]).includes(intent.shape)) out.shape = intent.shape;
   if (typeof intent.scale === "number" && Number.isInteger(intent.scale) && intent.scale >= OPEN_SCALE_MIN && intent.scale <= OPEN_SCALE_MAX) out.scale = intent.scale;
+  for (const key of ["cols", "rows"] as const) {
+    const value = intent[key];
+    if (typeof value === "number" && Number.isInteger(value) && value >= OPEN_STAMP_MIN && value <= OPEN_STAMP_MAX) out[key] = value;
+  }
+  if (intent.keyed === 1) out.keyed = 1;
   return out;
 }
 
@@ -172,7 +197,7 @@ export function intentQuery(intent: OpenIntent | undefined): string {
   const normalized = normalizeIntent(intent);
   const params = new URLSearchParams();
   params.set(OPEN_QUERY_KEY, "1");
-  for (const key of ["module", "project", "job", "stage", "direction", "dialog", "asset", "frames", "shape", "scale"] as const) {
+  for (const key of ["module", "project", "job", "stage", "direction", "dialog", "asset", "frames", "shape", "scale", "cols", "rows", "keyed"] as const) {
     const value =
       key === "project"
         ? normalized.projectId
@@ -186,7 +211,11 @@ export function intentQuery(intent: OpenIntent | undefined): string {
               ? normalized.scale === undefined
                 ? undefined
                 : String(normalized.scale)
-              : normalized[key];
+              : key === "cols" || key === "rows" || key === "keyed"
+                ? normalized[key] === undefined
+                  ? undefined
+                  : String(normalized[key])
+                : normalized[key];
     if (value !== undefined) params.set(key, value);
   }
   return params.toString();
@@ -226,5 +255,10 @@ export function parseIntentQuery(query: string): OpenIntent | undefined {
   if (shape !== null) intent.shape = shape;
   const scale = Number(params.get("scale"));
   if (params.get("scale") !== null && Number.isFinite(scale)) intent.scale = scale;
+  for (const key of ["cols", "rows"] as const) {
+    const value = Number(params.get(key));
+    if (params.get(key) !== null && Number.isFinite(value)) intent[key] = value;
+  }
+  if (params.get("keyed") === "1") intent.keyed = 1;
   return normalizeIntent(intent);
 }

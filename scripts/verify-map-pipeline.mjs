@@ -896,7 +896,7 @@ try {
   check("丢缓存（新模块实例）后从磁盘读回同一份内容", reloaded !== undefined && reloaded.data.l0[20 * 24 + 20] === 7 && reloaded.data.l0[21 * 24 + 5] === 8);
   check("新实例的撤销栈是空的（历史不落盘，这是设计）", freshGen.historyState(p6.id).canUndo === false && freshGen.historyState(p6.id).depth === 0);
   const docOnDisk = JSON.parse(await readFile(G.mapDocFile(p6.id), "utf8"));
-  check("map.json 落盘的就是图层元数据 + 每层数据 + 标记（没有形状 / 掩码 / chunk 之类派生数据）", Object.keys(docOnDisk).join(",") === "id,name,cols,rows,layers,data,markers,createdAt,updatedAt", Object.keys(docOnDisk).join(","));
+  check("map.json 落盘的就是图层元数据 + 每层数据 + 标记 + 整图（没有形状 / 掩码 / chunk 之类派生数据）", Object.keys(docOnDisk).join(",") === "id,name,cols,rows,layers,data,markers,stamps,createdAt,updatedAt", Object.keys(docOnDisk).join(","));
 
   // ══ 14. 预览与导出 ══════════════════════════════════════════════════════
   section("14) 验收预览（只出地图渲染图）");
@@ -962,7 +962,7 @@ try {
   );
 
   const ownJson = JSON.parse(await readFile(join(exportDir, "map.json"), "utf8"));
-  check("map.json：格式标识 dsh-gem-map@3", ownJson.format === EXPORT.OWN_JSON_FORMAT && ownJson.format === "dsh-gem-map@3", ownJson.format);
+  check("map.json：格式标识 dsh-gem-map@4", ownJson.format === EXPORT.OWN_JSON_FORMAT && ownJson.format === "dsh-gem-map@4", ownJson.format);
   check("map.json：grid 三个字段齐（tileWidth / tileHeight / wrap）", ownJson.grid.tileWidth === 32 && ownJson.grid.tileHeight === 32 && ownJson.grid.wrap === true, JSON.stringify(ownJson.grid));
   check("map.json：cols / rows 与文档一致", ownJson.cols === 8 && ownJson.rows === 8);
   check("map.json：tilesets[].shape / cell / tileCount 齐", ownJson.tilesets[0].shape === "plain" && ownJson.tilesets[0].cell.width === 32 && ownJson.tilesets[0].tileCount === 16, JSON.stringify(ownJson.tilesets[0]));
@@ -1645,13 +1645,20 @@ try {
 
     // 内置素材仍然不许改（包括速度）。
     const sampled = await G.importSampleTileset(project.id);
+    /**
+     * 内置素材的边界收在「几何」上：名字 / 播放速度 / 循环方式是**表现层**，随时可以改
+     * （不动图块、不动序号）；形态与格子尺寸仍然不行。
+     */
+    const builtinId = sampled.tilesets.find((entry) => entry.builtin === true).id;
+    const builtinFps = await G.saveMapTileset(project.id, builtinId, { fps: 4, loop: "reverse" }).then((result) => result.tileset, () => undefined);
+    check("内置素材可以改播放速度 / 循环方式（表现层属性）", builtinFps !== undefined && builtinFps.fps === 4 && builtinFps.loop === "reverse", JSON.stringify({ fps: builtinFps?.fps, loop: builtinFps?.loop }));
     let builtinError = "";
     try {
-      await G.saveMapTileset(project.id, sampled.tilesets.find((entry) => entry.builtin === true).id, { fps: 4 });
+      await G.saveMapTileset(project.id, builtinId, { cell: { width: 64, height: 64 } });
     } catch (error) {
       builtinError = String(error?.message ?? error);
     }
-    check("内置素材的速度也不能改（与其它属性一致：删掉重来 / 恢复默认）", builtinError.includes("内置素材"), builtinError);
+    check("内置素材的**格子 / 形态**仍然改不动（会重切图块、画过的格子整体错位）", builtinError.includes("不能改"), builtinError.slice(0, 40));
   }
 
   section("19) 循环方式（正放 / 倒放 / 来回：只换帧序展开）");
@@ -1869,7 +1876,425 @@ try {
     check("没给源图时明确报错（不静默清空素材）", emptyError.includes("源图"), emptyError);
   }
 
-  section("22) 删除项目");
+  section("22) 整图（多格印花：一次占 N×M 格 + 旋转 + 通行区域）");
+  {
+    const project = await G.createMapProject("整图自检", { grid: { tileWidth: 16, tileHeight: 16, wrap: false }, cols: 20, rows: 20 });
+    created.push(project.id);
+    const dir = join(HOME, "stamp-frames");
+    await mkdir(dir, { recursive: true });
+    /**
+     * 一张 3×2 格、每格 16px 的整图：每格一个可辨认的颜色（旋转靠它验）。
+     * 2 帧：第二帧整体偏红一点。
+     */
+    const cell = 16, cols = 3, rows = 2;
+    const frameFile = async (frame) => {
+      const bitmap = { width: cols * cell, height: rows * cell, rgba: Buffer.alloc(cols * cell * rows * cell * 4) };
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        for (let y = 0; y < cell; y++) for (let x = 0; x < cell; x++) {
+          const offset = ((r * cell + y) * cols * cell + c * cell + x) * 4;
+          bitmap.rgba[offset] = 30 + c * 60;
+          bitmap.rgba[offset + 1] = 30 + r * 90;
+          bitmap.rgba[offset + 2] = 120 + frame * 40;
+          bitmap.rgba[offset + 3] = 255;
+        }
+      }
+      const file = join(dir, `f${frame}.png`);
+      await writeFile(file, encodeBitmap(bitmap));
+      return file;
+    };
+    const frame0 = await frameFile(0);
+    const frame1 = await frameFile(1);
+    // 两帧竖排成一张：合成要「每帧一整张」，这里手工拼一份（模拟 composeMapAsset 的产物）。
+    const stacked = { width: cols * cell, height: rows * 2 * cell, rgba: Buffer.alloc(cols * cell * rows * 2 * cell * 4) };
+    for (const [index, file] of [frame0, frame1].entries()) {
+      const bitmap = await decodeFile(file);
+      for (let y = 0; y < bitmap.height; y++) bitmap.rgba.copy(stacked.rgba, ((index * rows * cell + y) * stacked.width) * 4, y * bitmap.width * 4, y * bitmap.width * 4 + bitmap.width * 4);
+    }
+    const stackedFile = join(dir, "stacked.png");
+    await writeFile(stackedFile, encodeBitmap(stacked));
+    const stackedBytes = await readFile(stackedFile);
+
+    const pass = [0, 0, 0, 1, 1, 2];
+    const imported = await G.importMapTileset(project.id, "雕像", stackedBytes.toString("base64"), {
+      stamp: { cols, rows, frames: 2, pass }
+    });
+    const tileset = imported.tilesets[0];
+    check("导入整图：形态是 stamp、规格记在素材上", tileset.shape === "stamp" && tileset.stamp.cols === cols && tileset.stamp.rows === rows && tileset.stamp.frames === 2, JSON.stringify(tileset.stamp));
+    // 每帧 = (2×3) + (3×2) + (2×3) + (3×2) = 24 块；2 帧 = 48。
+    check("导入整图：块数 = 每帧 24 × 2 帧 = 48", tileset.tiles.length === 48, String(tileset.tiles.length));
+    check("导入整图：素材图宽 = max(3,2)=3 格、高 = 2 帧 × 2(3+2)=20 格", tileset.imageWidth === 3 * 16 && tileset.imageHeight === 20 * 16, `${tileset.imageWidth}×${tileset.imageHeight}`);
+    check("反向验证：整图格子被锁成地图网格（cell = 项目网格 16）", tileset.cell.width === 16 && tileset.cell.height === 16);
+
+    const view = await G.mapView(await G.readMapProject(project.id));
+    const brief = view.tilesets.find((entry) => entry.id === tileset.id);
+    check("素材视图带 stamp（占格 / 帧数，界面据此做笔刷）", brief !== undefined && brief.stamp.cols === 3 && brief.stamp.rows === 2 && brief.stamp.frames === 2, JSON.stringify(brief?.stamp));
+    check("★ 调色板：整图只出一条，缩略图是**整张**（3×2 格）", brief.palette.length === 1 && brief.palette[0].rect.width === 3 * 16 && brief.palette[0].rect.height === 2 * 16, JSON.stringify(brief.palette));
+
+    const layer = view.layers[0].id;
+    const brush = brief.palette[0].index;
+    const planOf = async (extra = {}) => G.mapPlan(project.id, { view: { x: 0, y: 0, width: 20 * 16, height: 20 * 16 }, have: [], ...extra });
+
+    // ── 印一张（rot 0）：占 3×2 格
+    await G.applyMapOps(project.id, [{ kind: "stampPlace", layerId: layer, tilesetId: tileset.id, r: 2, c: 3, rot: 0 }]);
+    let plan = await planOf();
+    let ops = plan.chunks.flatMap((chunk) => chunk.ops).filter((op) => op.l === 0);
+    check("★ 印一张 3×2 的整图 = 6 条 op，坐标对得上", ops.length === 6 && ops.every((op) => op.r >= 2 && op.r < 4 && op.c >= 3 && op.c < 6), ops.map((op) => `${op.r},${op.c}`).join(" "));
+    check("★ 整图每一格是**不同的**图块（不是同一块重复铺）", new Set(ops.map((op) => op.t)).size === 6, ops.map((op) => op.t).join(","));
+    check("★ 整图带帧序（2 帧 → 每格 cycle 长度 2）", ops.every((op) => Array.isArray(op.cycle) && op.cycle.length === 2), JSON.stringify(ops[0]?.cycle));
+
+    // ── 旋转：rot 1 → 占 2×3 格
+    await G.applyMapOps(project.id, [{ kind: "stampRemove", id: "s1" }]);
+    await G.applyMapOps(project.id, [{ kind: "stampPlace", layerId: layer, tilesetId: tileset.id, r: 2, c: 3, rot: 1 }]);
+    plan = await planOf();
+    ops = plan.chunks.flatMap((chunk) => chunk.ops).filter((op) => op.l === 0);
+    check("★ 转 90° 后占格互换（2 宽 × 3 高，仍是 6 格）", ops.length === 6 && ops.every((op) => op.r >= 2 && op.r < 5 && op.c >= 3 && op.c < 5), ops.map((op) => `${op.r},${op.c}`).join(" "));
+
+    // ── 区域：mapPlan({pass:true}) 回三态
+    const passPlan = await planOf({ pass: true });
+    check("★ 区域：6 格各带通行性，三态都出现", passPlan.pass.length === 6 && new Set(passPlan.pass.map((cell) => cell.kind)).size === 3, JSON.stringify(passPlan.pass));
+    // rot 1 时，目标格 (0,0) 取源格 (rows-1, 0) → 索引 1*cols+0 = 3。
+    check("区域：转 90° 后通行性跟着转（取转前那一格）", passPlan.pass.some((cell) => cell.r === 2 && cell.c === 3 && cell.kind === pass[(rows - 1) * cols]), JSON.stringify({ at23: passPlan.pass.find((cell) => cell.r === 2 && cell.c === 3), want: pass[(rows - 1) * cols] }));
+
+    // ── 橡皮碰一格 = 整张没了
+    const erase = await G.applyMapOps(project.id, [{ kind: "paint", layerId: layer, cells: [{ r: 3, c: 4, tile: 0 }] }]);
+    check("★ 橡皮碰一格：整张整图被移除（stamps 计数 1）", erase.stamps === 1, String(erase.stamps));
+    await G.flushMapDoc(project.id);
+    const docAfterErase = JSON.parse(await readFile(G.mapDocFile(project.id), "utf8"));
+    check("★ 擦完之后文档里没有整图了", docAfterErase.stamps.length === 0, JSON.stringify(docAfterErase.stamps));
+    await G.undoMap(project.id);
+    await G.flushMapDoc(project.id);
+    const docAfterUndo = JSON.parse(await readFile(G.mapDocFile(project.id), "utf8"));
+    check("★ 撤销一步：整张整图回来（id 不变）", docAfterUndo.stamps.length === 1 && docAfterUndo.stamps[0].id === "s1", JSON.stringify(docAfterUndo.stamps));
+
+    // ── 用普通图块在整图上落笔：也会整张摘掉（下面还留着你画的图块）
+    const overpaint = await G.applyMapOps(project.id, [{ kind: "paint", layerId: layer, cells: [{ r: 2, c: 3, tile: brush }] }]);
+    check("在整图上刷普通图块：整图被摘掉、图块照画", overpaint.stamps === 1 && overpaint.changed >= 1);
+
+    // ── 导出：@4 里带 stamps + 每格通行性
+    await G.applyMapOps(project.id, [{ kind: "stampRemove", id: "s1" }]);
+    await G.applyMapOps(project.id, [{ kind: "stampPlace", layerId: layer, tilesetId: tileset.id, r: 2, c: 3, rot: 0 }]);
+    await G.flushMapDoc(project.id);
+    const exported = await G.runExportStage(project.id, { formats: { png: true, json: true } });
+    check("导出整图：导出任务起来了", exported.started === true, JSON.stringify(exported));
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const current = await G.readMapProject(project.id);
+      if (current.stages.export.status === "done" || current.stages.export.status === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    const freshProject = await G.readMapProject(project.id);
+    check("导出整图：导出阶段 done", freshProject.stages.export.status === "done", JSON.stringify(freshProject.stages.export));
+    const exportDir = join(G.mapProjectDir(project.id), "export", EXPORT.safeFileName(project.name, "map"));
+    const ownJson = JSON.parse(await readFile(join(exportDir, "map.json"), "utf8"));
+    check("导出 map.json：格式 @4", ownJson.format === "dsh-gem-map@4", ownJson.format);
+    check("★ 导出 map.json：stamps 带参考点 / 旋转 / 每格通行性", Array.isArray(ownJson.stamps) && ownJson.stamps.length === 1 && ownJson.stamps[0].rot === 0 && ownJson.stamps[0].cells.length === 6, JSON.stringify(ownJson.stamps?.[0]?.cells));
+    check("★ 导出：6 格通行性顺序与导入时一致", JSON.stringify(ownJson.stamps[0].cells.map((cell) => cell.pass)) === JSON.stringify(pass), JSON.stringify(ownJson.stamps[0].cells.map((cell) => cell.pass)));
+
+    /**
+     * ★★ AI 那条路：`composeMapAsset(shape:"stamp")` → 导入。**不能在两边都烘旋转**。
+     *
+     * 真机翻车现场：合成出来的 `ai/xxx.png` 已经把 4 个旋转叠在一起（8×2 的图 → 1024×2560），
+     * 导入又把它当「一帧」压成 256×64 —— 地图上就是一条条横条纹。这条用**逐格唯一色**钉死：
+     * 合成出来的源图必须是 `cols × rows*frames` 格，导入后 rot0 的每一格必须等于源图对应格。
+     */
+    {
+      const project = await G.createMapProject("整图-AI 链路", { grid: { tileWidth: 32, tileHeight: 32, wrap: false }, cols: 16, rows: 12 });
+      created.push(project.id);
+      const dir = join(HOME, "stamp-ai");
+      await mkdir(dir, { recursive: true });
+      const cols = 8, rows = 2, unit = 64;
+      const rgba = Buffer.alloc(cols * unit * rows * unit * 4);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          for (let y = 0; y < unit; y++) {
+            for (let x = 0; x < unit; x++) {
+              const offset = (((r * unit + y) * cols * unit) + c * unit + x) * 4;
+              rgba[offset] = 20 + c * 28;
+              rgba[offset + 1] = 20 + r * 120;
+              rgba[offset + 2] = 90;
+              rgba[offset + 3] = 255;
+            }
+          }
+        }
+      }
+      const sourceFile = join(dir, "gate.png");
+      await writeFile(sourceFile, encodePng(rgba, cols * unit, rows * unit));
+      const composed = await G.composeMapAsset({ projectId: project.id, name: "城门", files: [sourceFile], shape: "stamp", stampCols: cols, stampRows: rows });
+      check(
+        "★ AI 合成整图：源图是 `cols × rows*frames` 格（**不烘旋转** —— 烘了会被导入端再压一次）",
+        composed.width / composed.height === cols / rows && composed.stamp.frames === 1,
+        `${composed.width}×${composed.height}（期望 8:2 = 4:1）`
+      );
+      const bytes = await readFile(G.mapAssetPath(project.id, composed.file));
+      const imported = await G.importMapTileset(project.id, "城门", bytes.toString("base64"), { stamp: { ...composed.stamp, pass: new Array(cols * rows).fill(0) } });
+      const ts = imported.tilesets[0];
+      check("★ AI 合成 → 导入：成品图 = 8 格宽 × 20 格高（帧 × 2(cols+rows) 行，带 4 个旋转）", ts.imageWidth === 8 * 32 && ts.imageHeight === 20 * 32, `${ts.imageWidth}×${ts.imageHeight}`);
+      const baked = await decodeFile(join(G.mapProjectDir(project.id), ts.file));
+      const wrong = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const offset = ((r * 32 + 16) * baked.width + c * 32 + 16) * 4;
+          const want = [20 + c * 28, 20 + r * 120, 90];
+          const got = [baked.rgba[offset], baked.rgba[offset + 1], baked.rgba[offset + 2]];
+          if (Math.abs(got[0] - want[0]) > 6 || Math.abs(got[1] - want[1]) > 6 || Math.abs(got[2] - want[2]) > 6) wrong.push(`(${r},${c}) ${got} ≠ ${want}`);
+        }
+      }
+      check("★ 导入后逐格对得上（16 格都没有被压扁 —— 真机那条横条纹就是这里错了）", wrong.length === 0, wrong.slice(0, 4).join(" | "));
+
+      /**
+       * ★ 整图的绿幕：`composeMapAsset` 要**先抠绿幕再切片**，否则地图上会多出一块绿框。
+       * 三种情况都钉：抠到了 / 没绿幕（要说明）/ 手动导入时勾了抠（`stampKey`）。
+       */
+      {
+        const greens = join(HOME, "stamp-green");
+        await mkdir(greens, { recursive: true });
+        const greenFrame = async (name, withGreen) => {
+          const w = 8 * 32, h = 2 * 32;
+          const rgba = Buffer.alloc(w * h * 4);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const offset = (y * w + x) * 4;
+              const building = x > w * 0.3 && x < w * 0.7;
+              if (building) {
+                rgba[offset] = 130;
+                rgba[offset + 1] = 120;
+                rgba[offset + 2] = 110;
+              } else if (withGreen) {
+                rgba[offset + 1] = 224;
+              } else {
+                rgba[offset] = 40;
+                rgba[offset + 1] = 90;
+                rgba[offset + 2] = 200;
+              }
+              rgba[offset + 3] = 255;
+            }
+          }
+          const file = join(greens, name);
+          await writeFile(file, encodePng(rgba, w, h));
+          return file;
+        };
+        const withGreen = await greenFrame("green.png", true);
+        const withoutGreen = await greenFrame("blue.png", false);
+
+        const keyed = await G.composeMapAsset({ projectId: project.id, name: "绿幕城门", files: [withGreen], shape: "stamp", stampCols: 8, stampRows: 2 });
+        const keyedSheet = await decodeFile(G.mapAssetPath(project.id, keyed.file));
+        const corner = (sheet) => {
+          const offset = (2 * sheet.width + 2) * 4;
+          return [sheet.rgba[offset], sheet.rgba[offset + 1], sheet.rgba[offset + 2], sheet.rgba[offset + 3]];
+        };
+        check("★ 整图自动抠绿幕：合成图左上角是透明的（绿被抠掉了）", corner(keyedSheet)[3] === 0, JSON.stringify(corner(keyedSheet)));
+        check("★ 抠到东西时 notes 说清楚（不让用户以为背景会自动透明）", keyed.notes.some((text) => text.includes("抠掉绿幕")), keyed.notes.join(" | "));
+        check("回包带 keyed（回链据此让「新增素材」别再抠第二遍）", typeof keyed.keyed === "number" && keyed.keyed > 0.05, String(keyed.keyed));
+
+        /**
+         * ★ 抠像参数是**严格**的：只认饱和纯绿。
+         * 真机教训 —— 用户那张城门背景是草地（绿的优势值只有 26~59），默认的角色参数会吃掉 82%，
+         * 连墙的内部阴影一起啃掉。这里用「淡绿 + 蓝」两种都验一遍：都不许抠。
+         */
+        const paleGreen = join(greens, "pale.png");
+        await writeFile(paleGreen, (() => {
+          const w = 8 * 32, h = 2 * 32;
+          const pixels = Buffer.alloc(w * h * 4);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const offset = (y * w + x) * 4;
+              const building = x > w * 0.3 && x < w * 0.7;
+              if (building) {
+                pixels[offset] = 130;
+                pixels[offset + 1] = 120;
+                pixels[offset + 2] = 110;
+              } else {
+                // 草地的绿：g 只比 r / b 高一点点
+                pixels[offset] = 96;
+                pixels[offset + 1] = 128;
+                pixels[offset + 2] = 88;
+              }
+              pixels[offset + 3] = 255;
+            }
+          }
+          return encodePng(pixels, w, h);
+        })());
+        const paleKeyed = await G.composeMapAsset({ projectId: project.id, name: "草地绿", files: [paleGreen], shape: "stamp", stampCols: 8, stampRows: 2 });
+        const paleSheet = await decodeFile(G.mapAssetPath(project.id, paleKeyed.file));
+        check("★ 草地的绿不算绿幕（严格参数）：画面一个像素都不许抠掉", paleKeyed.keyed === 0 && corner(paleSheet)[3] === 255, `${paleKeyed.keyed} / ${JSON.stringify(corner(paleSheet))}`);
+        check("草地绿也算「没检测到绿幕」并给出提示", paleKeyed.notes.some((text) => text.includes("没检测到绿幕")), paleKeyed.notes.join(" | "));
+
+        const noGreen = await G.composeMapAsset({ projectId: project.id, name: "没有绿幕", files: [withoutGreen], shape: "stamp", stampCols: 8, stampRows: 2 });
+        const noGreenSheet = await decodeFile(G.mapAssetPath(project.id, noGreen.file));
+        check("★ 没绿幕时**不许**乱抠（画面像素原样保留）", corner(noGreenSheet)[3] === 255 && corner(noGreenSheet)[0] === 40, JSON.stringify(corner(noGreenSheet)));
+        check("没抠到东西时 notes 明说「没检测到绿幕」并教怎么改", noGreen.notes.some((text) => text.includes("没检测到绿幕")), noGreen.notes.join(" | "));
+
+        // 手动导入那张带绿幕的原图：勾上 stampKey 才抠
+        const bytes = await readFile(withGreen);
+        const manual = await G.importMapTileset(project.id, "手动绿幕", bytes.toString("base64"), { stamp: { cols: 8, rows: 2, frames: 1, pass: [], stampKey: true }, stampKey: true });
+        const manualBaked = await decodeFile(join(G.mapProjectDir(project.id), manual.tilesets[0].file));
+        check("★ 手动导入勾了「抠掉绿幕」：成品左上角透明", corner(manualBaked)[3] === 0, JSON.stringify(corner(manualBaked)));
+        const manualPlain = await G.importMapTileset(project.id, "手动不抠", bytes.toString("base64"), { stamp: { cols: 8, rows: 2, frames: 1, pass: [] } });
+        const manualPlainBaked = await decodeFile(join(G.mapProjectDir(project.id), manualPlain.tilesets[0].file));
+        check("反向验证：没勾就原样保留绿幕（不替用户决定）", corner(manualPlainBaked)[3] === 255 && corner(manualPlainBaked)[1] > 100, JSON.stringify(corner(manualPlainBaked)));
+      }
+
+      /**
+       * ★★ 黄金对照：**计划里画出来的那一块**，必须就是源图那一格。
+       *
+       * 真机翻车（用户那张城门）：「左边少了一块、右边多了点东西」—— 整图取块的序号多加了 1，
+       * 每一格都画成了下一块，整体左移一格，最右一格还越过块边界取到了 rot1 的「竖块」。
+       * 这类错位**不报任何警告**，只有把「画什么」和「图里是什么」逐格比像素才拦得住。
+       */
+      {
+        const planProject = await G.createMapProject("整图取块对照", { grid: { tileWidth: 32, tileHeight: 32, wrap: false }, cols: 20, rows: 12 });
+        created.push(planProject.id);
+        const cols2 = 5, rows2 = 2, unit2 = 64;
+        const paint = Buffer.alloc(cols2 * unit2 * rows2 * unit2 * 4);
+        for (let r = 0; r < rows2; r++) {
+          for (let c = 0; c < cols2; c++) {
+            for (let y = 0; y < unit2; y++) {
+              for (let x = 0; x < unit2; x++) {
+                const offset = (((r * unit2 + y) * cols2 * unit2) + c * unit2 + x) * 4;
+                paint[offset] = 20 + c * 40;
+                paint[offset + 1] = 20 + r * 120;
+                paint[offset + 2] = 90;
+                paint[offset + 3] = 255;
+              }
+            }
+          }
+        }
+        const paintFile = join(HOME, "stamp-ai", "golden.png");
+        await writeFile(paintFile, encodePng(paint, cols2 * unit2, rows2 * unit2));
+        const arranged = await G.composeMapAsset({ projectId: planProject.id, name: "对照", files: [paintFile], shape: "stamp", stampCols: cols2, stampRows: rows2 });
+        const arrangedBytes = await readFile(G.mapAssetPath(planProject.id, arranged.file));
+        const golden = await G.importMapTileset(planProject.id, "对照", arrangedBytes.toString("base64"), { stamp: { ...arranged.stamp, pass: new Array(cols2 * rows2).fill(0) } });
+        const goldenTs = golden.tilesets[0];
+        const goldenImage = await decodeFile(join(G.mapProjectDir(planProject.id), goldenTs.file));
+        const layerId = (await G.mapView(await G.readMapProject(planProject.id))).layers[0].id;
+        const sample = (image, rect) => {
+          const offset = ((rect.y + Math.floor(rect.height / 2)) * image.width + rect.x + Math.floor(rect.width / 2)) * 4;
+          return [image.rgba[offset], image.rgba[offset + 1], image.rgba[offset + 2]];
+        };
+        const close = (a, b) => Math.abs(a[0] - b[0]) <= 8 && Math.abs(a[1] - b[1]) <= 8 && Math.abs(a[2] - b[2]) <= 8;
+        for (const rot of [0, 1]) {
+          await G.applyMapOps(planProject.id, [{ kind: "stampRemove", id: `s${rot + 1}` }, { kind: "stampPlace", layerId, tilesetId: goldenTs.id, r: 2, c: 2, rot, id: `s${rot + 1}` }]);
+          const plan = await G.mapPlan(planProject.id, { view: { x: 0, y: 0, width: 20 * 32, height: 12 * 32 }, have: [] });
+          const legend = new Map(plan.legend.map((entry) => [entry.index, entry]));
+          const span = rot % 2 === 0 ? { cols: cols2, rows: rows2 } : { cols: rows2, rows: cols2 };
+          const wrongCells = [];
+          const outside = [];
+          for (let dr = 0; dr < span.rows; dr++) {
+            for (let dc = 0; dc < span.cols; dc++) {
+              const op = plan.chunks.flatMap((chunk) => chunk.ops).find((candidate) => candidate.r === 2 + dr && candidate.c === 2 + dc && candidate.l === 0);
+              if (op === undefined) {
+                wrongCells.push(`缺 (${dr},${dc})`);
+                continue;
+              }
+              const rect = legend.get(op.t).rect;
+              // rot 0 只能落在 rot0 那一段（y < rows*cell）；rot 1 只能落在 rot1 那一段。
+              const bandY = rot === 0 ? 0 : rows2 * 32;
+              const bandH = rot === 0 ? rows2 * 32 : cols2 * 32;
+              if (rect.y < bandY || rect.y + rect.height > bandY + bandH) outside.push(`(${dr},${dc}) y=${rect.y}`);
+              /**
+               * 期望颜色 = 源图那一格的颜色。顺时针转 90° 的映射是
+               * `dest (dr,dc) ← source (rows-1-dc, dr)`（与 `stampSourceCell` 同一份口径）。
+               */
+              const sr = rot === 1 ? rows2 - 1 - dc : dr;
+              const sc = rot === 1 ? dr : dc;
+              const want = [20 + sc * 40, 20 + sr * 120, 90];
+              const got = sample(goldenImage, rect);
+              if (!close(got, want)) wrongCells.push(`(${dr},${dc}) 应 ${want} 实 ${got}`);
+            }
+          }
+          check(`★ 黄金对照 rot${rot}：每一格画的就是源图那一格（不是下一块）`, wrongCells.length === 0, wrongCells.slice(0, 3).join(" | "));
+          check(`★ 黄金对照 rot${rot}：没有一格越出自己的旋转段（越界就会显示出别的朝向的碎片）`, outside.length === 0, outside.slice(0, 3).join(" | "));
+        }
+      }
+
+      // 原地重烘同一条链路：源图 → 缩到格子 → 烘旋转，只烘一次
+      const recomposed = await G.recomposeMapTileset(project.id, ts.id, { files: [sourceFile] });
+      // 导入回的是模型（`tiles.length`），重烘回的是视图（`tileCount`）。
+      check("整图原地重烘：id 与块数不变", recomposed.tileset.id === ts.id && recomposed.tileset.tileCount === ts.tiles.length, `id ${recomposed.tileset.id} vs ${ts.id}；块 ${recomposed.tileset.tileCount} vs ${ts.tiles.length}`);
+      const rebaked = await decodeFile(join(G.mapProjectDir(project.id), recomposed.tileset.file));
+      let mismatch = 0;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const offset = ((r * 32 + 16) * rebaked.width + c * 32 + 16) * 4;
+          if (Math.abs(rebaked.rgba[offset] - (20 + c * 28)) > 6 || Math.abs(rebaked.rgba[offset + 1] - (20 + r * 120)) > 6) mismatch++;
+        }
+      }
+      check("★ 重烘之后逐格仍然对得上（重烘只烘一次旋转，没有叠第二层）", mismatch === 0, `${mismatch} 格不对`);
+    }
+
+    // ── 一键生成：整图不进随机池（按格刷只会得到碎片）
+    const stampTileCount = tileset.tiles.length;
+    const generated = await G.runMapGenerate(project.id, { kind: "random", tiles: [brush], seed: 7 });
+    await G.flushMapDoc(project.id);
+    const generatedDoc = JSON.parse(await readFile(G.mapDocFile(project.id), "utf8"));
+    const generatedValues = [...new Set(generatedDoc.data[layer].filter((value) => value > 0))];
+    check(
+      "★ 一键生成：只选整图时不铺整图（说清原因，铺下去的全是普通图块）",
+      generated.warnings.some((text) => text.includes("整图")) && generatedValues.every((value) => value > stampTileCount),
+      `改了 ${generated.changed} 格；用到的值 ${generatedValues.join(",")}（整图的序号是 1..${stampTileCount}）；${generated.warnings.join(" | ")}`
+    );
+
+    // 生成把整图盖掉了（本来就会），这里重新印一张，下一段验证「删素材连带删整图」。
+    await G.applyMapOps(project.id, [{ kind: "stampPlace", layerId: layer, tilesetId: tileset.id, r: 8, c: 8, rot: 0 }]);
+
+    // ── 删素材：引用它的整图一起走
+    const removal = await G.removeMapTileset(project.id, tileset.id);
+    check("删掉整图素材：连带删掉引用它的整图并说清楚", removal.warnings.some((text) => text.includes("整图")) , removal.warnings.join(" | "));
+    await G.flushMapDoc(project.id);
+    const docAfterRemove = JSON.parse(await readFile(G.mapDocFile(project.id), "utf8"));
+    check("删素材之后文档里不再有这张整图", docAfterRemove.stamps.length === 0, JSON.stringify(docAfterRemove.stamps));
+
+  }
+
+  section("23) 素材属性：改名 / 播放速度 / 循环方式（内置也能改这三样）");
+  {
+    const project = await G.createMapProject("属性可改", { grid: { tileWidth: 32, tileHeight: 32, wrap: false }, cols: 12, rows: 10 });
+    created.push(project.id);
+    const samples = await G.importSampleTileset(project.id);
+    const builtin = samples.tilesets[0];
+    check("内置素材带 builtin 标记（界面据此显示「自带」）", builtin.builtin === true, String(builtin.builtin));
+    const renamed = await G.saveMapTileset(project.id, builtin.id, { name: "我的草地", fps: 4, loop: "reverse" });
+    check("★ 内置素材可以改名 / 改播放速度 / 改循环方式", renamed.tileset.name === "我的草地" && renamed.tileset.fps === 4 && renamed.tileset.loop === "reverse", `${renamed.tileset.name} / ${renamed.tileset.fps} / ${renamed.tileset.loop}`);
+    check("改这三样不动几何（图块数与格子不变）", renamed.tileset.tiles.length === builtin.tiles.length && renamed.tileset.cell.width === builtin.cell.width);
+    const refused = await G.saveMapTileset(project.id, builtin.id, { cell: { width: 64, height: 64 } }).then(() => "", (error) => error.message);
+    check("★ 反向验证：内置素材的**格子 / 形态**仍然不许改（会重切图块、画过的格子整体错位）", refused.includes("不能改"), refused.slice(0, 40));
+    check("改名之后素材列表里就是新名字（不是只有返回值变了）", (await G.mapView(await G.readMapProject(project.id))).tilesets.some((entry) => entry.name === "我的草地"));
+    // 清掉自己的速度 = 跟全局
+    const cleared = await G.saveMapTileset(project.id, builtin.id, { fps: null, loop: "forward" });
+    check("播放速度可以清掉（回到跟「设置」里的动画速度走）", cleared.tileset.fps === undefined && cleared.tileset.loop === "forward", JSON.stringify({ fps: cleared.tileset.fps, loop: cleared.tileset.loop }));
+    // 帧序真的跟着循环方式变
+    // 用 5 帧的道具图：2 帧的素材「来回」等于正放，测不出差别。
+    const prop = (await G.mapView(await G.readMapProject(project.id))).tilesets.find((entry) => entry.name === "内置 · 道具");
+    const propLayer = (await G.mapView(await G.readMapProject(project.id))).layers[0].id;
+    await G.applyMapOps(project.id, [{ kind: "paint", layerId: propLayer, cells: [{ r: 2, c: 2, tile: prop.palette[0].index }] }]);
+    const cycleNow = async () => {
+      const plan = await G.mapPlan(project.id, { view: { x: 0, y: 0, width: 12 * 32, height: 10 * 32 }, have: [] });
+      return plan.chunks.flatMap((chunk) => chunk.ops).find((op) => op.r === 2 && op.c === 2 && Array.isArray(op.cycle))?.cycle;
+    };
+    const forward = await cycleNow();
+    await G.saveMapTileset(project.id, prop.id, { loop: "pingpong" });
+    const pingpong = await cycleNow();
+    check(
+      "★ 改成「来回」后下一份计划里的帧序真的变了（5 帧 → 8 帧序）",
+      Array.isArray(forward) && Array.isArray(pingpong) && forward.length === 5 && pingpong.length === 8,
+      `${JSON.stringify(forward)} → ${JSON.stringify(pingpong)}`
+    );
+
+    /**
+     * ★ 整图占格上限 = **地图自己**（12×10 的地图可以放 12×10 的整图；13 宽就拒绝）。
+     */
+    const dir = join(HOME, "stamp-big");
+    await mkdir(dir, { recursive: true });
+    const bigFile = join(dir, "big.png");
+    await writeFile(bigFile, encodePng(Buffer.alloc(96 * 80 * 4, 190), 96, 80));
+    const bigBytes = await readFile(bigFile);
+    const big = await G.importMapTileset(project.id, "铺满地图", bigBytes.toString("base64"), { stamp: { cols: 12, rows: 10, frames: 1, pass: [] } });
+    check("★ 整图可以大到和地图一样（12×10）", big.tilesets[0].stamp.cols === 12 && big.tilesets[0].stamp.rows === 10, JSON.stringify(big.tilesets[0].stamp));
+    check("铺满整张地图的整图：块数 = 4 个旋转 × 12×10 格 = 480", big.tilesets[0].tiles.length === 4 * 12 * 10, String(big.tilesets[0].tiles.length));
+    const tooWide = await G.importMapTileset(project.id, "比地图大", bigBytes.toString("base64"), { stamp: { cols: 13, rows: 10, frames: 1, pass: [] } }).then(() => "", (error) => error.message);
+    check("★ 反向验证：比地图大的整图明确报错（说明上限是地图）", tooWide.includes("比地图还大") && tooWide.includes("12×10"), tooWide.slice(0, 60));
+  }
+
+  section("23) 删除项目");
   for (const id of created.slice()) {
     const existed = existsSync(G.mapProjectDir(id));
     await G.deleteMapProject(id);

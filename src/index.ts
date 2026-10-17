@@ -1165,7 +1165,11 @@ export class GameStudioGateway extends TypertRemoteService {
       clarity: input.clarity,
       scale: input.scale,
       // 会动的素材怎么循环（校验在 mapgen.parseAssetLoop 里）。
-      loop: input.loop
+      loop: input.loop,
+      // 整图规格（给了它就是整图；校验在 mapgen.parseStampSpec 里）。
+      stamp: input.stamp,
+      // 整图：导入时抠绿幕（手动那条路；AI 那条在 composeMapAsset 里已经抠过）。
+      stampKey: input.stampKey
     });
     // `rev` 不在 project.json 里（派生数据），要在回给界面时现取 —— 少了它重烘后界面会拿旧缓存图。
     const revisions = await mapgen.tilesetRevisions(asString(input.projectId));
@@ -1195,7 +1199,10 @@ export class GameStudioGateway extends TypertRemoteService {
       files,
       shape: input.shape,
       cell: input.cell,
-      animRows: input.animRows === true ? true : input.animRows === false ? false : undefined
+      animRows: input.animRows === true ? true : input.animRows === false ? false : undefined,
+      // 整图：占几格（校验在 mapgen.parseStampSpec 里；不给就按 3×3 常见尺寸？不 —— 明确报错）。
+      stampCols: input.stampCols,
+      stampRows: input.stampRows
     });
   }
   async recomposeMapTileset(payload: any) {
@@ -1268,7 +1275,8 @@ export class GameStudioGateway extends TypertRemoteService {
       view: { x: Number(view.x) || 0, y: Number(view.y) || 0, width: Number(view.width) || 0, height: Number(view.height) || 0 },
       have: mapHave(input.have),
       layerIds: Array.isArray(input.layerIds) ? input.layerIds.map((entry: unknown) => Number(entry)) : undefined,
-      pending: Array.isArray(input.pending) ? input.pending : undefined
+      pending: Array.isArray(input.pending) ? input.pending : undefined,
+      pass: input.pass === true
     });
   }
   /** 一键生成：整层一次提交（一次撤销就能回去），同种子逐字节可复现。 */
@@ -2348,6 +2356,8 @@ function mapTilesetBrief(tileset: {
   variants: number;
   /** 会动的素材怎么循环（正放 / 倒放 / 来回）。 */
   loop?: string;
+  /** 仅整图：占几格 / 几帧（界面据此把笔刷变成 N×M、右键转 90°）。 */
+  stamp?: { cols: number; rows: number; frames: number };
   /** 素材图版本号（文件 mtime）：界面拼 URL 时带 `?v=`，重烘之后才会重新拉图。 */
   rev?: number;
   /** 导入时用的清晰度（图像已烘进去，这里只作显示 / 排查）。 */
@@ -2369,6 +2379,7 @@ function mapTilesetBrief(tileset: {
     animRows: tileset.animRows,
     variants: tileset.variants,
     loop: tileset.loop,
+    stamp: tileset.stamp,
     rev: tileset.rev,
     clarity: tileset.clarity,
     fps: tileset.fps,

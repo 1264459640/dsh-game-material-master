@@ -662,6 +662,15 @@ const importMapTilesetSchema = z.object({
    * 导入时再按 `clarity` 缩到格子大小。留空 = 1（图就是格子大小，一个像素都不动）。
    */
   scale: z.number().optional(),
+  /**
+   * **整图**规格：`{ cols, rows, frames, pass }`（占几格、几帧、每格通行性）。
+   *
+   * 给了它就是整图（形态强制为 `stamp`，格子锁定为地图网格）；`pass` 是
+   * `cols*rows` 个 0/1/2（不可通过 / 可通过·被人物遮挡 / 可通过·遮挡人物）。
+   */
+  stamp: z.record(z.string(), z.unknown()).optional(),
+  /** 仅整图：导入时**抠掉绿幕背景**（手动导一张带绿幕的整图时用；AI 那条路在整理时已经抠过）。 */
+  stampKey: z.boolean().optional(),
   /** 会动的素材怎么循环：`forward` 正放（默认）/ `reverse` 倒放 / `pingpong` 来回。 */
   loop: z.string().optional()
 });
@@ -698,12 +707,15 @@ const composeMapAssetSchema = z.object({
   projectId: z.string(),
   name: z.string().optional(),
   files: z.array(z.string()).min(1),
-  /** 这块素材怎么用：`plain`（普通，默认）/ `corner16`（整格）/ `a2quad`（拼块）。 */
+  /** 这块素材怎么用：`plain`（普通，默认）/ `corner16`（整格）/ `a2quad`（拼块）/ `stamp`（整图）。 */
   shape: z.string().optional(),
   /** 留空 = 用地图项目的网格尺寸。 */
   cell: z.record(z.string(), z.unknown()).optional(),
   /** 只有普通形态用得上（多张 = 翻页图）；留空由宿主按张数推。 */
-  animRows: z.boolean().optional()
+  animRows: z.boolean().optional(),
+  /** 仅整图：占几格（2~8）。少了它整图没法切 —— 宿主会明确报错。 */
+  stampCols: z.number().optional(),
+  stampRows: z.number().optional()
 });
 const removeMapTilesetSchema = z.object({ projectId: z.string(), tilesetId: z.string() });
 const saveMapDocSchema = z.object({
@@ -730,7 +742,10 @@ const applyMapOpsSchema = z.object({
    */
   stroke: z.string().optional(),
   /**
-   * 编辑操作：`{kind:"paint"|"fill"|"rect"|"replace", …}`。
+   * 编辑操作：`{kind:"paint"|"fill"|"rect"|"replace"|"marker"|"stampPlace"|"stampRemove", …}`。
+   *
+   * 整图的两种 op **只带素材 id 与参考点**（`stampPlace` 还不许带 cols/rows —— 占格由宿主
+   * 从素材上读，界面传错了就是几何错位）。
    * 返回脏 chunk 与该丢的客户端缓存 key。
    */
   ops: z.array(z.record(z.string(), z.unknown())),
@@ -755,7 +770,9 @@ const mapPlanSchema = z.object({
   /** 客户端已有的 chunk key（未 wrap）。 */
   have: z.array(z.string()).optional(),
   /** 只算这几个层号（0 起）。 */
-  layerIds: z.array(z.number()).optional()
+  layerIds: z.array(z.number()).optional(),
+  /** 顺带回整图的通行区域（`[{r,c,kind}]`，界面「区域」开关打开时）。 */
+  pass: z.boolean().optional()
 });
 const runMapGenerateSchema = z.object({
   projectId: z.string(),

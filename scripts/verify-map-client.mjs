@@ -806,6 +806,8 @@ try {
     /** 每次 `importMapTileset` 带过去的属性（格子 / 用法 / 会动吗 / 动画速度）。 */
     importOptions: [],
     generates: [],
+    /** 每次 `saveMapTileset` 的入参（要看界面把哪些属性交下去了）。 */
+    tilesetSaves: [],
     exports: 0,
     exportPayloads: [],
     reveals: [],
@@ -841,7 +843,10 @@ try {
       apiLog.samples++;
       return G.importSampleTileset(id);
     },
-    saveMapTileset: async ({ projectId: id, tilesetId, ...patch }) => G.saveMapTileset(id, tilesetId, patch),
+    saveMapTileset: async ({ projectId: id, tilesetId, ...patch }) => {
+      apiLog.tilesetSaves.push({ tilesetId, ...patch });
+      return G.saveMapTileset(id, tilesetId, patch);
+    },
     removeMapTileset: async ({ projectId: id, tilesetId }) => G.removeMapTileset(id, tilesetId),
     saveMapDoc: async ({ projectId: id, ...patch }) => {
       apiLog.saves.push(patch);
@@ -866,13 +871,16 @@ try {
         layerIds: payload.layerIds,
         // 预览是宿主侧的能力（盖在克隆上算计划、不落盘）：夹具必须原样透传，
         // 否则「拖动期间看得见」这条契约在自检里根本测不到
-        pending: payload.pending
+        pending: payload.pending,
+        // 整图的通行区域同理：桥少转一个字段，「区域叠加」就永远验不到。
+        pass: payload.pass === true
       });
       apiLog.plans.push({
         view: { ...payload.view },
         have: [...(payload.have ?? [])],
         pending: payload.pending === undefined ? undefined : [...payload.pending],
         layerIds: payload.layerIds === undefined ? undefined : [...payload.layerIds],
+        pass: payload.pass === true,
         result
       });
       return result;
@@ -2587,7 +2595,8 @@ try {
       textOf(addDlg).replace(/\s+/g, " ").slice(0, 120)
     );
     check("对话框里格子大小是两个数字框（宽 / 高，留空走自动识别）", numFieldIn(addDlg, "宽") !== undefined && numFieldIn(addDlg, "高") !== undefined);
-    check("对话框里「用法」是四个按钮、「会动吗」是两个按钮", collect(addDlg, (node) => typeof node.props?.["data-shape"] === "string").length === 4 && collect(addDlg, (node) => typeof node.props?.["data-anim"] === "string").length === 2);
+    // 用法现在有五个（普通 / 整格 / 拼块 / 整图 / 自动），「会动吗」仍是两个。
+    check("对话框里「用法」是五个按钮、「会动吗」是两个按钮", collect(addDlg, (node) => typeof node.props?.["data-shape"] === "string").length === 5 && collect(addDlg, (node) => typeof node.props?.["data-anim"] === "string").length === 2, `${collect(addDlg, (node) => typeof node.props?.["data-shape"] === "string").length} 个用法`);
     // 悬停解释还在（和工具格同一套小标签）
     collect(addDlg, (node) => node.props?.["data-shape"] === "corner16")[0].props.onMouseEnter({
       currentTarget: { getBoundingClientRect: () => ({ left: 120, top: 320, width: 50, height: 24 }) }
@@ -3064,6 +3073,47 @@ try {
         !a2Prompt.includes("5 行是 5 种接法")
     );
     check("提示词：composeMapAsset 的示例里带着 shape 占位（不是写死的某个形态）", oneFrame.includes("shape:'<你选的形态"), "");
+
+    /**
+     * ★ 用户已经选了用法时，**不再念另外几种的判据**。
+     *
+     * 真机踩过：指定了「整图」，回答里还在讨论「要不要当拼块」—— 提示词里把没被选中的
+     * 三种判据也写进去，agent 会以为还有得商量。所以「第一步」整块只在「自动」时出现。
+     */
+    const stampPrompt = promptOf({ shape: "stamp", stampCols: 4, stampRows: 3 });
+    check(
+      "★ 指定用法时：提示词里不再出现没选中的那几种判据（第一步整块只在「自动」时写）",
+      !stampPrompt.includes("第一步") &&
+        !stampPrompt.includes("成片铺开") &&
+        !stampPrompt.includes("连成一条") &&
+        !stampPrompt.includes("一块一块单独摆") &&
+        stampPrompt.includes("已经定死了"),
+      stampPrompt.split("\n").filter((line) => line.includes("整图") || line.includes("第一步")).slice(0, 3).join(" / ")
+    );
+    check(
+      "★ 指定用法时：其它形态的「排布段落」一个都不写（只留选中的那一种）",
+      !stampPrompt.includes("每张图 = 一格内容") &&
+        !stampPrompt.includes("**可以无缝平铺**的墙面") &&
+        !stampPrompt.includes("**可以无缝平铺**的材质") &&
+        stampPrompt.includes("【整图】")
+    );
+    check(
+      "整图提示词：要求纯绿幕背景 + 只画建筑本体 + 不画地面 / 草地 / 道路",
+      stampPrompt.includes("背景必须是纯绿幕") &&
+        stampPrompt.includes("不要画地面") &&
+        stampPrompt.includes("草地") &&
+        stampPrompt.includes("道路"),
+      stampPrompt.split("\n").filter((line) => line.includes("绿幕") || line.includes("地面")).join(" / ")
+    );
+    check(
+      "整图提示词：明确「不用自己抠图」（别为了抠图再花一次钱）",
+      stampPrompt.includes("不用") && stampPrompt.includes("抠图") && stampPrompt.includes("自己去抠像")
+    );
+    check("整图提示词：带上「占几格」（4×3 = 12 格）", stampPrompt.includes("4×3") && stampPrompt.includes("12 格"), String(stampPrompt.split("\n").find((line) => line.includes("切成")) ?? ""));
+    check(
+      "反向验证：非整图的提示词里不许出现绿幕要求（材质类素材要的是不透明方块）",
+      !plainPrompt.includes("背景必须是纯绿幕") && plainPrompt.includes("不要用绿幕背景") && !a2Prompt.includes("背景必须是纯绿幕")
+    );
     check(
       "deriveAssetName：取提示词开头、压掉换行；空则兜底「AI 素材」",
       test.deriveAssetName("  岩浆\n  纹理  ") === "岩浆 纹理" && test.deriveAssetName("") === "AI 素材",
@@ -3369,6 +3419,407 @@ try {
     } finally {
       if (realFetch === undefined) delete globalThis.fetch;
       else globalThis.fetch = realFetch;
+    }
+  }
+
+
+  // ══ 22) 整图（多格印花：占格 / 帧数 / 区域 / 右键旋转 / 区域叠加）═══════════
+  section("22) 整图（多格印花）");
+  {
+    /** 先在宿主侧塞一张整图素材（界面上只要它出现在调色板就行）。 */
+    const stampCell = 16, stampCols = 3, stampRows = 2;
+    const stampBitmap = { width: stampCols * stampCell, height: stampRows * stampCell, rgba: Buffer.alloc(stampCols * stampCell * stampRows * stampCell * 4) };
+    for (let y = 0; y < stampBitmap.height; y++) {
+      for (let x = 0; x < stampBitmap.width; x++) {
+        const offset = (y * stampBitmap.width + x) * 4;
+        stampBitmap.rgba[offset] = 30 + Math.floor(x / stampCell) * 60;
+        stampBitmap.rgba[offset + 1] = 30 + Math.floor(y / stampCell) * 90;
+        stampBitmap.rgba[offset + 2] = 120;
+        stampBitmap.rgba[offset + 3] = 255;
+      }
+    }
+    const stampPass = [0, 0, 0, 1, 1, 2];
+    const stampImported = await G.importMapTileset(projectId, "雕像", encodePng(stampBitmap.rgba, stampBitmap.width, stampBitmap.height).toString("base64"), {
+      stamp: { cols: stampCols, rows: stampRows, frames: 2, pass: stampPass }
+    });
+    const stampTileset = stampImported.tilesets[0];
+    tree = await freshPanel();
+
+    const hostView = await G.mapView(await G.readMapProject(projectId));
+    const stampEntry = hostView.tilesets.find((entry) => entry.id === stampTileset.id);
+    const stampBrush = stampEntry.palette[0].index;
+
+    // ── 调色板：整图只出一条，缩略图是**整张**（不是一格）────────────────
+    const paletteNodes = () => collect(tree, (node) => typeof node.props?.["data-index"] === "string");
+    const stampButton = () => paletteNodes().find((node) => node.props["data-index"] === String(stampBrush));
+    check("调色板：整图只出一条笔刷", paletteNodes().filter((node) => node.props["data-index"] === String(stampBrush)).length === 1);
+    check(
+      "★ 调色板的缩略图按**整张**缩放（3 格的图缩进一个 32px 按钮，而不是只露出第一格）",
+      stampButton() !== undefined && String(stampButton().props.style.backgroundSize).startsWith("32px"),
+      String(stampButton()?.props.style.backgroundSize)
+    );
+    check(
+      "调色板悬停说明写清「这是 3×2 的整图、右键能转」",
+      String(stampButton()?.props["aria-label"] ?? "").includes("3×2") && String(stampButton()?.props["aria-label"] ?? "").includes("右键"),
+      String(stampButton()?.props["aria-label"] ?? "").slice(0, 80)
+    );
+
+    // ── 笔刷：选中后**点一次印一整张**，拖动不连印 ────────────────────────
+    stampButton().props.onClick({ shiftKey: false, ctrlKey: false, metaKey: false });
+    tree = await renderTree(() => MapModule({ api }));
+    const tapBrush = async (button, at, pointerId) => {
+      const node = collect(tree, (item) => item.props?.["data-testid"] === "map-canvas")[0];
+      node.props.onPointerDown({ clientX: at.x, clientY: at.y, button, pointerId });
+      await tickTimers();
+      node.props.onPointerUp({ pointerId });
+      tree = await renderTree(() => MapModule({ api }));
+    };
+    const stampOpsSince = (from) => apiLog.applies.slice(from).flatMap((entry) => entry.ops ?? []).filter((op) => op.kind === "stampPlace" || op.kind === "paint");
+
+    const applyFrom = apiLog.applies.length;
+    await tapBrush(0, clientOf(1, 1), 41);
+    let ops = stampOpsSince(applyFrom);
+    check("★ 左键点一下 = **一条** stampPlace（不是逐格刷 6 次）", ops.length === 1 && ops[0].kind === "stampPlace" && ops[0].rot === 0 && ops[0].r === 1 && ops[0].c === 1, JSON.stringify(ops));
+    check("stampPlace 带的是素材 id（占几格由宿主决定，界面不许传）", ops[0].tilesetId === stampTileset.id && ops[0].cols === undefined && ops[0].rows === undefined, JSON.stringify(ops[0]));
+
+    // 拖动：按下、移两格、松开 → 仍然只有第一条
+    const dragFrom = apiLog.applies.length;
+    {
+      const node = collect(tree, (item) => item.props?.["data-testid"] === "map-canvas")[0];
+      const start = clientOf(4, 4);
+      node.props.onPointerDown({ clientX: start.x, clientY: start.y, button: 0, pointerId: 42 });
+      node.props.onPointerMove({ clientX: clientOf(4, 6).x, clientY: clientOf(4, 6).y, pointerId: 42 });
+      node.props.onPointerUp({ pointerId: 42 });
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+    }
+    check("★ 拖动不连印（松手后只有按下那一次的基础 + 不超过 1 条）", stampOpsSince(dragFrom).filter((op) => op.kind === "stampPlace").length <= 1, JSON.stringify(stampOpsSince(dragFrom)));
+
+    // ── 右键：旋转（0→1→2→3→0），**不再擦除** ────────────────────────────
+    const rotateFrom = apiLog.applies.length;
+    await tapBrush(2, clientOf(2, 2), 43);
+    check("★ 右键不擦除（整图笔刷下不提交任何 op）", stampOpsSince(rotateFrom).length === 0, JSON.stringify(stampOpsSince(rotateFrom)));
+    await tapBrush(0, clientOf(2, 2), 44);
+    ops = stampOpsSince(rotateFrom).filter((op) => op.kind === "stampPlace");
+    check("★ 右键转 90°：下一条 stampPlace 的 rot = 1", ops.length === 1 && ops[0].rot === 1, JSON.stringify(ops));
+    for (let i = 0; i < 2; i++) await tapBrush(2, clientOf(2, 2), 45 + i);
+    await tapBrush(0, clientOf(3, 3), 48);
+    ops = stampOpsSince(rotateFrom).filter((op) => op.kind === "stampPlace");
+    check("右键转四次回到原样（第四条 op 的 rot = 3，再转一次就回 0）", ops[ops.length - 1].rot === 3, JSON.stringify(ops.map((op) => op.rot)));
+    await tapBrush(2, clientOf(2, 2), 49);
+    await tapBrush(0, clientOf(5, 5), 50);
+    ops = stampOpsSince(rotateFrom).filter((op) => op.kind === "stampPlace");
+    check("转满一圈回到 0", ops[ops.length - 1].rot === 0, JSON.stringify(ops.map((op) => op.rot)));
+
+    // ── 橡皮：碰一格 → 整张没了，并且提示一句 ────────────────────────────
+    // 先确保地图上有一张（上面那几次点击已经放了）。
+    byTool(tree, "eraser")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const stampAt = await G.mapPlan(projectId, { view: { x: 0, y: 0, width: 32 * 6, height: 32 * 6 }, have: [] });
+    const stampDocs = await G.readMapProject(projectId);
+    void stampDocs;
+    const eraseFrom = apiLog.applies.length;
+    await tapBrush(0, clientOf(2, 2), 51);
+    const erasedOps = stampOpsSince(eraseFrom);
+    check("橡皮：碰一下整图就发的是 paint（由宿主决定整张摘掉）", erasedOps.length >= 1 && erasedOps.every((op) => op.kind === "paint"), JSON.stringify(erasedOps));
+    check(
+      "★ 擦到整图时**提示**「动到了 1 张整图」（不让用户以为是 bug）",
+      textOf(tree).includes("动到了") && textOf(tree).includes("整图"),
+      textOf(tree).match(/动到了[^。]*。/)?.[0] ?? textOf(tree).slice(0, 80)
+    );
+    check("撤销按钮变成可用（整张摘掉也是一步撤销）", collect(tree, (node) => node.props?.["data-testid"] === "map-undo")[0]?.props?.disabled !== true);
+
+    // ── 区域叠加：勾上之后计划带 pass、画布按三色涂 ───────────────────────
+    byTool(tree, "pen")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    stampButton().props.onClick({ shiftKey: false, ctrlKey: false, metaKey: false });
+    await tapBrush(0, clientOf(2, 2), 52);
+    byTool(tree, "settings")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const passToggle = collect(tree, (node) => node.props?.["data-testid"] === "map-show-pass")[0];
+    check("设置里多了「区域」开关", passToggle !== undefined);
+    const plansBefore = apiLog.plans.length;
+    passToggle.props.onChange({ target: { checked: true } });
+    tree = await renderTree(() => MapModule({ api }));
+    await tickTimers();
+    tree = await renderTree(() => MapModule({ api }));
+    const passQuery = apiLog.plans.slice(plansBefore).find((entry) => entry.pass === true);
+    check("★ 打开「区域」后计划查询带 pass: true", passQuery !== undefined, JSON.stringify(apiLog.plans.slice(plansBefore).map((entry) => entry.pass)));
+    const passRects = fillRects.filter((rect) => typeof rect.fillStyle === "string" && rect.fillStyle.startsWith("rgba(") && rect.fillStyle.includes("0.34"));
+    check("★ 画布把区域涂成半透明（三种颜色都出现过）", new Set(passRects.map((rect) => rect.fillStyle)).size >= 2, [...new Set(passRects.map((rect) => rect.fillStyle))].join(" / "));
+
+    // ── 反向验证：普通笔刷右键既不擦除、也不乱提交 ─────────────────────────
+    const plainButton = paletteNodes().find((node) => node.props["data-index"] !== String(stampBrush));
+    if (plainButton !== undefined) {
+      plainButton.props.onClick({ shiftKey: false, ctrlKey: false, metaKey: false });
+      tree = await renderTree(() => MapModule({ api }));
+      const plainFrom = apiLog.applies.length;
+      await tapBrush(2, clientOf(6, 6), 53);
+      check("反向验证：普通素材右键不擦除（提示「擦除请点橡皮」）", stampOpsSince(plainFrom).length === 0 && textOf(tree).includes("橡皮"), textOf(tree).match(/右键是旋转整图用的[^。]*。/)?.[0] ?? "");
+    }
+
+    // ── 「新增素材」里的整图那一段（占几格 / 帧数 / 区域）────────────────────
+    const numFieldInDialog = (card, label) =>
+      collect(card, (node) => node.props !== undefined && typeof node.props.onChange === "function" && node.props.label === label)[0];
+    byTool(tree, "settings")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    byClass(tree, "SPR_mapEdTopBtn")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    collect(byClass(tree, "SPR_mapEdCard")[0], (node) => node.type === "button" && textOf(node) === "新增素材")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const stampDialog = () => collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog")[0];
+    collect(stampDialog(), (node) => node.props?.["data-shape"] === "stamp")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const dialogText = textOf(stampDialog()).replace(/\s+/g, " ");
+    check("选「整图」后：格子大小与「会动吗」都不出现（格子锁死为地图网格）", !dialogText.includes("格子大小") && !dialogText.includes("会动吗"));
+    check("选「整图」后：占几格 / 帧数 / 区域 三项都在", ["占几格", "帧数", "哪些格子能走"].every((label) => dialogText.includes(label)), dialogText.slice(0, 100));
+    const passCellsOf = () =>
+      collect(stampDialog(), (node) => typeof node.props?.["data-testid"] === "string" && /^map-add-pass-\d+-\d+$/u.test(node.props["data-testid"]));
+    check("默认 3×3 → 9 个区域格子（默认全部不可通过）", passCellsOf().length === 9 && passCellsOf().every((node) => node.props["data-pass"] === "0"), `${passCellsOf().length} 格 / ${passCellsOf().map((node) => node.props["data-pass"]).join("")}`);
+    collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-1-1")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("点一格：0 → 1（可通过·被人物遮挡）", collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-1-1")[0].props["data-pass"] === "1");
+    collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-1-1")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("再点：1 → 2（可通过·遮挡人物）", collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-1-1")[0].props["data-pass"] === "2");
+    collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-1-1")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("再点：2 → 0（转回不可通过）", collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-1-1")[0].props["data-pass"] === "0");
+    collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-walk")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("「全部可通过」一键把 9 格都设成 1", passCellsOf().every((node) => node.props["data-pass"] === "1"), passCellsOf().map((node) => node.props["data-pass"]).join(""));
+    collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-none")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("「全部不可通过」一键回到 0", passCellsOf().every((node) => node.props["data-pass"] === "0"));
+    // 改「占几格」：区域格子跟着重排（3×3 → 4×3 = 12 格）
+    numFieldInDialog(stampDialog(), "宽").props.onChange(4);
+    tree = await renderTree(() => MapModule({ api }));
+    check("占格改成 4×3 → 区域格子变成 12 个（多出来的默认不可通过）", passCellsOf().length === 12, `${passCellsOf().length} 格`);
+    numFieldInDialog(stampDialog(), "高").props.onChange(2);
+    tree = await renderTree(() => MapModule({ api }));
+    check("占格改成 4×2 → 8 格", passCellsOf().length === 8, `${passCellsOf().length} 格`);
+    // 给一格「可通过·遮挡人物」，然后带上图提交
+    collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-0-0")[0].props.onClick();
+    collect(stampDialog(), (node) => node.props?.["data-testid"] === "map-add-pass-0-0")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const stampFile = new File([encodePng(Buffer.alloc(64 * 32 * 4, 200), 64, 32)], "statue.png", { type: "image/png" });
+    // 隐藏的 file input 挂在面板壳里（不在对话框节点下）。
+    collect(tree, (node) => node.props?.["data-testid"] === "map-add-input")[0].props.onChange({ target: { files: [stampFile], value: "" } });
+    tree = await renderTree(() => MapModule({ api }));
+    const importFrom = apiLog.importOptions.length;
+    collect(tree, (node) => node.props?.["data-testid"] === "map-add-ok")[0].props.onClick();
+    await tickTimers();
+    tree = await renderTree(() => MapModule({ api }));
+    const stampOption = apiLog.importOptions[importFrom];
+    check(
+      "★ 点「确定」：stamp 规格（4×2 / 1 帧 / 8 格区域）真的交给宿主",
+      stampOption !== undefined && stampOption.stamp !== undefined && stampOption.stamp.cols === 4 && stampOption.stamp.rows === 2 && stampOption.stamp.frames === 1 && stampOption.stamp.pass.length === 8,
+      JSON.stringify(stampOption?.stamp ?? null)
+    );
+    check("区域里的 2（可通过·遮挡人物）也原样传下去了", stampOption !== undefined && stampOption.stamp.pass[0] === 2, JSON.stringify(stampOption?.stamp?.pass ?? null));
+    check("★ 整图默认勾上「抠掉绿幕背景」，点确定时 `stampKey: true` 一起发出去", stampOption !== undefined && stampOption.stampKey === true, JSON.stringify(stampOption?.stampKey ?? null));
+
+    // 自己导一张透明 PNG：取消勾选 → `stampKey: false`（不能替用户决定抠不抠）
+    {
+      /** 打开「新增素材」并选「整图」（素材卡可能已经在显示，那就先找按钮、找不到再切卡片）。 */
+      const reopened = async () => {
+        const addButton = () => collect(tree, (node) => node.type === "button" && textOf(node) === "新增素材")[0];
+        if (addButton() === undefined) {
+          byTool(tree, "assets")[0].props.onClick();
+          tree = await renderTree(() => MapModule({ api }));
+        }
+        addButton().props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+        collect(tree, (node) => node.props?.["data-shape"] === "stamp")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+      };
+      const dialogOf = () => collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog")[0];
+      const keyBox = () => collect(dialogOf(), (node) => node.props?.["data-testid"] === "map-add-stamp-key")[0];
+      await reopened();
+      check("对话框里整图多一个「抠掉绿幕背景」勾选，默认勾着", keyBox() !== undefined && keyBox().props.checked === true);
+      keyBox().props.onChange({ target: { checked: false } });
+      tree = await renderTree(() => MapModule({ api }));
+      check("取消勾选后就真的是 false（草稿只改自己）", keyBox().props.checked === false);
+      const file = new File([encodePng(Buffer.alloc(64 * 64 * 4, 200), 64, 64)], "own.png", { type: "image/png" });
+      collect(tree, (node) => node.props?.["data-testid"] === "map-add-input")[0].props.onChange({ target: { files: [file], value: "" } });
+      tree = await renderTree(() => MapModule({ api }));
+      const from = apiLog.importOptions.length;
+      collect(tree, (node) => node.props?.["data-testid"] === "map-add-ok")[0].props.onClick();
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      check("★ 取消勾选 → `stampKey: false`（不替用户抠图）", apiLog.importOptions[from]?.stampKey === false, JSON.stringify(apiLog.importOptions[from]?.stampKey ?? null));
+    }
+
+    // ── 这三条是真机反馈：窗口太长没滚动、区域格子看不到图、整图找不到播放速度 ──
+    {
+      const cssText = String(test.CSS ?? source.slice(source.indexOf("const CSS = "), source.indexOf("const CSS = ") + 200000));
+      check(
+        "★「新增素材」窗口固定最大高度并自己滚（整图选项多时不会长到出屏、底下的「确定」点不到）",
+        /\.SPR_mapEdDlg\{[^}]*max-height:[^;}]+[^}]*overflow-y:auto/.test(cssText),
+        (cssText.match(/\.SPR_mapEdDlg\{[^}]*\}/) ?? [""])[0].slice(0, 120)
+      );
+      check("底部「取消 / 确定」吸底（滚动时始终能点到）", /\.SPR_mapEdDlgActions\{[^}]*position:sticky[^}]*bottom:/.test(cssText));
+      /** 打开「新增素材」并选中「整图」—— 对话框已经开着就直接用（重复点会把上一份草稿顶掉）。 */
+      const openStampDialog = async () => {
+        const dialogNode = () => collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog")[0];
+        if (dialogNode() === undefined) {
+          const addButton = () => collect(tree, (node) => node.type === "button" && textOf(node) === "新增素材")[0];
+          if (addButton() === undefined) {
+            byTool(tree, "assets")[0].props.onClick();
+            tree = await renderTree(() => MapModule({ api }));
+          }
+          addButton().props.onClick();
+          tree = await renderTree(() => MapModule({ api }));
+        }
+        const shape = collect(tree, (node) => node.props?.["data-shape"] === "stamp")[0];
+        if (shape !== undefined && shape.props["data-on"] !== "true") {
+          shape.props.onClick();
+          tree = await renderTree(() => MapModule({ api }));
+        }
+      };
+      const dialog2 = () => collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog")[0];
+      await openStampDialog();
+      const preview = () => collect(dialog2(), (node) => node.props?.["data-testid"] === "map-add-stamp-preview")[0];
+      const gridOf = () => collect(preview(), (node) => node.props?.className === "SPR_mapEdStampGrid")[0];
+      check("★ 区域格子**叠在素材图上面**（点的是图上那一块，不是一串编号按钮）", preview() !== undefined && gridOf() !== undefined, textOf(preview() ?? null));
+      /**
+       * 这段要连着改好几次草稿（占格 → 帧数 → 速度 → 循环方式），而 harness 偶尔会在
+       * 某一轮 setState 之后判「没稳定」把面板整棵树换掉 —— 那之后对话框就没了。
+       * 所以整段放进重试里：**每一步都确认对话框还在**，不在就从头再来一遍。
+       */
+      // 刚打开时帧数还是 1：**静态的整图不该出现「动画速度」**（显示了只会让人以为设了动画）
+      await openStampDialog();
+      check("反向验证：帧数为 1 的整图不显示「动画速度」与「循环方式」", !textOf(dialog2()).replace(/\s+/g, " ").includes("动画速度") && !textOf(dialog2()).includes("循环方式"), textOf(dialog2()).replace(/\s+/g, " ").slice(-80));
+      const previewFile = new File([encodePng(Buffer.alloc(40 * 24 * 4, 180), 40, 24)], "preview.png", { type: "image/png" });
+      let configured = false;
+      for (let attempt = 0; attempt < 4 && configured !== true; attempt++) {
+        try {
+          await openStampDialog();
+          if (preview() === undefined) continue;
+          const num = (label) =>
+            collect(dialog2(), (node) => node.props !== undefined && typeof node.props.onChange === "function" && node.props.label === label)[0];
+          num("宽").props.onChange(5);
+          tree = await renderTree(() => MapModule({ api }));
+          if (preview() === undefined) continue;
+          num("高").props.onChange(3);
+          tree = await renderTree(() => MapModule({ api }));
+          if (preview() === undefined) continue;
+          collect(tree, (node) => node.props?.["data-testid"] === "map-add-input")[0].props.onChange({ target: { files: [previewFile], value: "" } });
+          tree = await renderTree(() => MapModule({ api }));
+          if (preview() === undefined) continue;
+          num("帧数").props.onChange(3);
+          tree = await renderTree(() => MapModule({ api }));
+          if (preview() === undefined) continue;
+          configured = true;
+        } catch {
+          configured = false;
+        }
+      }
+      check("整图对话框能连续改「占几格 / 帧数」（改完对话框还在）", configured === true);
+      check(
+        "预览框的比例 = 占几格（5×3 → aspect-ratio 5 / 3，图不会被拉成方的）",
+        String(preview()?.props.style.aspectRatio) === "5 / 3",
+        String(preview()?.props.style.aspectRatio)
+      );
+      check(
+        "格子网格的列数 / 行数跟着占格走（CSS grid repeat(N, 1fr)）",
+        String(gridOf()?.props.style.gridTemplateColumns) === "repeat(5, 1fr)" && String(gridOf()?.props.style.gridTemplateRows) === "repeat(3, 1fr)",
+        `${gridOf()?.props.style.gridTemplateColumns} / ${gridOf()?.props.style.gridTemplateRows}`
+      );
+      check(
+        "★ 选好图之后预览框铺上这张图（blob URL，不读 base64 —— 点格子时看的就是这张图）",
+        String(preview()?.props.style.backgroundImage).startsWith("url(\"blob:"),
+        String(preview()?.props.style.backgroundImage).slice(0, 40)
+      );
+      check(
+        "预览框的图被拉伸成正好铺满格子（background-size 100% 100%，否则点到的格子与画面对不上）",
+        /\.SPR_mapEdStamp\{[^}]*background-size:100% 100%/.test(String(test.CSS ?? "")) &&
+          /^(100% 100%|100% \d+%)$/.test(String(preview()?.props.style.backgroundSize)),
+        String(preview()?.props.style.backgroundSize)
+      );
+      check(
+        "多帧时预览只铺**第 1 帧**（草稿里那张是各帧竖排的，整张铺上去格子就对不上了）",
+        String(collect(dialog2(), (node) => node.props !== undefined && typeof node.props.onChange === "function" && node.props.label === "帧数")[0]?.props?.value) === "3"
+          ? String(preview()?.props.style.backgroundSize) === "100% 300%"
+          : true,
+        String(preview()?.props.style.backgroundSize)
+      );
+      const labelText = () => textOf(dialog2()).replace(/\s+/g, " ");
+      collect(dialog2(), (node) => node.props !== undefined && typeof node.props.onChange === "function" && node.props.label === "帧数")[0].props.onChange(3);
+      tree = await renderTree(() => MapModule({ api }));
+      check("★ 整图帧数改成 3 之后出现「动画速度」与「循环方式」（真机反馈找不到）", labelText().includes("动画速度") && labelText().includes("循环方式"), labelText().slice(-120));
+      collect(dialog2(), (node) => node.props?.["data-testid"] === "map-add-fps")[0].props.onChange({ target: { value: "8" } });
+      tree = await renderTree(() => MapModule({ api }));
+      collect(dialog2(), (node) => node.props?.["data-loop"] === "reverse")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      const from2 = apiLog.importOptions.length;
+      collect(tree, (node) => node.props?.["data-testid"] === "map-add-ok")[0].props.onClick();
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      const animOption = apiLog.importOptions[from2];
+        /**
+       * ★ 整图占格的**上限 = 地图自己**（不再是死写的 8）。
+       * 项目是 32×32 格的地图：输入框的 max 应该就是 32，且填 64 会被夹回 32。
+       */
+      {
+        await openStampDialog();
+        const num = (label) =>
+          collect(dialog2(), (node) => node.props !== undefined && typeof node.props.onChange === "function" && node.props.label === label)[0];
+        // 这个项目在前面被改成过 48×20，所以上限不能写死 —— 直接读当前地图尺寸比。
+        const mapNow = await G.mapView(await G.readMapProject(projectId));
+        check(
+          "★ 整图「宽 / 高」的输入上限跟着地图走（不是死写的 8）",
+          num("宽").props.max === mapNow.cols && num("高").props.max === mapNow.rows,
+          JSON.stringify({ w: num("宽").props.max, h: num("高").props.max, map: [mapNow.cols, mapNow.rows] })
+        );
+        num("宽").props.onChange(mapNow.cols + 8);
+        tree = await renderTree(() => MapModule({ api }));
+        const colsValue = Number(num("宽").props.value);
+        check("★ 填一个比地图还大的数会被夹回地图宽度（不会让用户配出一张画不全的整图）", colsValue === mapNow.cols, `${colsValue} vs ${mapNow.cols}`);
+      }
+
+      // ── 素材属性窗口：点素材列表里的一行就打开（改名 / 播放速度 / 循环方式）──
+      {
+        byTool(tree, "settings")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+        byClass(tree, "SPR_mapEdTopBtn")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+        const rowOf = (name) => collect(tree, (node) => node.props?.["data-tileset"] !== undefined && textOf(node).includes(name))[0];
+        const waterRow = rowOf("内置 · 水");
+        check("素材列表里每一行都可以点开（data-tileset 带素材 id）", waterRow !== undefined, textOf(byClass(tree, "SPR_mapEdCard")[0]).slice(0, 60));
+        waterRow.props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+        const tsDlg = () => collect(tree, (node) => node.props?.["data-testid"] === "map-tsedit-dialog")[0];
+        check("★ 点一下素材 → 弹出「素材属性」窗口", tsDlg() !== undefined, textOf(tree).slice(0, 60));
+        check("窗口里有名字 / 动画速度 / 循环方式三样", ["叫什么", "动画速度", "循环方式"].every((label) => textOf(tsDlg()).includes(label)), textOf(tsDlg()).replace(/\s+/g, " ").slice(0, 90));
+        const nameInput = () => collect(tsDlg(), (node) => node.props?.["data-testid"] === "map-tsedit-name")[0];
+        check("名字输入框预填的是当前名字", nameInput().props.value === "内置 · 水", String(nameInput().props.value));
+        nameInput().props.onChange({ target: { value: "我的水" } });
+        tree = await renderTree(() => MapModule({ api }));
+        const fpsSelect = () => collect(tsDlg(), (node) => node.props?.["data-testid"] === "map-tsedit-fps")[0];
+        check("会动的素材：播放速度可选（默认跟全局 = 空串）", fpsSelect() !== undefined && fpsSelect().props.disabled !== true && fpsSelect().props.value === "", JSON.stringify({ disabled: fpsSelect()?.props.disabled, value: fpsSelect()?.props.value }));
+        fpsSelect().props.onChange({ target: { value: "6" } });
+        tree = await renderTree(() => MapModule({ api }));
+        collect(tsDlg(), (node) => node.props?.["data-loop"] === "pingpong")[0].props.onClick();
+        tree = await renderTree(() => MapModule({ api }));
+        const savesBefore = apiLog.tilesetSaves.length;
+        collect(tree, (node) => node.props?.["data-testid"] === "map-tsedit-ok")[0].props.onClick();
+        await tickTimers();
+        tree = await renderTree(() => MapModule({ api }));
+        const editCall = apiLog.tilesetSaves[savesBefore];
+        check(
+          "★ 点「保存」把 名字 / 速度 / 循环方式 一起交给宿主",
+          editCall !== undefined && editCall.name === "我的水" && Number(editCall.fps) === 6 && editCall.loop === "pingpong",
+          JSON.stringify(editCall ?? null)
+        );
+        check("保存后窗口关掉", collect(tree, (node) => node.props?.["data-testid"] === "map-tsedit-dialog").length === 0);
+      }
+
+    check(
+        "★ 帧数 / 速度 / 循环方式一起交给宿主（整图的动画参数真的存进去了）",
+        animOption !== undefined && animOption.stamp?.frames === 3 && Number(animOption.fps) === 8 && animOption.loop === "reverse",
+        JSON.stringify({ fps: animOption?.fps, loop: animOption?.loop, frames: animOption?.stamp?.frames })
+      );
     }
   }
 

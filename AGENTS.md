@@ -76,7 +76,7 @@ npm run typecheck    # 只做类型检查
 ```bash
 node scripts/verify-host.mjs       # 宿主全链路（385 项）
 node scripts/verify-client.mjs     # 浏览器半区契约（352 项）
-node scripts/verify-tools.mjs      # 对话调用面（169 项）
+node scripts/verify-tools.mjs      # 对话调用面（171 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
 node scripts/verify-feedback.mjs   # 浏览器半区真渲染（203 项，含功能管理、侧栏菜单、生图后端设置页与语义保存错误）
 node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
@@ -88,10 +88,10 @@ node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115
 node scripts/verify-tile-gateway.mjs   # 地图地块走真实网关（81 项：payload / 验收 / 作废边界 / 建筑 / 布局冻住 / 保存往返）
 node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项，拦「遮罩没出现」「地图不显示」这类静默问题）
 
-node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点 / AI 素材按形态规整与「收口 + 无缝」/ 播放速度 / 清晰度重采样 / 循环方式 / 自动裁边 / 换向与斜接的内核（212 项，含反向验证与术语黑名单）
-node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（363 项，含 A2 每格 4 条 op、动画循环、翻页图调色板每列一条、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
-node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（196 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透 / `ai/` 白名单 / AI 素材的形态透传与 openUrl）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（397 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证，以及「AI 生成素材」（提示词的形态判据与「一块无缝砖」约定 / 用法控件 / 帧数为 1 时视频模型点不动 / 点生成时用假 sessions 断言建的会话与发出去的正文 / 回链按 shape 预填「新增素材」））
+node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点 / AI 素材按形态规整与「收口 + 无缝」/ 播放速度 / 清晰度重采样 / 循环方式 / 自动裁边 / 换向与斜接 / 整图（多格印花）的内核（238 项，含反向验证与术语黑名单）
+node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（416 项，含 A2 每格 4 条 op、动画循环、翻页图调色板每列一条、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
+node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（216 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透 / `ai/` 白名单 / AI 素材的形态透传与 openUrl）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（457 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证，以及「AI 生成素材」（提示词的形态判据与「一块无缝砖」约定 / 用法控件 / 帧数为 1 时视频模型点不动 / 点生成时用假 sessions 断言建的会话与发出去的正文 / 回链按 shape 预填「新增素材」））
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的
@@ -203,7 +203,7 @@ agent 再把这个形态原样传给 `composeMapAsset`；宿主按它**规整几
 
 ⚠️ **动画播放速度是「素材自己的属性」，在「新增素材」里定**（`MapTileset.fps`，0.5~30 帧/秒；留空 = 跟
 「设置 → 动画速度」那条全局速度走）。它不是「属性一次定死」那一类 —— 纯表现层、不动几何也不动序号，
-所以 `saveMapTileset({fps})` 随时能改（`null` = 清掉回全局），内置素材仍不许改。
+所以 `saveMapTileset({fps})` 随时能改（`null` = 清掉回全局）。内置素材**也能改**（只挡几何，见「素材属性现在可以改」）。
 链路必须**一路带到底**，少一环都只是「存了个数」：
 `importMapTileset/saveMapTileset` 的 wire schema → `mapgen`（`parseAssetFps` 越界抛错，不静默夹）→
 `maprender` 把速度写进每一条 op（`PlanOp.fps`）+ 计划里给 `fpsMax`（= 最快那条）→
@@ -213,7 +213,7 @@ agent 再把这个形态原样传给 `composeMapAsset`；宿主按它**规整几
 （网关自检专门盯它，这次真是它漏的）；② 客户端的计划身份（`planKey`）要带**素材动画属性签名**，
 否则改完速度缓存里的 op 还带着旧 fps，表现是「改了没反应」。
 自检：`verify-map`（`parseAssetFps` 边界）、`verify-map-pipeline`（第 18 节：导入带上 / op 带 fps / `fpsMax` /
-改与清 / 越界报错 / 内置不许改）、`verify-map-gateway`（schema 不吞字段 + `mapPlan.fpsMax`）、
+改与清 / 越界报错；内置素材只挡几何、不挡速度）、`verify-map-gateway`（schema 不吞字段 + `mapPlan.fpsMax`）、
 `verify-map-client`（8b 节：对话框只对会动的素材显示、可选值、提交真的带上 fps，
 以及**拨 1 秒后 8 帧/秒的走 8 帧、跟全局 1 帧/秒的只走 1 帧**）。
 
@@ -265,19 +265,74 @@ agent 再把这个形态原样传给 `composeMapAsset`；宿主按它**规整几
 少了它浏览器会继续用缓存里的旧图 —— 表现是「重烘跑完了，画面一点没变」，而 `rev` 又是**派生数据、不落盘**，
 所以 `importMapTileset` 的回包里也要现取一次（`mapgen.tilesetRevisions`），只改 `mapTilesetBrief` 不够。
 
+⚠️ **新增了一种素材形态「整图」（`stamp`，多格印花）**：一张图**一次占 N×M 格**（雕像 / 壁画 / 地毯），
+可带序列帧，4 个旋转**烘在素材图里**（不是运行期转），导入时逐格标通行性并导出。要点：
+- `MapTileset.stamp = {cols, rows, frames, pass[]}`；`MapDoc.stamps[]` 是**实例**（参考点 + 旋转），
+  **不进 `layer.data`**（一格只装得下一个图块序号），占哪些格由 `stampSpan` 现算。
+- 素材图 = `帧 × 4 旋转`，逐块竖排：宽 = `max(cols,rows)` 格，高 = `frames × 2(cols+rows)` 格；
+  90°/270° 的长宽互换。**旋转烘进图里**是为了不动渲染契约（客户端与宿主光栅化器都只 `drawImage`）。
+- op 只有两条：`stampPlace{tilesetId,r,c,rot}` / `stampRemove{id}`；`paint|fill|rect|replace` 落笔前
+  **整张摘掉**压到的整图（哪怕值没变 —— 否则橡皮对着雕像什么都不发生）。整图**不覆盖**下面的图块。
+- 通行性三态 `0 不可通过 / 1 可通过·被人物遮挡（角色画在上面）/ 2 可通过·遮挡人物（它画在上面）`，
+  **只导出**（编辑器只做颜色叠加，见「区域」开关）。导出格式升到 `dsh-gem-map@4`。
+- **背景要透明，绿幕由代码抠**：整图是「立在格子上的物件」，模型必须画**纯绿背景 + 只画本体**
+  （提示词里写死了：不要地面 / 草地 / 道路 / 天空）。`composeMapAsset` 逐帧 `chroma.keyGreen`
+  抠成透明，但用的是**整图专用的严格参数** `STAMP_KEY_OPTIONS`（`keyLow 80 / keyHigh 150`、
+  **关掉空间分割**）：只认饱和纯绿。真机教训 —— 用户那张城门的背景是**草地**（绿的优势值只有 26~59），
+  角色的默认参数（`keyLow 14` + `bgTolerance 40`）会吃掉 82%，连城墙内部的阴影一起啃成碎片。
+  另外 `backgroundFraction < 0.02` 或 `> 0.98` 一律原样返回（绝不把图抠成空白），`notes` 会说清
+  「抠了多少」或「没检测到绿幕，按原图用了」；回包带 `keyed`，回链据此带 `keyed=1` 让「新增素材」
+  **取消**再抠一次。手动导绿幕图走 `importMapTileset({stampKey:true})`（对话框里默认勾着，
+  自己导透明 PNG 也能勾 —— 没有绿就什么都不做）。
+- **「新增素材」窗口自己滚**：`.SPR_mapEdDlg` 有 `max-height: calc(100vh - 96px)` + `overflow-y:auto`，
+  标题与底部「取消 / 确定」都是 `position:sticky` —— 整图的选项一多（占格 / 帧数 / 区域格子 / 速度 / 清晰度），
+  不这么做窗口会长到出屏、底下的「确定」根本点不到。
+- **区域格子叠在图上**（`.SPR_mapEdStamp` + `SPR_mapEdStampGrid`）：选中的图铺满那个框
+  （`background-size:100% 100%`），格子用 CSS grid 严丝合缝压上去，点哪一格就是那一格；
+  三态用**很淡**的半透明色（0.10 / 0.16）+ 内描边 —— 涂重了就把素材图盖住了。
+  多帧时只铺第 1 帧（`background-size: 100% <frames*100>%`），否则格子与画面对不上。
+  预览 URL 用 `URL.createObjectURL`（**同步**）而不是 `FileReader`：异步读会让 effect 反复 setState。
+- **整图帧数 > 1 时也有「动画速度 / 循环方式」**（整张图同步播同一帧）。判定条件是
+  `animRows || a2quad || (stamp && stampFrames > 1)`，三处（循环方式 / 动画速度）都要一致。
+- **整图的占格上限是「地图自己」**（`STAMP_MAX_CELLS = 512` 只是防离谱值的硬上限）：
+  `parseStampSpec` 不再卡 8 格，真正的校验是 `assertStampFitsProject(spec, doc.cols, doc.rows)`
+  —— 一张整图最多和整张地图一样大，比地图大就直接报错（再大地图上也画不全）。
+  「新增素材」里的 宽/高 输入框 `max` 也跟着 `view.cols / view.rows` 走（客户端 `stampLimits`）。
+- **素材属性现在可以改**（点素材列表里的一行 → 弹「素材属性」）：名字 / 播放速度 / 循环方式。
+  这三样是**表现层**（不动几何、不动图块序号），`saveMapTileset({name, fps, loop})` 随时能改，
+  地图上已经画好的格子不用重画。**内置素材也能改这三样**（`builtin && touchesGeometry` 才拒绝）。
+  形态 / 格子尺寸仍然一次定死（那会重切图块、把画过的格子整体错位）。
+  ⚠️ `saveMapTileset` 的 `name` / `fps` / `loop` 都必须留在 wire schema 里，少一个就是「改了没反应」。
+- ⚠️ 四个坑：① 整图**必须**用 `stampPlace`（拿它的图块序号去 `paint` 会跳过并说明）；
+  ② 一键生成**不进**整图（按格铺只会得到碎片）；③ 删素材要连带删掉引用它的整图
+  （`dropStampsOfTileset`，`layer.data` 的重映射清不到它们）；
+  ④ **旋转只能烘一次**：`composeMapAsset` 出的是**源图**（`cols × rows*frames`，`stampSourceCells`），
+  旋转由导入 / 重烘那一步烘（`stampTilesetImage`）。两边都烘的话，导入会把「4 个旋转叠起来的图」
+  当成一帧压扁 —— 真机就是这样：`ai/…png` 是 1024×2560，导入压成 256×64，地图上成了一条条横条纹。
+  ⑤ **块序号：`base` 是 1 基、`local` 是 0 基，所以是 `base + local`**（`maprender.stampTileIndex`）。
+  写成 `base + local + 1` 的表现是**整体左移一格 + 最右一列越界取到 rot1 的竖块**
+  （用户原话：「左边少了一块、右边多了点东西」），而且**一条警告都不报**。这类错位唯一的拦法是
+  **黄金对照**：`verify-map-pipeline` 第 22 节会把 `mapPlan` 每条 op 的矩形拿去素材图上取像素，
+  逐格和源图比，并断言「这一格必须落在自己的旋转段里」。
+
 ⚠️ **提示词要按一格的像素写「细节尺寸」**（真机翻车过：一张 2K 的细密砖墙缩到 32px 只剩一片红雾 —— 实测细节量
 32px 8.9 / 64px 14.6，用户看到的就是「宫廷围墙不像墙」）。所以 `buildAssetRequestPrompt` 现在会说
 「任何细节不能小于一格的 1/4」「砖块这类重复单元一格最多排 3/4/5 排」，并且**一格 ≤32px 时直接劝退**：
 按大砖画 + 在回答里告诉用户「做成一格 64px 再生成，同样一幅画能留 4 倍细节」。
 ⚠️ 画得再准也救不了 32px 的细砖纹 —— 那是分辨率问题，只能靠 64 格（或接受简化画法）。
 
+⚠️ **AI 提示词只写用户选中的那一种**：用户已经指定用法时，「第一步 · 定用法」那四条判据整块都不写
+（只留一句「已经定死了，不要再讨论别的用法」）。真机踩过：指定了「整图」，回答里还在讨论「要不要当拼块」——
+把没选中的选项念一遍，agent 会以为还有得商量。另外整图的提示词与其它形态**相反**：要**纯绿幕**、
+只画本体、不要地面，并明说「不用自己抠图」（别为了抠图再花一次钱）。
+
 自检：`verify-map`（`trimUniformBorder` 的六条正反用例）、`verify-map-pipeline`（第 17 节自动裁边、第 20 节 16/32/64 网格与内置素材缩放）、
 `verify-map-gateway`（`createMapProject.grid` 过 schema）、`verify-map-client`（新建对话框的四档 / 说明 / 建出来真的是 64 网格，建完即删并切回 32）。同批还加了：深链接意图的 `dialog` / `asset` / `frames` / `shape` 四个参数、
 `getImageJob` / `getSequenceJob` 返回的 `dir`（本机绝对目录，agent 拼帧路径用）、
 工具描述与系统提示词里的「AI 生成素材」固定流程。⚠️ **宿主半区改了，要重启 DSH**。
-自检项数：verify-host 385 / verify-client 352 / verify-tools 153 → **169** / verify-pipeline 40 / verify-feedback 203 /
-verify-i18n 9 / verify-map 123 → **212** / verify-map-pipeline 276 → **363** / verify-map-gateway 160 → **196** /
-verify-map-client 298 → **397**。
+自检项数：verify-host 385 / verify-client 352 / verify-tools 153 → **171** / verify-pipeline 40 / verify-feedback 203 /
+verify-i18n 9 / verify-map 123 → **238** / verify-map-pipeline 276 → **416** / verify-map-gateway 160 → **216** /
+verify-map-client 298 → **457**。
 
 另外，相对已发布的 0.7.0，还多出一个**本地 ComfyUI 视频后端**
 （`feat(comfy)`，可选、不影响默认链路）：设置页新增「本地 ComfyUI（图生视频）」，勾选后**只有「图生视频」这一步**

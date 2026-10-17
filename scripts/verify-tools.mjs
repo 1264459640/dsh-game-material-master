@@ -642,6 +642,20 @@ async function main() {
   })(), JSON.stringify(links.parseIntentQuery(assetLink.split("?")[1])));
   check("反向验证：dialog 只认 add（别的值丢掉）", links.parseIntentQuery("dsh-gmm=1&dialog=nope")?.dialog === undefined);
   check(
+    "整图回链：cols / rows 只认 2~512 的整数（0 / 513 / 小数丢掉）",
+    links.parseIntentQuery("dsh-gmm=1&cols=4&rows=3")?.cols === 4 &&
+      links.parseIntentQuery("dsh-gmm=1&cols=4&rows=3")?.rows === 3 &&
+      // 上限是 512（真正的上限是地图大小，由宿主按项目校验）
+      links.parseIntentQuery("dsh-gmm=1&cols=64&rows=48")?.cols === 64 &&
+      links.parseIntentQuery("dsh-gmm=1&cols=1")?.cols === undefined &&
+      links.parseIntentQuery("dsh-gmm=1&rows=513")?.rows === undefined &&
+      links.parseIntentQuery("dsh-gmm=1&cols=3.5")?.cols === undefined
+  );
+  check("整图回链：shape=stamp 时 cols/rows 也进查询串", (() => {
+    const query = links.intentQuery({ module: "map", jobId: "m1", dialog: "add", asset: "ai/雕像.png", shape: "stamp", cols: 4, rows: 2, frames: 3 });
+    return query.includes("shape=stamp") && query.includes("cols=4") && query.includes("rows=2") && query.includes("frames=3");
+  })());
+  check(
     "反向验证：scale 只认 1~8 的整数（0 / 9 / 小数全部丢掉）",
     links.parseIntentQuery("dsh-gmm=1&scale=4")?.scale === 4 &&
       links.parseIntentQuery("dsh-gmm=1&scale=0")?.scale === undefined &&
@@ -681,8 +695,8 @@ async function main() {
     check(`${label}：读取地址栏里的深链接`, text.includes("consumeUrlIntent"), "");
     // 新参数只按文本契约钉：浏览器半区不能 import（links.ts 的那份是拷贝）。
     check(`${label}：含 OPEN_DIALOGS（只放行 add）`, text.includes('OPEN_DIALOGS = new Set(["add"])'), "");
-    check(`${label}：含 OPEN_SHAPES（只放行 plain / corner16 / a2quad）`, text.includes('OPEN_SHAPES = new Set(["plain", "corner16", "a2quad"])'), "");
-    check(`${label}：清地址栏时把 dialog / asset / frames / shape / scale 一起摘掉`, text.includes('"dialog", "asset", "frames", "shape", "scale"'), "");
+    check(`${label}：含 OPEN_SHAPES（放行 plain / corner16 / a2quad / stamp）`, text.includes('OPEN_SHAPES = new Set(["plain", "corner16", "a2quad", "stamp"])'), "");
+    check(`${label}：清地址栏时把 dialog / asset / frames / shape / scale / cols / rows 一起摘掉`, text.includes('"dialog", "asset", "frames", "shape", "scale", "cols", "rows"'), "");
     check(`${label}：解析 asset 会挡绝对路径与 ..`, text.includes('!asset.startsWith("/")') && text.includes("!asset.includes(\"..\")"), "");
   }
   check("client.ts 里没有任何 import（必须是经典脚本）", !/^\s*import\s/m.test(clientSource), "");

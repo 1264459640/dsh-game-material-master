@@ -1182,8 +1182,6 @@
         "{n0}×{n1} · {n2} tiles",
       "自带":
         "Built-in",
-      "素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。":
-        "An image's properties are fixed when you add it and cannot be changed afterwards -- delete it and add it again to use different settings.",
       "素材图":
         "Image file",
       "选择图片":
@@ -1280,7 +1278,7 @@
         "A map can be at most 512×512 cells.",
       "单位是格。改大只是多出空地；改小会丢掉范围外的格子（可撤销）":
         "Units are cells. Making it bigger just adds empty space; making it smaller drops the cells outside the new bounds (undoable).",
-      "让程序看图片大小，自己决定下面三种里该用哪种。拿不准就选它。注意：这一项定下来就不能改了，想换只能删掉重新加一张。":
+      "让程序看图片大小，自己决定下面几种里该用哪种。拿不准就选它（它只会选普通 / 整格 / 拼块 —— 整图要填占几格，得自己选）。注意：这一项定下来就不能改了，想换只能删掉重新加一张。":
         "Lets the program look at the image size and pick one of the three below by itself. Choose it when you are not sure. Note: this is decided once and for all -- to change it, delete the image and add it again.",
       "一格贴一块图，边角不会自己接上。适合树、房子、道具这种一块一块单独摆的图。":
         "One tile per cell, with no automatic edges. Best for things you place one by one, such as trees, houses and props.",
@@ -1472,8 +1470,6 @@
         "Layer order updated",
       "帮助":
         "Help",
-      "左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝橡皮。":
-        "Left-drag paints with the current tool; space-drag or middle-drag pans; the wheel zooms; the right button erases.",
       "调色板里点一下选一块图当笔刷，按住 Shift 或 Ctrl 可以多选，「一键生成」会用这些图块。":
         "Click a tile in the palette to use it as the brush; hold Shift or Ctrl to select several, and \"Generate\" uses exactly those.",
       "地图四周是接上的：自动连接会把上下、左右两边接起来。画布拖不出地图 —— 拖到边就停，地图左上角对齐后不会再乱动；图外那片空白画不上。":
@@ -1569,7 +1565,6 @@
       "动画帧数：{n0}": "Animation frames: {n0}",
       "这块素材怎么用：{n0}（用户已经指定，不要改）": "How this asset is used: {n0} (already chosen by the user - do not change it)",
       "这块素材怎么用：**你来判断**（下面第一步给了判据）": "How this asset is used: **you decide** (step 1 below gives the criteria)",
-      "第一步 · 定这块素材怎么用（三种里选一种，后面全按它做；用户已指定时跳过，按指定的做）：": "Step 1 - Decide how this asset is used (pick one of the three; everything below follows it. Skip if the user already chose one):",
       "  · 拼块（a2quad）：成片铺开、边缘要自动接上 —— 草地 / 水面 / 沙地 / 岩浆 / 雪地 / 石地。": "  · Quadrant tiles (a2quad): spreads out in large patches and edges must connect - grass / water / sand / lava / snow / stone.",
       "  · 整格（corner16）：要连成一条、拐角要对上 —— 墙 / 路 / 栅栏 / 篱笆 / 桥 / 管道。": "  · Whole-cell tiles (corner16): joins into strips and corners must line up - walls / roads / fences / hedges / bridges / pipes.",
       "  · 普通（plain）：一块一块单独摆、不跟邻居接 —— 树 / 箱子 / 道具 / 装饰 / 单个图案。": "  · Plain tiles (plain): placed one by one without connecting - trees / chests / props / decorations / a single motif.",
@@ -1600,7 +1595,6 @@
       "① 先出一张静态首帧图：createImageJob({name}) → saveImageJob({jobId, prompt:<上面的主题 + 画法要求 + 排布>}) → runImageJob({jobId, count:1}) → game_material_wait({id:jobId})；": "1) First make one static first frame: createImageJob({name}) -> saveImageJob({jobId, prompt:<subject + rendering requirements + layout above>}) -> runImageJob({jobId, count:1}) -> game_material_wait({id:jobId});",
       "   然后 getImageJob({jobId}) 取 dir 与 items[0].file，首帧绝对路径 = dir + '/' + file。": "   then getImageJob({jobId}) and read dir and items[0].file; the absolute path of the first frame is dir + '/' + file.",
       "用图片生成模块：createImageJob({name}) → saveImageJob({jobId, prompt:<上面的主题 + 画法要求 + 排布>}) → runImageJob({jobId, count:{n0}}) → game_material_wait({id:jobId})；": "Use the image module: createImageJob({name}) -> saveImageJob({jobId, prompt:<subject + rendering requirements + layout above>}) -> runImageJob({jobId, count:{n0}}) -> game_material_wait({id:jobId});",
-      "第四步 · 整理并回链：game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<上面那些绝对路径，按顺序>], shape:'<你选的形态：plain|corner16|a2quad>'}})": "Step 4 - Assemble and post the link: game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<those absolute paths, in order>], shape:'<the shape you chose: plain|corner16|a2quad>'}})",
       "  把这次调用返回的 openUrl **原样**贴成 Markdown 链接（例如 [回到地图编辑器](…)）：点开就回到地图编辑器，素材窗口已展开、": "  Post the openUrl returned by that call **verbatim** as a Markdown link (for example [Back to the map editor](...)): it returns to the map editor, opens the assets window and",
       "「新增素材」里这张图与「这块素材怎么用」都已经预选好，用户点「确定」才真的导入。": "\"Add asset\" already has this image and \"how it is used\" preselected; only when the user clicks \"OK\" is it actually imported.",
       "⚠️ 如果 composeMapAsset 的 notes 里出现「这块砖自己接不上自己」，**不要**自动重跑（重跑要花真钱）：照常把链接贴出来，并在回答里把这句原样告诉用户，让他决定要不要重画一张更均匀的无缝材质。": "If composeMapAsset notes mention that the tile does not meet itself, do NOT re-run on your own (a re-run costs real money): post the link as usual and quote that line to the user so they can decide whether to repaint a more even seamless texture.",
@@ -1617,6 +1611,54 @@
       "来回播放": "Ping-pong",
       "正着放到尾再从尾倒回来：0 → 1 → 2 → 3 → 2 → 1 → 0 …。首尾接得最顺，像呼吸灯、旗帜、水面起伏。": "Runs to the last frame and comes back: 0 -> 1 -> 2 -> 3 -> 2 -> 1 -> 0. The seam never jumps - good for breathing lights, flags and swelling water.",
       "循环方式": "Loop mode",
+      "已保存素材属性": "Asset properties saved",
+      "素材属性": "Asset properties",
+      "留空就用原来的名字": "Leave empty to keep the current name",
+      "这两项只影响它自己：改完立刻生效，地图上已经画好的格子不用重画。想让它跟「设置」里那条全局速度走，播放速度选第一项。": "These two only affect this asset: changes apply immediately and painted cells do not need to be redrawn. To follow the global speed from Settings, pick the first speed option.",
+      "这块素材不会动（没有多帧），所以播放速度与循环方式对它没有意义。": "This asset does not animate (it has a single frame), so speed and loop mode have no effect on it.",
+      "点一下改它的名字 / 播放速度 / 循环方式": "Click to change its name, playback speed and loop mode",
+      "点素材那一行可以改**名字 / 播放速度 / 循环方式**（这三样不动图块，随时能改）。形态与格子大小在新增时就定下来了 —— 要换只能删掉重新新增。": "Click an asset row to change its **name, playback speed and loop mode** (these do not touch the tiles, so you can change them any time). The layout and cell size are fixed when the asset is added - to change them you must delete it and add it again.",
+      "哪些格子能走（在图上点格子）": "Which cells are walkable (click cells on the picture)",
+      "第 {n0} 行第 {n1} 列：不可通过 / 可通过（被人物遮挡）/ 可通过（遮挡人物）": "Row {n0}, column {n1}: blocked / walkable (the character covers it) / walkable (it covers the character)",
+      "墙 · 不可通过": "Wall - blocked",
+      "走·前 · 角色盖住它": "Walk-front - the character covers it",
+      "走·后 · 它盖住角色": "Walk-back - it covers the character",
+      "这块素材怎么用已经定死了（{n0}），不要再讨论别的用法，直接按它做。": "How this asset is used is already fixed ({n0}). Do not revisit the other usages - just follow it.",
+      "第一步 · 定这块素材怎么用（四种里选一种，后面全按它做）：": "Step 1 - Decide how this asset is used (pick one of the four; everything below follows it):",
+      "    它会被切成 {n0}×{n1} 格贴到地图上（一共 {n2} 格），所以构图要按「整张画」来；四边不留白边、也不要在画外再留一圈背景。": "    It will be sliced into {n0}x{n1} cells on the map (that is {n2} cells), so compose it as one whole picture; no white margins and no extra background frame around it.",
+      "    ⚠️ **背景必须是纯绿幕**（#00FF00 那种饱和纯绿，一整片、不要渐变 / 阴影 / 纹理 / 反光）：": "    WARNING: **the background must be a pure green screen** (saturated green like #00FF00, one flat area - no gradient, shadow, texture or reflections):",
+      "      · 只画建筑本体（墙、门、屋顶、旗子这类实体），**不要画地面 / 草地 / 泥土 / 道路 / 天空** —— 地图上已经有地砖了，画进去就会多出一块方形地面；": "      - draw only the building itself (walls, gate, roof, flag - solid things), and **no ground, grass, dirt, road or sky** - the map already has ground tiles, and drawing ground produces a square patch of it;",
+      "      · 建筑之外全是绿幕，绿幕会由插件自动抠成透明，所以你**不用**自己抠图，也不要做半透明边缘；": "      - everything outside the building is green screen; the plugin keys it to transparent automatically, so you do **not** need to cut it out yourself and must not paint semi-transparent edges;",
+      "      · 抠出来的边缘要干净（不要绿色描边、不要绿色外发光），细枝条 / 旗绳这类细长得单独成线的部分尽量少画。": "      - keep the keyed outline clean (no green fringe, no green glow); avoid thin 1-pixel details such as thin ropes or flag lines.",
+      "    视角按常见的 2D 俯视建筑来：正面能看出是什么、底座贴着画面下沿，人物会从它前面或后面走过（哪些格能走会在导入时由用户点选，你不用猜）。": "    Use a usual 2D top-down building view: a readable front, the base sitting on the bottom edge, and the character walking in front of or behind it (which cells are walkable is clicked by the user at import time - do not guess).",
+      "    帧数 = {n3}：帧数 1 就是静态一张；大于 1 时**每帧都是一整张画**（动作的每一帧都完整画出这栋建筑，不要只画局部），每帧的背景也都是同一片绿。": "    Frames = {n3}: one frame means a single static picture; with more, **every frame is a whole picture** (draw the entire building in each frame, not a fragment), and every frame uses the same flat green background.",
+      "画法要求：**只画物件本体、背景是纯绿幕**（上面整图那段写了）—— 插件会把绿抠成透明，剩下的部分要铺满、不留白边。": "Painting rules: **only the object itself on a pure green background** (see the stamp section above) - the plugin keys the green to transparent; what remains must fill the frame with no white margins.",
+      "  ⚠️ 整图**不要**自己去抠像（别为了抠图再跑一次 image 模块的 keyImageJob）：`composeMapAsset` 会先抠绿幕、再按占格切片。生成完直接把原图路径交给它。": "  WARNING: for stamps do **not** run keying yourself (do not call the image module's keyImageJob just to cut it out): `composeMapAsset` keys the green screen first and then slices by the cell span. Hand it the generated image paths directly.",
+      "背景": "Background",
+      "抠掉绿幕背景（只留建筑本体）": "Key out the green screen (keep only the object)",
+      "整图是「立在格子上的物件」：背景该是透明的，不然地图上会多出一块绿框。AI 生成的图请在提示词里要**纯绿背景**，这里勾上就会自动抠掉；自己导的透明 PNG 也可以勾着（没有绿就什么都不做）。": "A stamp is an object standing on the map: its background should be transparent, otherwise a green rectangle shows up on the map. For AI images, ask for a **pure green background** in the prompt and tick this box to key it out automatically; a transparent PNG of your own can leave it ticked too (with no green there, nothing changes).",
+      "  · 整图（stamp）：**一张画占好几格**的多格建筑 / 装饰 —— 雕像 / 壁画 / 喷泉 / 大门 / 摊位 / 地毯这种「一整个物件」；判据是「它比一格大，而且不该被切成小块重复」。": "  - Stamp (stamp): a multi-cell building/prop where **one picture covers several cells** - statue / mural / fountain / gate / stall / carpet, i.e. a single object. The test is: it is bigger than one cell and must not be sliced into repeated fragments.",
+      "  【整图】只画**一整张**完整的画（整张图就是这栋建筑 / 这座雕像本身，**不要**分格、**不要**画成 N×N 的格子拼图、不要裁成小块）：": "  [Stamp] Draw **one whole picture** (the entire image IS the building/statue; do NOT split it into cells, do NOT draw an NxN tile sheet, do NOT crop it into pieces):",
+      "第四步 · 整理并回链：game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<上面那些绝对路径，按顺序>], shape:'<你选的形态：plain|corner16|a2quad|stamp>'}})": "Step 4 - Assemble and post the link: game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<those absolute paths, in order>], shape:'<the shape you chose: plain|corner16|a2quad|stamp>'}})",
+      "  整图还要多给「占几格」：shape:'stamp', stampCols:{n0}, stampRows:{n1}（每张源图 = 一帧的整张画；区域留给用户在导入时点）。": "  Stamps also need the cell span: shape:'stamp', stampCols:{n0}, stampRows:{n1} (each source image = one whole frame; areas are clicked by the user at import).",
+      "整图（一张画占好几格）": "Stamp (one picture, several cells)",
+      "多格建筑 / 装饰：雕像、壁画、喷泉、大门、地毯。每张图 = 一整张完整的画（不要分格），插件按「占几格」切成格子；哪些格能走导入时你自己点。": "Multi-cell buildings/props: statues, murals, fountains, gates, carpets. Each image is one whole picture (not split into cells); the plugin slices it by the cell span. You click which cells are walkable at import time.",
+      "占几格": "Cell span",
+      "整图：让模型画**一整张**画（不要分格），插件按「占几格」把它切成 N×M 格，印到地图上一次占这么多格。帧数 > 1 时每帧都是一整张画。哪些格能走（地毯 / 雕像上身）在导入时由你自己点。": "Stamp: have the model draw **one whole picture** (no split), the plugin slices it into N x M cells by the cell span and stamps all of them at once. With more than one frame, every frame is a whole picture. Which cells are walkable (carpet / statue torso) is clicked by you at import time.",
+      "由对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通；一整栋多格建筑（雕像 / 壁画 / 大门）→ 整图。它会在生图前把排布规划好，生成后按这个规则切成地图能用的图。": "The agent in the conversation decides from your prompt: large surfaces (grass / water / lava) -> quadrant; runs (wall / road / fence) -> whole-cell; standalone props (tree / chest) -> plain; a whole multi-cell building (statue / mural / gate) -> stamp. It plans the layout before generating and slices the result accordingly.",
+      "动到了 {n0} 张整图：它们是一整块，碰一格就整张摘掉了（撤销可以整张还原）。": "Touched {n0} stamp(s): they are one whole piece, so touching a single cell removes the entire stamp (undo brings it back in one step).",
+      "右键是旋转整图用的；这种素材一格一块，不用转。擦除请点左边的「橡皮」。": "Right-click rotates stamps; this asset is one tile per cell, so there is nothing to rotate. Use the eraser tool to erase.",
+      "整图（占好几格的一张图）": "Stamp (one image covering several cells)",
+      "一张图一次印满 N×M 格：雕像、壁画、地毯这类占好几格的建筑与装饰。选它之后填「占几格」与「帧数」，再把每格能不能走点一遍。印的时候右键可以转 90°。": "One image stamps N x M cells in one click: statues, murals and carpets that span several cells. After choosing it, fill in how many cells it covers and the frame count, then click through which cells are walkable. Right-click rotates the stamp by 90 degrees.",
+      "占几格（一整张图印满这么多格）": "Cells covered (one image fills this many)",
+      "帧数（一整张图会动的话，每帧一张）": "Frames (one whole image per frame when it animates)",
+      "帧数": "Frames",
+      "全部不可通过": "All blocked",
+      "全部可通过": "All walkable",
+      "点格子换状态：墙 = 不可通过；走·前 = 能走、角色画在它上面（地毯）；走·后 = 能走、它画在角色上面（雕像上身，绕后）。": "Click a cell to cycle: wall = blocked; walk-front = walkable and the character is drawn over it (carpet); walk-back = walkable and it is drawn over the character (statue torso, walk behind).",
+      "这是 {n0}×{n1} 的整图：点一下在地图上印一整张，右键可以转 90°。": "This is a {n0}x{n1} stamp: one click stamps the whole image, right-click rotates it by 90 degrees.",
+      "区域（整图能不能走）": "Areas (which stamp cells are walkable)",
+      "左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝旋转整图；擦除点「橡皮」工具。": "Drag with the left button = draw with the current tool; space-drag or middle-drag = pan; wheel = zoom; right-click = rotate the stamp; use the eraser tool to erase.",
       "一格多大": "Tile size",
       "{n0}×{n0} 像素": "{n0}x{n0} px",
       "这一下就定了、之后不能改。想让 AI 生成的素材更清楚就用 48 / 64（一格能留下更多细节），代价是同样屏幕上能放的地图格数变少。": "Set once here and cannot be changed later. Use 48 / 64 to keep more detail in AI-generated assets - the trade-off is fewer map cells on screen.",
@@ -1664,7 +1706,6 @@
       "成片铺开、边缘自动接上：草地 / 水面 / 沙地 / 岩浆。每张图 = 一列 5 行（自上而下 5 种接法），帧数 = 变体数（拼块的动画就是换变体）。": "Spreads out with connecting edges: grass / water / sand / lava. Each image = one column of 5 rows (the 5 connection cases), and frames = variants (quadrant-tile animation works by swapping variants).",
       "已在新对话里开始生成：素材「{n0}」（用哪种由对话判断）": "Generation started in a new chat: asset \"{n0}\" (the chat decides which type)",
       "已在新对话里开始生成：素材「{n0}」（{n1}）": "Generation started in a new chat: asset \"{n0}\" ({n1})",
-      "由对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通。它会在生图前把排布规划好，生成后按这个规则切成地图能用的图。": "The agent in the chat decides from the prompt: spreading patches (grass / water / lava) -> quadrant tiles; strips (walls / roads / fences) -> whole-cell tiles; standalone (trees / chests / props) -> plain tiles. It plans the layout before generating and slices the result into a map-ready image afterwards.",
 
     };
 /* i18n-ignore-end */
@@ -1902,11 +1943,32 @@
     const ASSET_FRAMES_MIN = 1;
     const ASSET_FRAMES_MAX = 16;
     /** 「这块素材怎么用」：`auto` = 让对话里的 agent 按判据判断（默认）。 */
-    const ASSET_SHAPES = ["auto", "plain", "corner16", "a2quad"];
+    /**
+     * 整图占格的上下限：**上限是地图自己**（一张整图最多和整张地图一样大）。
+     *
+     * 硬编码 8 是老限制，用户要做「一张图铺满整张地图」的城门就完全不够；
+     * 真正该拦的是「比地图还大」——那个在宿主那边按项目尺寸校验，这里只是把输入框夹住。
+     */
+    const STAMP_MIN_CELLS = 2;
+    /** 没有项目时（新建地图前）先按 64 格给个足够的余量。 */
+    const STAMP_FALLBACK_MAX = 64;
+    function stampLimits(mapCols, mapRows) {
+      const maxCols = Math.max(STAMP_MIN_CELLS, Math.min(512, Math.round(Number(mapCols) || 0) || STAMP_FALLBACK_MAX));
+      const maxRows = Math.max(STAMP_MIN_CELLS, Math.min(512, Math.round(Number(mapRows) || 0) || STAMP_FALLBACK_MAX));
+      return { maxCols, maxRows };
+    }
+    function clampStampSpan(value, max) {
+      const rounded = Math.round(Number(value));
+      const fallback = Number.isFinite(rounded) ? rounded : STAMP_MIN_CELLS;
+      return Math.max(STAMP_MIN_CELLS, Math.min(Math.max(STAMP_MIN_CELLS, max), fallback));
+    }
+
+    const ASSET_SHAPES = ["auto", "plain", "corner16", "a2quad", "stamp"];
     /** 形态 key → 界面上的短名（提示词与对话框共用）。 */
     function assetShapeLabel(shape) {
       if (shape === "corner16") return T("整格");
       if (shape === "a2quad") return T("拼块");
+      if (shape === "stamp") return T("整图");
       return T("普通");
     }
 
@@ -1928,11 +1990,17 @@
       prompt: string;
       frames: number;
       mode: "image" | "video";
-      /** `auto` = 由 agent 判断；其余三种是用户指定的。 */
-      shape: "auto" | "plain" | "corner16" | "a2quad";
+      /** `auto` = 由 agent 判断；其余四种是用户指定的。 */
+      shape: "auto" | "plain" | "corner16" | "a2quad" | "stamp";
+      /** 仅整图：占几格（用户指定；不指定时按 3×3 的常见尺寸）。 */
+      stampCols?: number;
+      stampRows?: number;
     }): string {
       const shape = ASSET_SHAPES.includes(input.shape) ? input.shape : "auto";
       const fixed = shape !== "auto";
+      /** 整图需要「占几格」：用户指定了就按指定的，没指定就按 3×3 的常见尺寸让 agent 用。 */
+      const stampCols = clampStampSpan(Number(input.stampCols) || 3, 512);
+      const stampRows = clampStampSpan(Number(input.stampRows) || 3, 512);
       /**
        * ⚠️ 整格**没有帧这一维**（4×4 全是接法），所以用户指定整格时一律按静态派活 ——
        * 真机踩过：用户选了「视频模型 + 8 帧」，提示词里同时写着「帧数 8」和「整格没有帧这一维」，
@@ -1975,10 +2043,22 @@
         T("素材主题（用户提示词）："),
         input.prompt.trim(),
         "",
-        T("第一步 · 定这块素材怎么用（三种里选一种，后面全按它做；用户已指定时跳过，按指定的做）："),
-        T("  · 拼块（a2quad）：成片铺开、边缘要自动接上 —— 草地 / 水面 / 沙地 / 岩浆 / 雪地 / 石地。"),
-        T("  · 整格（corner16）：要连成一条、拐角要对上 —— 墙 / 路 / 栅栏 / 篱笆 / 桥 / 管道。"),
-        T("  · 普通（plain）：一块一块单独摆、不跟邻居接 —— 树 / 箱子 / 道具 / 装饰 / 单个图案。"),
+        /**
+         * 「第一步 · 定用法」**只在用户没指定时**才写。
+         *
+         * 用户已经挑好了，再把另外三种的判据念一遍只会让 agent 以为「也许还该改」——
+         * 真机就出现过：指定了整图，回答里仍在讨论「要不要当拼块」。既然定了，就只给它
+         * **选定那一种**的规则（下面第二步），别铺其它选项。
+         */
+        ...(fixed
+          ? [T("这块素材怎么用已经定死了（{n0}），不要再讨论别的用法，直接按它做。", { n0: assetShapeLabel(shape) })]
+          : [
+              T("第一步 · 定这块素材怎么用（四种里选一种，后面全按它做）："),
+              T("  · 拼块（a2quad）：成片铺开、边缘要自动接上 —— 草地 / 水面 / 沙地 / 岩浆 / 雪地 / 石地。"),
+              T("  · 整格（corner16）：要连成一条、拐角要对上 —— 墙 / 路 / 栅栏 / 篱笆 / 桥 / 管道。"),
+              T("  · 普通（plain）：一块一块单独摆、不跟邻居接 —— 树 / 箱子 / 道具 / 装饰 / 单个图案。"),
+              T("  · 整图（stamp）：**一张画占好几格**的多格建筑 / 装饰 —— 雕像 / 壁画 / 喷泉 / 大门 / 摊位 / 地毯这种「一整个物件」；判据是「它比一格大，而且不该被切成小块重复」。")
+            ]),
         "",
         T("第二步 · 按用法规划这一张（或这几张）图怎么排：")
       ];
@@ -1997,6 +2077,20 @@
           T("    整格没有「帧」这一维：帧数一律按 1 处理（静态素材）。")
         );
       }
+      if (shape === "stamp" || !fixed) {
+        const stampCols = clampStampSpan(Number(input.stampCols) || 3, 512);
+        const stampRows = clampStampSpan(Number(input.stampRows) || 3, 512);
+        lines.push(
+          T("  【整图】只画**一整张**完整的画（整张图就是这栋建筑 / 这座雕像本身，**不要**分格、**不要**画成 N×N 的格子拼图、不要裁成小块）："),
+          T("    它会被切成 {n0}×{n1} 格贴到地图上（一共 {n2} 格），所以构图要按「整张画」来；四边不留白边、也不要在画外再留一圈背景。", { n0: String(stampCols), n1: String(stampRows), n2: String(stampCols * stampRows) }),
+          T("    ⚠️ **背景必须是纯绿幕**（#00FF00 那种饱和纯绿，一整片、不要渐变 / 阴影 / 纹理 / 反光）："),
+          T("      · 只画建筑本体（墙、门、屋顶、旗子这类实体），**不要画地面 / 草地 / 泥土 / 道路 / 天空** —— 地图上已经有地砖了，画进去就会多出一块方形地面；"),
+          T("      · 建筑之外全是绿幕，绿幕会由插件自动抠成透明，所以你**不用**自己抠图，也不要做半透明边缘；"),
+          T("      · 抠出来的边缘要干净（不要绿色描边、不要绿色外发光），细枝条 / 旗绳这类细长得单独成线的部分尽量少画。"),
+          T("    视角按常见的 2D 俯视建筑来：正面能看出是什么、底座贴着画面下沿，人物会从它前面或后面走过（哪些格能走会在导入时由用户点选，你不用猜）。"),
+          T("    帧数 = {n3}：帧数 1 就是静态一张；大于 1 时**每帧都是一整张画**（动作的每一帧都完整画出这栋建筑，不要只画局部），每帧的背景也都是同一片绿。", { n3: String(frames) })
+        );
+      }
       if (shape === "a2quad" || !fixed) {
         lines.push(
           T("  【拼块】每个变体只画**一块**正方形、**可以无缝平铺**的材质（整张图就是这一块，**不要**分格、**不要**画 5 行）："),
@@ -2005,7 +2099,12 @@
           T("    帧数 = 变体数：一共 {n0} 张（每张一块砖），插件会拼成 {n0} 列；各张之间只让「该动的地方」不同，其余保持一致。", { n0: String(frames) })
         );
       }
-      lines.push("", T("画法要求：内容要铺满、不要留边；不要用绿幕背景、也不要做抠像 —— 地图素材要的是不透明的方块。"));
+      lines.push(
+        "",
+        shape === "stamp"
+          ? T("画法要求：**只画物件本体、背景是纯绿幕**（上面整图那段写了）—— 插件会把绿抠成透明，剩下的部分要铺满、不留白边。")
+          : T("画法要求：内容要铺满、不要留边；不要用绿幕背景、也不要做抠像 —— 地图素材要的是不透明的方块。")
+      );
       /**
        * **按一格的实际像素想细节**：这轮真机翻车就翻在这 —— 2K 的细密砖墙缩到 32px 只剩一片红雾
        * （实测细节量 8.9，64px 时是 14.6），用户看着就是「不像墙」。
@@ -2047,10 +2146,16 @@
       }
       lines.push(
         "",
-        T("第四步 · 整理并回链：game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<上面那些绝对路径，按顺序>], shape:'<你选的形态：plain|corner16|a2quad>'}})", {
+        shape === "stamp" || !fixed
+          ? T("  ⚠️ 整图**不要**自己去抠像（别为了抠图再跑一次 image 模块的 keyImageJob）：`composeMapAsset` 会先抠绿幕、再按占格切片。生成完直接把原图路径交给它。")
+          : null,
+        T("第四步 · 整理并回链：game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<上面那些绝对路径，按顺序>], shape:'<你选的形态：plain|corner16|a2quad|stamp>'}})", {
           n0: input.projectId,
           n1: input.name
         }),
+        shape === "stamp" || !fixed
+          ? T("  整图还要多给「占几格」：shape:'stamp', stampCols:{n0}, stampRows:{n1}（每张源图 = 一帧的整张画；区域留给用户在导入时点）。", { n0: String(stampCols), n1: String(stampRows) })
+          : null,
         T("  **shape 必须是你这次选定的那个**：宿主按它把这一块砖拼成地图编辑器要的几何（普通裁成方格竖排；整格用同一块砖拼出 16 种接法、断口由它加收口；拼块每个变体一块砖拼成 N 列 × 5 行）。"),
         T("  别自己先拼多格排布再传进来：模型画的多格是各自独立的，拼到地图上每一处交界都会有缝 —— 这次就是因为这个返工的。"),
         T("  把这次调用返回的 openUrl **原样**贴成 Markdown 链接（例如 [回到地图编辑器](…)）：点开就回到地图编辑器，素材窗口已展开、"),
@@ -2467,9 +2572,9 @@
     /** `dialog` 允许的取值（宿主 `links.ts` 的 `OPEN_DIALOGS`，改一处要同步）。 */
     const OPEN_DIALOGS = new Set(["add"]);
     /** `shape` 允许的取值（宿主 `links.ts` 的 `OPEN_SHAPES`，改一处要同步）。 */
-    const OPEN_SHAPES = new Set(["plain", "corner16", "a2quad"]);
+    const OPEN_SHAPES = new Set(["plain", "corner16", "a2quad", "stamp"]);
     /** 深链接里所有属于本插件的参数名：清理地址栏时一起摘掉。 */
-    const OPEN_PARAM_KEYS = [OPEN_QUERY_KEY, "module", "project", "job", "stage", "direction", "dialog", "asset", "frames", "shape", "scale"];
+    const OPEN_PARAM_KEYS = [OPEN_QUERY_KEY, "module", "project", "job", "stage", "direction", "dialog", "asset", "frames", "shape", "scale", "cols", "rows", "keyed"];
     /** 意图订阅者：各模块组件都挂着，谁在挂载谁就被通知。 */
     const intentListeners = new Set<any>();
     /** 最近一次意图。晚挂载的组件（切模块后才渲染）订阅时立刻拿到它。 */
@@ -2531,6 +2636,16 @@
        */
       const scale = Number(params.get("scale"));
       if (params.get("scale") !== null && Number.isInteger(scale) && scale >= 1 && scale <= 8) intent.scale = scale;
+      /**
+       * `cols` / `rows` = 整图占几格（宿主 `links.ts` 的 2..8）。
+       * 少了它们，「新增素材」会按默认 3×3 预填 —— 图与占格对不上就会被拉伸。
+       */
+      const cols = Number(params.get("cols"));
+      if (params.get("cols") !== null && Number.isInteger(cols) && cols >= 2 && cols <= 512) intent.cols = cols;
+      const rows = Number(params.get("rows"));
+      if (params.get("rows") !== null && Number.isInteger(rows) && rows >= 2 && rows <= 512) intent.rows = rows;
+      /** `keyed=1`：整理时**已经抠过绿幕**，「新增素材」据此取消「抠掉绿幕」勾选（免得抠两遍）。 */
+      if (params.get("keyed") === "1") intent.keyed = 1;
       return intent;
     }
 
@@ -2791,7 +2906,23 @@
 /* 新建 / 重命名项目的名字对话框。fixed 居中：祖先里有 overflow 容器，
    absolute 会被裁掉（和工具小标签、侧栏菜单同一个坑）。 */
 .SPR_mapEdDlgMask{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42)}
-.SPR_mapEdDlg{width:300px;max-width:calc(100vw - 32px);padding:12px;border:1px solid #6b4a22;border-radius:8px;background:#2f2f2f;color:#f3e7d3;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+/* 固定高度 + 内部滚动：整图的选项（占格 / 帧数 / 区域格子）一多，窗口会长到出屏，
+   底下的「确定」根本点不到。标题与底部按钮吸住，中间那块自己滚。 */
+.SPR_mapEdDlg{width:300px;max-width:calc(100vw - 32px);max-height:calc(100vh - 96px);padding:12px;box-sizing:border-box;border:1px solid #6b4a22;border-radius:8px;background:#2f2f2f;color:#f3e7d3;box-shadow:0 10px 30px rgba(0,0,0,.5);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+.SPR_mapEdDlgHead{position:sticky;top:-12px;z-index:2;background:#2f2f2f;padding-top:2px}
+.SPR_mapEdDlgActions{position:sticky;bottom:0;z-index:2;background:#2f2f2f;padding:8px 0 2px;margin-top:12px}
+/* 区域格子叠在**素材图**上：点哪一格就是那一格（图与格子必须严丝合缝）。 */
+.SPR_mapEdStamp{position:relative;width:100%;box-sizing:border-box;margin:6px 0 4px;border:1px solid #4a443c;border-radius:6px;overflow:hidden;background:#1b1b1b;background-repeat:no-repeat;background-position:center;background-size:100% 100%}
+.SPR_mapEdStampGrid{position:absolute;inset:0;display:grid;gap:0}
+.SPR_mapEdStampCell{padding:0;border:1px solid rgba(255,255,255,.28);background:transparent;cursor:pointer;transition:background .08s}
+/* 颜色要淡：格子上还要看得见画，涂太重等于把素材图盖住（墙是绝大多数格，所以它最淡）。 */
+.SPR_mapEdStampCell[data-pass="0"]{background:rgba(226,59,43,.1);box-shadow:inset 0 0 0 1px rgba(226,59,43,.4)}
+.SPR_mapEdStampCell[data-pass="1"]{background:rgba(52,120,246,.16);box-shadow:inset 0 0 0 1px rgba(52,120,246,.6)}
+.SPR_mapEdStampCell[data-pass="2"]{background:rgba(52,190,120,.16);box-shadow:inset 0 0 0 1px rgba(52,190,120,.6)}
+.SPR_mapEdStampCell:hover{outline:2px solid #f0c040;outline-offset:-2px}
+.SPR_mapEdLegend{display:flex;gap:8px;flex-wrap:wrap;font-size:10px;color:#cfc7ba;margin-bottom:4px}
+.SPR_mapEdLegend>span{display:inline-flex;align-items:center;gap:3px}
+.SPR_mapEdLegend i{width:9px;height:9px;border-radius:2px;display:inline-block}
 .SPR_mapEdDlgTitle{font-size:13px;font-weight:600;margin-bottom:8px}
 .SPR_mapEdDlgLabel{display:block;font-size:11px;color:#c9bda8;margin-bottom:4px}
 .SPR_mapEdDlgInput{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #6b4a22;border-radius:4px;background:#1f1f1f;color:#f3e7d3;font-size:12px;outline:none}
@@ -2890,6 +3021,14 @@
 .SPR_mapEdPair{display:flex;align-items:center;gap:6px}
 .SPR_mapEdTimes{color:#9a9a9a;font-size:12px}
 .SPR_mapEdValue{color:#e7dcc8;font-size:12px;font-variant-numeric:tabular-nums}
+/* 整图的通行区域：一行一格，点一下换三态（墙 / 走·前 / 走·后）。 */
+.SPR_mapEdLblSmall{font-size:11px;color:#9d968c;margin:4px 0 2px}
+.SPR_mapEdPass{display:flex;flex-direction:column;gap:3px;margin:6px 0}
+.SPR_mapEdPassRow{display:flex;gap:3px}
+.SPR_mapEdPassCell{width:34px;height:26px;padding:0;border-radius:5px;border:1px solid #4a443c;background:#2a2622;color:#cfc7ba;font-size:11px;cursor:pointer}
+.SPR_mapEdPassCell[data-pass="0"]{background:#3a2320;border-color:#7d3a31;color:#f0b0a6}
+.SPR_mapEdPassCell[data-pass="1"]{background:#1f2f42;border-color:#3d6fa8;color:#a9d0f5}
+.SPR_mapEdPassCell[data-pass="2"]{background:#1f3a2c;border-color:#3f8f63;color:#a8e6c3}
 .SPR_mapEdSeg{display:flex;gap:4px;flex-wrap:wrap}
 .SPR_mapEdSegBtn{font:inherit;font-size:12px;padding:4px 10px;border:1px solid #565656;border-radius:6px;background:#242424;color:#f2efe9;cursor:pointer}
 .SPR_mapEdSegBtn:hover{border-color:#d9a95f}
@@ -7203,12 +7342,30 @@
       const [animTick, setAnimTick] = React.useState(0);
       const [truncated, setTruncated] = React.useState(false);
       const [planWarnings, setPlanWarnings] = React.useState([]);
+      /** 整图的通行区域（`mapPlan({pass:true})` 回的格；只在「区域」开关打开时才算）。 */
+      const [passCells, setPassCells] = React.useState([]);
+      /** 「区域」叠加开关（设置卡里，和「网格线」并列）。 */
+      const [showPass, setShowPass] = React.useState(false);
       const [imagesReady, setImagesReady] = React.useState(0);
 
       // ── 工具 / 笔刷 / 图层 / 显示开关 ─────────────────────────────────────
       const [tool, setTool] = React.useState("pen");
-      /** 当前笔刷（图例里的全局序号）。 */
+      /** 当前笔刷（图例里的全局序号 + 它属于哪张素材 —— 整图要靠素材 id 下 op）。 */
       const [brush, setBrush] = React.useState(null);
+      /**
+       * 整图的旋转档（0/1/2/3 = 0°/90°/180°/270°，顺时针）。
+       *
+       * **右键转**（用户定的规矩：右键不再是橡皮，橡皮只能点工具）。换笔刷时归零 ——
+       * 上一张图的朝向不该莫名其妙带到下一张。
+       */
+      const [stampRot, setStampRot] = React.useState(0);
+      /** 当前笔刷对应的整图规格（不是整图就是 null）。 */
+      const brushStamp = React.useMemo(() => {
+        if (brush === null || view === null || view === undefined) return null;
+        const owner = view.tilesets.find((entry) => entry.id === brush.tilesetId);
+        if (owner === undefined || owner.stamp === undefined) return null;
+        return { tilesetId: owner.id, cols: owner.stamp.cols, rows: owner.stamp.rows, frames: owner.stamp.frames };
+      }, [brush, view]);
       /** 多选（供「一键生成」取用）。 */
       const [multi, setMulti] = React.useState([]);
       const [layerIndex, setLayerIndex] = React.useState(0);
@@ -7528,7 +7685,20 @@
           // 清晰度：宿主默认就是「平滑」，用户可以在「确定」前换。
           clarity: "smooth",
           // 这张 AI 素材图是几倍分辨率（回链里的 `scale`）：>1 时界面会显示「清晰度」与说明。
-          scale: typeof target.scale === "number" && Number.isInteger(target.scale) && target.scale > 1 ? target.scale : 1
+          scale: typeof target.scale === "number" && Number.isInteger(target.scale) && target.scale > 1 ? target.scale : 1,
+          /**
+           * 整图：回链带了 `cols/rows/frames` 就按它预填（占格是**生图前就定好**的计划，
+           * 用户点「确定」前还能改；区域永远留给用户点，AI 猜不准）。
+           */
+          stampCols: String(typeof target.cols === "number" && Number.isFinite(target.cols) ? Math.max(2, Math.min(512, Math.round(target.cols))) : 3),
+          stampRows: String(typeof target.rows === "number" && Number.isFinite(target.rows) ? Math.max(2, Math.min(512, Math.round(target.rows))) : 3),
+          stampFrames: String(shape === "stamp" && frames > 1 ? frames : 1),
+          stampPass: new Array(9).fill(0),
+          /**
+           * 回链带 `keyed=1` = 整理时**已经抠过绿幕**：这里要取消勾选，
+           * 否则会抠第二遍（画面里已经没有绿了，第二遍只会按错误的背景色误伤像素）。
+           */
+          stampKey: target.keyed !== 1
         };
         setOpenCard("assets");
         const base = (loaded !== null && loaded !== undefined && loaded.assetBase) || (view !== null && view.assetBase) || "";
@@ -7639,6 +7809,8 @@
         });
         setTruncated(result?.truncated === true);
         setPlanWarnings(Array.isArray(result?.warnings) ? result.warnings : []);
+        // 区域格子**整份覆盖**（不进按块缓存：它是整图级别的信息，不是某一格的内容）。
+        setPassCells(Array.isArray(result?.pass) ? result.pass : []);
       }, []);
 
       /** 计划的「身份」：这张图变了（换项目 / 换层 / 换网格 / 换尺寸）就整份重来。 */
@@ -7703,7 +7875,8 @@
                 view: currentView,
                 have,
                 pending: Array.isArray(pending) && pending.length > 0 ? pending : undefined,
-                layerIds: single === true ? [safeLayerIndex] : undefined
+                layerIds: single === true ? [safeLayerIndex] : undefined,
+                pass: showPass === true
               });
               if (cancelled === true) return;
               /**
@@ -7724,7 +7897,7 @@
           clearTimeout(timer);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [api, viewId, planKey, planEpoch, previewTick, pan, zoom, viewport, single, safeLayerIndex, measured]);
+      }, [api, viewId, planKey, planEpoch, previewTick, pan, zoom, viewport, single, safeLayerIndex, measured, showPass]);
 
       // 视图尺寸变了（面板宽窄、窗口缩放）：重新量一次
       React.useEffect(() => {
@@ -7870,6 +8043,20 @@
           ctx.textBaseline = "middle";
           ctx.fillText(String(marker.n), marker.x, marker.y);
         }
+        /**
+         * **区域叠加**：「区域」开关打开时，把整图每格的通行性涂成半透明色。
+         *
+         * 编辑器不画角色，所以「能不能走 / 谁挡谁」只能靠这个看 —— 没有它，
+         * 区域点错了要等导出之后才可能发现。
+         */
+        if (showPass === true && passCells.length > 0) {
+          const colors = ["rgba(226,59,43,0.34)", "rgba(52,120,246,0.34)", "rgba(52,190,120,0.34)"];
+          for (const cell of passCells) {
+            const topLeft = MAP_cellTopLeft(layout, cell.r, cell.c, layout.grid.tileWidth, layout.grid.tileHeight);
+            ctx.fillStyle = colors[cell.kind] ?? colors[0];
+            ctx.fillRect(topLeft.x, topLeft.y, layout.grid.tileWidth, layout.grid.tileHeight);
+          }
+        }
         // 悬停格：2px 红框（四条细矩形，不用 stroke，免得被 DPR 影响粗细）
         // ⚠️ 用**未取模**的坐标定位：环绕时同一格在屏幕上有多份，红框必须画在指针
         // 所在的那一份上。拿取模后的 r/c 去算，指针在地图外那一份时红框会跳一整张地图。
@@ -7878,8 +8065,14 @@
           const rawR = Math.floor(hover.y / layout.stepY);
           const topLeft = MAP_cellTopLeft(layout, rawR, rawC, layout.grid.tileWidth, layout.grid.tileHeight);
           const thickness = 2 / zoom;
-          const w = layout.grid.tileWidth;
-          const hh = layout.grid.tileHeight;
+          /**
+           * 悬停框跟**笔刷**一样大：整图是 N×M 格（转 90° 时长宽互换），
+           * 其它素材是 1×1 —— 只画一格的话用户看不出「一印就是一大块」。
+           */
+          const spanCols = brushStamp === null ? 1 : stampRot % 2 === 1 ? brushStamp.rows : brushStamp.cols;
+          const spanRows = brushStamp === null ? 1 : stampRot % 2 === 1 ? brushStamp.cols : brushStamp.rows;
+          const w = layout.grid.tileWidth * spanCols;
+          const hh = layout.grid.tileHeight * spanRows;
           ctx.fillStyle = "#e23b2b";
           ctx.fillRect(topLeft.x, topLeft.y, w, thickness);
           ctx.fillRect(topLeft.x, topLeft.y + hh - thickness, w, thickness);
@@ -7938,7 +8131,7 @@
            */
           (window as any).__mapCamera = { pan: { x: pan.x, y: pan.y }, zoom, viewport: { w: viewport.w, h: viewport.h } };
         }
-      }, [layout, viewport, zoom, pan, planOps, planMarkers, markerSel, legend, legendMap, single, showGrid, hover, animElapsed, activeFps, planMeta.frameCount]);
+      }, [layout, viewport, zoom, pan, planOps, planMarkers, markerSel, legend, legendMap, single, showGrid, hover, animElapsed, activeFps, planMeta.frameCount, brushStamp, stampRot, passCells, showPass]);
 
       React.useEffect(() => {
         draw();
@@ -7982,6 +8175,14 @@
         setView((prev) => (prev === null ? prev : { ...prev, canUndo: result.canUndo === true, canRedo: result.canRedo === true }));
         if (Array.isArray(result.skipped) && result.skipped.length > 0) {
           setNotice({ kind: "error", text: result.skipped.slice(0, 2).join("；") });
+        }
+        /**
+         * 整图被整张摘掉时说一句：用户只点了一格（甚至只是橡皮划过去），
+         * 实际整块都没了 —— 不说明会以为是 bug。
+         */
+        const removedStamps = Number(result.stamps);
+        if (Number.isFinite(removedStamps) && removedStamps > 0 && (Array.isArray(result.skipped) ? result.skipped.length === 0 : true)) {
+          setNotice({ kind: "info", text: T("动到了 {n0} 张整图：它们是一整块，碰一格就整张摘掉了（撤销可以整张还原）。", { n0: String(removedStamps) }) });
         }
         setPlanEpoch((value) => value + 1);
       }, []);
@@ -8191,7 +8392,8 @@
           const palette = tileset === undefined ? [] : tileset.palette;
           if (palette.length > 0 && !palette.some((entry) => entry.index === found.t)) index = palette[0].index;
         }
-        setBrush({ index });
+        setBrush({ index, tilesetId: owner === undefined ? undefined : owner.tilesetId });
+        setStampRot(0);
         setMulti([index]);
       };
 
@@ -8251,7 +8453,16 @@
           void markerOp({ kind: "marker", op: "add", r: hit.r, c: hit.c }, true);
           return;
         }
-        if (event.button === 2 || tool === "eraser") {
+        if (event.button === 2) {
+          /**
+           * **右键 = 旋转**（用户定的：右键不再是橡皮，擦除只能点「橡皮」工具）。
+           * 只有整图笔刷有朝向可变；别的素材转它没有意义，但仍然 swallow（不擦）。
+           */
+          if (brushStamp !== null) setStampRot((current) => (current + 1) % 4);
+          else setNotice({ kind: "info", text: T("右键是旋转整图用的；这种素材一格一块，不用转。擦除请点左边的「橡皮」。") });
+          return;
+        }
+        if (tool === "eraser") {
           currentStroke.current = null;
           strokeRef.current = { mode: "paint", from: hit, tile: 0 };
           paintCells(null, hit, 0);
@@ -8267,6 +8478,16 @@
           return;
         }
         if (warnNoBrush()) return;
+        /**
+         * **整图**：点一次印一整张（一次 `stampPlace` 就是 6/9 格），**拖动不连印** ——
+         * 一拖就是几十张叠在一起，撤销还只能一张一张退。
+         */
+        if (brushStamp !== null) {
+          currentStroke.current = null;
+          strokeRef.current = { mode: "stamp" };
+          queueOps([{ kind: "stampPlace", layerId: activeLayer === null ? "" : activeLayer.id, tilesetId: brushStamp.tilesetId, r: hit.r, c: hit.c, rot: stampRot }], true);
+          return;
+        }
         currentStroke.current = null;
         strokeRef.current = { mode: "paint", from: hit, tile: brush.index };
         paintCells(null, hit, brush.index);
@@ -8445,7 +8666,65 @@
       };
 
       /** 打开「新增素材」：草稿全空 = 一切都走自动识别。 */
-      const openAddTileset = () => setAddDraft({ file: null, name: "", cellW: "", cellH: "", shape: "auto", animRows: false, fps: "", loop: "forward", clarity: "smooth", scale: 1 });
+      /**
+       * 改「占几格」时把区域格子重排：**按行列位置尽量保留**已经点过的状态，
+       * 新多出来的格默认「不可通过」（安全默认：宁可挡住，也别让角色走进墙里）。
+       */
+      /**
+       * 整图预览图：把选中的那张图变成一个 blob URL，铺在「区域」那个框的底层 ——
+       * 用户可以**直接在图上点格子**，不用再把「第几行第几列」和画面对一遍。
+       *
+       * 用 `createObjectURL`（**同步**）而不是 `FileReader`：预览只在“还没导入”的那一刻用，
+       * 同步拿到 URL 就不会在 effect 里反复 setState（那会让界面每帧重渲染一轮）。
+       * blob URL 不复制像素，回收交给浏览器：它指向的就是草稿里那个 File。
+       */
+      const addCurrentFile = addDraft === null ? null : addDraft.file;
+      const stampPreviewUrl = React.useMemo(() => {
+        if (addCurrentFile === null || addCurrentFile === undefined) return undefined;
+        const create = typeof URL !== "undefined" && typeof URL.createObjectURL === "function" ? URL.createObjectURL : undefined;
+        if (create === undefined) return undefined;
+        try {
+          return create(addCurrentFile);
+        } catch {
+          return undefined;
+        }
+      }, [addCurrentFile]);
+
+      /** 当前项目的地图有多大（整图的上限就是它）。 */
+      const mapLimits = stampLimits(view === null || view === undefined ? undefined : view.cols, view === null || view === undefined ? undefined : view.rows);
+      const resizeStampPass = (current, nextCols, nextRows) => {
+        if (current === null) return current;
+        const cols = clampStampSpan(nextCols === undefined ? Number(current.stampCols) || 3 : nextCols, mapLimits.maxCols);
+        const rows = clampStampSpan(nextRows === undefined ? Number(current.stampRows) || 3 : nextRows, mapLimits.maxRows);
+        const oldCols = clampStampSpan(Number(current.stampCols) || 3, mapLimits.maxCols);
+        const oldRows = clampStampSpan(Number(current.stampRows) || 3, mapLimits.maxRows);
+        const pass = new Array(cols * rows).fill(0);
+        for (let r = 0; r < Math.min(rows, oldRows); r++) {
+          for (let c = 0; c < Math.min(cols, oldCols); c++) pass[r * cols + c] = current.stampPass[r * oldCols + c] ?? 0;
+        }
+        return { ...current, stampCols: String(cols), stampRows: String(rows), stampPass: pass };
+      };
+
+      const openAddTileset = () =>
+        setAddDraft({
+          file: null,
+          name: "",
+          cellW: "",
+          cellH: "",
+          shape: "auto",
+          animRows: false,
+          fps: "",
+          loop: "forward",
+          clarity: "smooth",
+          scale: 1,
+          // 整图：占几格 / 几帧 / 每格通行性（0 不可通过 / 1 可通过·被人物遮挡 / 2 可通过·遮挡人物）
+          stampCols: "3",
+          stampRows: "3",
+          stampFrames: "1",
+          stampPass: new Array(9).fill(0),
+          // 整图默认抠绿幕（AI 那条路生成的就是绿幕图）；回链带 keyed=1 时说明已经抠过。
+          stampKey: true
+        });
 
       /**
        * 提交新增：把「图片 + 名字 + 属性」一次性交给宿主。
@@ -8481,7 +8760,25 @@
             clarity: draft.clarity === undefined ? undefined : draft.clarity,
             scale: draft.scale === undefined ? 1 : draft.scale,
             // 循环方式：正放 / 倒放 / 来回（只影响帧序怎么展开）。
-            loop: draft.loop === undefined ? undefined : draft.loop
+            loop: draft.loop === undefined ? undefined : draft.loop,
+            /**
+             * 整图：占几格 / 几帧 / 每格通行性。给了 `stamp` 宿主就把形态锁成整图、
+             * 格子锁成地图网格（界面上「格子大小」那块也就不必填）。
+             */
+            stamp:
+              draft.shape === "stamp"
+                ? {
+                    cols: clampStampSpan(Number(draft.stampCols) || 3, mapLimits.maxCols),
+                    rows: clampStampSpan(Number(draft.stampRows) || 3, mapLimits.maxRows),
+                    frames: Math.max(1, Math.min(16, Number(draft.stampFrames) || 1)),
+                    pass: draft.stampPass
+                  }
+                : undefined,
+            /**
+             * 导入时抠绿幕（只对整图有意义）：AI 那条路在整理时已经抠过，回链会把它关掉，
+             * 免得抠第二遍把画面里本就很少的绿误伤掉。
+             */
+            stampKey: draft.shape === "stamp" ? draft.stampKey !== false : undefined
           });
           setAddDraft(null);
           setNotice({ kind: "info", text: T("已新增素材 {n0}", { n0: draft.name.trim() === "" ? draft.file.name : draft.name.trim() }) });
@@ -8511,10 +8808,11 @@
        * 换成四个按钮 + 悬停小标签：鼠标移上去就把这一项讲清楚（和工具格同一套标签）。
        */
       const shapeOptions = [
-        ["auto", T("自动"), T("自动"), T("让程序看图片大小，自己决定下面三种里该用哪种。拿不准就选它。注意：这一项定下来就不能改了，想换只能删掉重新加一张。")],
+        ["auto", T("自动"), T("自动"), T("让程序看图片大小，自己决定下面几种里该用哪种。拿不准就选它（它只会选普通 / 整格 / 拼块 —— 整图要填占几格，得自己选）。注意：这一项定下来就不能改了，想换只能删掉重新加一张。")],
         ["plain", T("普通"), T("普通图块"), T("一格贴一块图，边角不会自己接上。适合树、房子、道具这种一块一块单独摆的图。")],
         ["corner16", T("整格"), T("整格自动连接"), T("一格贴一块图，同时看上下左右有没有同样的格子，自动从 16 块里挑最合适的一块：边缘、拐角会自己接上。适合墙、路、篱笆这种要连成一条的图。图片要排成 4×4 = 16 块。")],
-        ["a2quad", T("拼块"), T("拼块自动连接"), T("每个格子再拆成 2×2 四个小块，按周围的格子自动拼成一大片。适合草地、水面、沙地这类成片铺开的地面。图片要按「一格 = 2×2 小块」的方式排。")]
+        ["a2quad", T("拼块"), T("拼块自动连接"), T("每个格子再拆成 2×2 四个小块，按周围的格子自动拼成一大片。适合草地、水面、沙地这类成片铺开的地面。图片要按「一格 = 2×2 小块」的方式排。")],
+        ["stamp", T("整图"), T("整图（占好几格的一张图）"), T("一张图一次印满 N×M 格：雕像、壁画、地毯这类占好几格的建筑与装饰。选它之后填「占几格」与「帧数」，再把每格能不能走点一遍。印的时候右键可以转 90°。")]
       ];
       /**
        * 一段「几个按钮里选一个」的控件（用法、会动吗都用它）。
@@ -8808,8 +9106,16 @@
                   placeholder: T("留空就用文件名"),
                   onChange: (event) => setAddDraft((current) => (current === null ? current : { ...current, name: event.target.value }))
                 }),
-                h("div", { className: "SPR_mapEdDlgLabel" }, T("格子大小（留空就自动认）")),
-                h(
+                /**
+                 * 「格子大小」：整图不需要（它的格子**锁死**为地图网格 —— 一次占 N×M 格，
+                 * 格子比网格大或小都必然错位），所以选整图时整块隐藏。
+                 */
+                addDraft.shape === "stamp"
+                  ? null
+                  : h("div", { className: "SPR_mapEdDlgLabel" }, T("格子大小（留空就自动认）")),
+                addDraft.shape === "stamp"
+                  ? null
+                  : h(
                   "div",
                   { className: "SPR_mapEdPair" },
                   h(NumField, {
@@ -8830,8 +9136,12 @@
                 ),
                 h("div", { className: "SPR_mapEdDlgLabel" }, T("这块素材怎么用")),
                 segPicker("data-shape", shapeOptions, addDraft.shape, (value) => setAddDraft((current) => (current === null ? current : { ...current, shape: value }))),
-                h("div", { className: "SPR_mapEdDlgLabel" }, T("会动吗")),
-                segPicker("data-anim", animOptions, addDraft.animRows ? "rows" : "off", (value) => setAddDraft((current) => (current === null ? current : { ...current, animRows: value === "rows" }))),
+                addDraft.shape === "stamp"
+                  ? null
+                  : h("div", { className: "SPR_mapEdDlgLabel" }, T("会动吗")),
+                addDraft.shape === "stamp"
+                  ? null
+                  : segPicker("data-anim", animOptions, addDraft.animRows ? "rows" : "off", (value) => setAddDraft((current) => (current === null ? current : { ...current, animRows: value === "rows" }))),
                 /**
                  * 「清晰度」：**只有图比格子大时才显示**（AI 生成的那条路会带 `scale` 进来）。
                  *
@@ -8839,10 +9149,161 @@
                  * 格子大小（自己导的 32px 素材）时这块不出现，免得用户以为改了个没用的开关。
                  */
                 /**
+                 * 整图专属：占几格 / 帧数 / **每格通行性**。
+                 *
+                 * 区域格子的数量跟着「占几格」走（`cols × rows`），点一下循环三态；
+                 * 另有「全部不可通过 / 全部可通过」两键 —— 雕像这种大部分不可走的图
+                 * 一格一格点太累（整块 3×3 只有底座要改）。
+                 */
+                addDraft.shape === "stamp"
+                  ? h(
+                      "div",
+                      { "data-testid": "map-add-stamp" },
+                      h("div", { className: "SPR_mapEdDlgLabel" }, T("占几格（一整张图印满这么多格）")),
+                      h(
+                        "div",
+                        { className: "SPR_mapEdPair" },
+                        h(NumField, {
+                          label: T("宽"),
+                          value: Number(addDraft.stampCols) || 3,
+                          min: 2,
+                          max: mapLimits.maxCols,
+                          onChange: (value) => setAddDraft((current) => resizeStampPass(current, value, undefined))
+                        }),
+                        h("span", { className: "SPR_mapEdTimes" }, "×"),
+                        h(NumField, {
+                          label: T("高"),
+                          value: Number(addDraft.stampRows) || 3,
+                          min: 2,
+                          max: mapLimits.maxRows,
+                          onChange: (value) => setAddDraft((current) => resizeStampPass(current, undefined, value))
+                        })
+                      ),
+                      h("div", { className: "SPR_mapEdDlgLabel" }, T("帧数（一整张图会动的话，每帧一张）")),
+                      h(NumField, {
+                        label: T("帧数"),
+                        value: Number(addDraft.stampFrames) || 1,
+                        min: 1,
+                        max: 16,
+                        onChange: (value) =>
+                          setAddDraft((current) => (current === null ? current : { ...current, stampFrames: String(Math.max(1, Math.min(16, Math.round(value) || 1))) }))
+                      }),
+                      h("div", { className: "SPR_mapEdDlgLabel" }, T("背景")),
+                      h(
+                        "label",
+                        { className: "SPR_mapEdCheck" },
+                        h("input", {
+                          type: "checkbox",
+                          "data-testid": "map-add-stamp-key",
+                          checked: addDraft.stampKey !== false,
+                          onChange: (event) => setAddDraft((current) => (current === null ? current : { ...current, stampKey: event.target.checked }))
+                        }),
+                        T("抠掉绿幕背景（只留建筑本体）")
+                      ),
+                      h(
+                        "p",
+                        { className: "SPR_mapEdHint" },
+                        T("整图是「立在格子上的物件」：背景该是透明的，不然地图上会多出一块绿框。AI 生成的图请在提示词里要**纯绿背景**，这里勾上就会自动抠掉；自己导的透明 PNG 也可以勾着（没有绿就什么都不做）。")
+                      ),
+                      h("div", { className: "SPR_mapEdDlgLabel" }, T("哪些格子能走（在图上点格子）")),
+                      /**
+                       * **在图上点格子**：素材图铺满这个框，格子用 CSS grid 严丝合缝地叠在上面 ——
+                       * 用户点的是「图上那一块」，不用再把格子编号与画面位置在心里对一遍。
+                       * 三态用半透明色直接涂在格子里（红 = 墙 / 蓝 = 走·前 / 绿 = 走·后）。
+                       */
+                      h(
+                        "div",
+                        {
+                          className: "SPR_mapEdStamp",
+                          "data-testid": "map-add-stamp-preview",
+                          style: {
+                            aspectRatio: `${clampStampSpan(Number(addDraft.stampCols) || 3, mapLimits.maxCols)} / ${clampStampSpan(Number(addDraft.stampRows) || 3, mapLimits.maxRows)}`,
+                            backgroundImage: stampPreviewUrl === undefined ? "none" : `url("${stampPreviewUrl}")`,
+                            /**
+                             * 帧数 > 1 时草稿里那张图是**各帧竖排**的（AI 那条路的格式）：
+                             * 只铺第 1 帧，不然格子与画面对不上（用户会点错格）。
+                             */
+                            backgroundSize: (Number(addDraft.stampFrames) || 1) > 1 ? `100% ${(Number(addDraft.stampFrames) || 1) * 100}%` : "100% 100%",
+                            backgroundPosition: "0% 0%"
+                            
+                          }
+                        },
+                        h(
+                          "div",
+                          {
+                            className: "SPR_mapEdStampGrid",
+                            style: {
+                              gridTemplateColumns: `repeat(${clampStampSpan(Number(addDraft.stampCols) || 3, mapLimits.maxCols)}, 1fr)`,
+                              gridTemplateRows: `repeat(${clampStampSpan(Number(addDraft.stampRows) || 3, mapLimits.maxRows)}, 1fr)`
+                            }
+                          },
+                          Array.from({ length: clampStampSpan(Number(addDraft.stampRows) || 3, mapLimits.maxRows) }, (_unused, r) =>
+                            Array.from({ length: clampStampSpan(Number(addDraft.stampCols) || 3, mapLimits.maxCols) }, (_ignored, c) => {
+                              const cols = clampStampSpan(Number(addDraft.stampCols) || 3, mapLimits.maxCols);
+                              const index = r * cols + c;
+                              const kind = addDraft.stampPass[index] ?? 0;
+                              return h("button", {
+                                key: `cell${r}-${c}`,
+                                type: "button",
+                                className: "SPR_mapEdStampCell",
+                                "data-pass": String(kind),
+                                "data-testid": `map-add-pass-${r}-${c}`,
+                                title: T("第 {n0} 行第 {n1} 列：不可通过 / 可通过（被人物遮挡）/ 可通过（遮挡人物）", { n0: String(r + 1), n1: String(c + 1) }),
+                                onClick: () =>
+                                  setAddDraft((current) => {
+                                    if (current === null) return current;
+                                    const next = [...current.stampPass];
+                                    next[index] = (((next[index] ?? 0) + 1) % 3);
+                                    return { ...current, stampPass: next };
+                                  })
+                              });
+                            })
+                          )
+                        )
+                      ),
+                      h(
+                        "div",
+                        { className: "SPR_mapEdLegend" },
+                        h("span", null, h("i", { style: { background: "rgba(226,59,43,.75)" } }), T("墙 · 不可通过")),
+                        h("span", null, h("i", { style: { background: "rgba(52,120,246,.75)" } }), T("走·前 · 角色盖住它")),
+                        h("span", null, h("i", { style: { background: "rgba(52,190,120,.75)" } }), T("走·后 · 它盖住角色"))
+                      ),
+                      h(
+                        "div",
+                        { className: "SPR_mapEdDlgRow" },
+                        h(Btn, {
+                          "data-testid": "map-add-pass-none",
+                          onClick: () =>
+                            setAddDraft((current) => {
+                              if (current === null) return current;
+                              const cols = clampStampSpan(Number(current.stampCols) || 3, mapLimits.maxCols);
+                              const rows = clampStampSpan(Number(current.stampRows) || 3, mapLimits.maxRows);
+                              return { ...current, stampPass: new Array(cols * rows).fill(0) };
+                            })
+                        }, T("全部不可通过")),
+                        h(Btn, {
+                          "data-testid": "map-add-pass-walk",
+                          onClick: () =>
+                            setAddDraft((current) => {
+                              if (current === null) return current;
+                              const cols = clampStampSpan(Number(current.stampCols) || 3, mapLimits.maxCols);
+                              const rows = clampStampSpan(Number(current.stampRows) || 3, mapLimits.maxRows);
+                              return { ...current, stampPass: new Array(cols * rows).fill(1) };
+                            })
+                        }, T("全部可通过"))
+                      ),
+                      h(
+                        "p",
+                        { className: "SPR_mapEdHint" },
+                        T("点格子换状态：墙 = 不可通过；走·前 = 能走、角色画在它上面（地毯）；走·后 = 能走、它画在角色上面（雕像上身，绕后）。")
+                      )
+                    )
+                  : null,
+                /**
                  * 「循环方式」：跟「动画速度」一样，**只有会动的素材才显示**。
                  * 静态素材显示它只会让人以为自己设了动画。
                  */
-                addDraft.animRows === true || addDraft.shape === "a2quad"
+                addDraft.animRows === true || addDraft.shape === "a2quad" || (addDraft.shape === "stamp" && (Number(addDraft.stampFrames) || 1) > 1)
                   ? h(
                       "div",
                       null,
@@ -8875,7 +9336,11 @@
                  * 「动画速度」：**会动的素材才显示**（拼块的变体就是帧，所以拼块也要显示；
                  * 普通形态得勾了「翻页图」才算会动）。静态素材显示它只会让人以为没生效。
                  */
-                addDraft.animRows === true || addDraft.shape === "a2quad"
+                /**
+                 * 整图的帧数 > 1 时它**也会动**（整张图同步播同一帧），所以速度 / 循环方式也要给 ——
+                 * 少了这两项就只剩「按全局速度放」，用户会以为整图不能调速度（真机反馈过）。
+                 */
+                addDraft.animRows === true || addDraft.shape === "a2quad" || (addDraft.shape === "stamp" && (Number(addDraft.stampFrames) || 1) > 1)
                   ? h(
                       "div",
                       null,
@@ -8903,7 +9368,7 @@
                   : null,
                 h(
                   "div",
-                  { className: "SPR_mapEdDlgRow" },
+                  { className: "SPR_mapEdDlgRow SPR_mapEdDlgActions", "data-testid": "map-add-actions" },
                   h(Btn, { "data-testid": "map-add-cancel", onClick: () => setAddDraft(null) }, T("取消")),
                   h(Btn, { "data-testid": "map-add-ok", primary: true, busy: busyKey === "upload", onClick: () => void submitAddTileset() }, T("确定"))
                 )
@@ -8929,7 +9394,8 @@
         ["auto", T("自动判断"), T("自动判断"), T("让对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通。")],
         ["plain", T("普通"), T("普通图块"), T("一块一块单独摆、不跟邻居接：树 / 箱子 / 道具 / 装饰。每张图 = 一格内容；帧数 > 1 时竖排成翻页图。")],
         ["corner16", T("整格"), T("整格自动连接"), T("要连成一条、拐角要对上：墙 / 路 / 栅栏 / 桥。生成一张 4×4 共 16 块的图，按「上1 右2 下4 左8」的位序画 16 种接法；没有动画（帧数按 1 处理）。")],
-        ["a2quad", T("拼块"), T("拼块自动连接"), T("成片铺开、边缘自动接上：草地 / 水面 / 沙地 / 岩浆。每张图 = 一列 5 行（自上而下 5 种接法），帧数 = 变体数（拼块的动画就是换变体）。")]
+        ["a2quad", T("拼块"), T("拼块自动连接"), T("成片铺开、边缘自动接上：草地 / 水面 / 沙地 / 岩浆。每张图 = 一列 5 行（自上而下 5 种接法），帧数 = 变体数（拼块的动画就是换变体）。")],
+        ["stamp", T("整图"), T("整图（一张画占好几格）"), T("多格建筑 / 装饰：雕像、壁画、喷泉、大门、地毯。每张图 = 一整张完整的画（不要分格），插件按「占几格」切成格子；哪些格能走导入时你自己点。")]
       ];
 
       const openAiAsset = () =>
@@ -8938,7 +9404,10 @@
           name: "",
           frames: 1,
           mode: "image",
-          shape: "auto"
+          shape: "auto",
+          // 整图：占几格（只有选「整图」时才用得上；默认 3×3 是雕像 / 大门最常见的尺寸）。
+          stampCols: "3",
+          stampRows: "3"
         });
 
       /** 把草稿交给 `openAssetChat`：建会话 + 发提示词。失败时对话框留着，用户能重试。 */
@@ -8952,6 +9421,8 @@
         }
         // 帧数为 1 只用生图模型（视频模型那条路本来也要求帧数大于 1）；整格没有帧这一维。
         const shape = ASSET_SHAPES.includes(draft.shape) ? draft.shape : "auto";
+        const stampCols = Math.max(2, Math.min(512, Math.round(Number(draft.stampCols) || 3)));
+        const stampRows = Math.max(2, Math.min(512, Math.round(Number(draft.stampRows) || 3)));
         const frames = shape === "corner16" ? ASSET_FRAMES_MIN : Math.min(ASSET_FRAMES_MAX, Math.max(ASSET_FRAMES_MIN, Math.round(Number(draft.frames) || 1)));
         const mode = frames <= 1 ? "image" : draft.mode === "video" ? "video" : "image";
         // 派活要用到的模块被「功能管理」隐藏了就直说：对话里的工具面同样会拒绝，白跑一趟。
@@ -8978,7 +9449,8 @@
             prompt,
             frames,
             mode,
-            shape
+            shape,
+            ...(shape === "stamp" ? { stampCols, stampRows } : {})
           });
           await openAssetChat(text);
           setAiDraft(null);
@@ -9086,11 +9558,39 @@
                     return { ...current, shape: value };
                   })
                 ),
+                aiDraft.shape === "stamp"
+                  ? h(
+                      "div",
+                      { "data-testid": "map-ai-stamp" },
+                      h("div", { className: "SPR_mapEdLblSmall" }, T("占几格")),
+                      h(
+                        "div",
+                        { className: "SPR_mapEdPair" },
+                        h(NumField, {
+                          label: T("宽"),
+                          value: Number(aiDraft.stampCols) || 3,
+                          min: 2,
+                          max: 512,
+                          onChange: (value) => setAiDraft((current) => (current === null ? current : { ...current, stampCols: String(Math.max(2, Math.min(512, Math.round(value) || 3))) }))
+                        }),
+                        h("span", { className: "SPR_mapEdTimes" }, "×"),
+                        h(NumField, {
+                          label: T("高"),
+                          value: Number(aiDraft.stampRows) || 3,
+                          min: 2,
+                          max: 512,
+                          onChange: (value) => setAiDraft((current) => (current === null ? current : { ...current, stampRows: String(Math.max(2, Math.min(512, Math.round(value) || 3))) }))
+                        })
+                      )
+                    )
+                  : null,
                 h(
                   "p",
                   { className: "SPR_mapEdHint" },
-                  aiDraft.shape === "auto"
-                    ? T("由对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通。它会在生图前把排布规划好，生成后按这个规则切成地图能用的图。")
+                  aiDraft.shape === "stamp"
+                    ? T("整图：让模型画**一整张**画（不要分格），插件按「占几格」把它切成 N×M 格，印到地图上一次占这么多格。帧数 > 1 时每帧都是一整张画。哪些格能走（地毯 / 雕像上身）在导入时由你自己点。")
+                    : aiDraft.shape === "auto"
+                    ? T("由对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通；一整栋多格建筑（雕像 / 壁画 / 大门）→ 整图。它会在生图前把排布规划好，生成后按这个规则切成地图能用的图。")
                     : aiDraft.shape === "corner16"
                       ? T("整格：只让模型画**一块**无缝墙砖（四边都能接上自己），插件用同一块砖拼出 16 种接法、断口由它加收口 —— 不要让它画 16 个各自独立的格子，那样拼到地图上全是缝。⚠️ 整格**没有动画**（它就是 16 种接法），所以帧数与生成方式锁在静态；想要「会动的自动连接」素材，把用法改成「拼块」——拼块的帧数就是变体，动画靠换变体。")
                       : aiDraft.shape === "a2quad"
@@ -9113,6 +9613,52 @@
         const result = await withApi(() => api.removeMapTileset({ projectId: view.id, tilesetId }), { notice: T("已删除素材") });
         if (result === undefined) return;
         await loadProject(view.id, true);
+      };
+
+      /**
+       * 「素材属性」窗口：点素材列表里的一行就打开。
+       *
+       * 只放开**表现层属性**（名字 / 播放速度 / 循环方式）——它们不动几何、不动图块序号，
+       * 所以随时能改，地图上已经画好的格子不受影响。形态 / 格子尺寸仍然一次定死
+       * （那会重切图块、把画过的格子整体错位）。
+       */
+      const [tsEdit, setTsEdit] = React.useState(null);
+      const openTilesetEditor = (entry) => {
+        setTsEdit({
+          tilesetId: entry.id,
+          name: entry.name,
+          // `undefined` = 跟全局速度（下拉里用空串表示）。
+          fps: entry.fps === undefined ? "" : String(entry.fps),
+          loop: entry.loop === undefined ? "forward" : entry.loop,
+          animated: frameCountOf(entry) > 0,
+          builtin: entry.builtin === true
+        });
+      };
+      const saveTilesetEditor = async () => {
+        if (tsEdit === null || api === undefined || view === null) return;
+        setBusyKey("tileset");
+        try {
+          const name = tsEdit.name.trim() === "" ? undefined : tsEdit.name.trim();
+          const result = await api.saveMapTileset({
+            projectId: view.id,
+            tilesetId: tsEdit.tilesetId,
+            name,
+            // 空串 = 清掉自己的速度，回到跟「设置」里的动画速度走。
+            fps: tsEdit.fps === "" ? null : Number(tsEdit.fps),
+            loop: tsEdit.loop
+          });
+          if (result !== undefined && Array.isArray(result.warnings) && result.warnings.length > 0) {
+            setNotice({ kind: "info", text: result.warnings.join("；") });
+          } else {
+            setNotice({ kind: "info", text: T("已保存素材属性") });
+          }
+          setTsEdit(null);
+          await loadProject(view.id, true);
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setBusyKey(null);
+        }
       };
 
       /** 一键恢复默认素材：把缺的内置素材补回来（已有的同名会跳过，不会变成两份）。 */
@@ -9533,6 +10079,74 @@
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [projectBusy, viewId, api]);
 
+      /**
+       * 「素材属性」窗口：点素材列表里的一行打开。
+       *
+       * 只放三样**表现层**属性（名字 / 播放速度 / 循环方式）—— 它们不动图块、不动序号，
+       * 改完地图上已经画好的格子一格都不用重画。形态与格子尺寸不在这里（那要重切图块，
+       * 会把画过的格子整体错位），仍然是「删掉重新新增」。
+       */
+      const tsEditDialog =
+        tsEdit === null
+          ? null
+          : h(
+              "div",
+              { className: "SPR_mapEdDlgMask", "data-testid": "map-tsedit-mask", onClick: () => setTsEdit(null) },
+              h(
+                "div",
+                {
+                  className: "SPR_mapEdDlg",
+                  role: "dialog",
+                  "aria-label": T("素材属性"),
+                  "data-testid": "map-tsedit-dialog",
+                  onClick: (event) => {
+                    if (typeof event.stopPropagation === "function") event.stopPropagation();
+                  }
+                },
+                h(
+                  "div",
+                  { className: "SPR_mapEdDlgHead" },
+                  h("div", { className: "SPR_mapEdDlgTitle" }, T("素材属性")),
+                  tsEdit.builtin === true ? h("span", { className: "SPR_mapEdTsBadge" }, T("自带")) : null
+                ),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("叫什么")),
+                h("input", {
+                  className: "SPR_mapEdDlgInput",
+                  "data-testid": "map-tsedit-name",
+                  value: tsEdit.name,
+                  placeholder: T("留空就用原来的名字"),
+                  onChange: (event) => setTsEdit((current) => (current === null ? current : { ...current, name: event.target.value }))
+                }),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("动画速度")),
+                h(
+                  "select",
+                  {
+                    className: "SPR_mapEdSelect",
+                    "data-testid": "map-tsedit-fps",
+                    disabled: tsEdit.animated !== true,
+                    value: tsEdit.fps,
+                    onChange: (event) => setTsEdit((current) => (current === null ? current : { ...current, fps: event.target.value }))
+                  },
+                  fpsOptions.map(([value, label, , desc]) => h("option", { key: value === "" ? "global" : value, value, title: desc }, label))
+                ),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("循环方式")),
+                h(
+                  "div",
+                  { "data-testid": "map-tsedit-loop", style: tsEdit.animated === true ? undefined : { opacity: 0.45, pointerEvents: "none" } },
+                  segPicker("data-loop", loopOptions, tsEdit.loop, (value) => setTsEdit((current) => (current === null ? current : { ...current, loop: value })))
+                ),
+                tsEdit.animated === true
+                  ? h("p", { className: "SPR_mapEdHint" }, T("这两项只影响它自己：改完立刻生效，地图上已经画好的格子不用重画。想让它跟「设置」里那条全局速度走，播放速度选第一项。"))
+                  : h("p", { className: "SPR_mapEdHint" }, T("这块素材不会动（没有多帧），所以播放速度与循环方式对它没有意义。")),
+                h(
+                  "div",
+                  { className: "SPR_mapEdDlgRow SPR_mapEdDlgActions", "data-testid": "map-tsedit-actions" },
+                  h(Btn, { "data-testid": "map-tsedit-cancel", onClick: () => setTsEdit(null) }, T("取消")),
+                  h(Btn, { "data-testid": "map-tsedit-ok", primary: true, busy: busyKey === "tileset", onClick: () => void saveTilesetEditor() }, T("保存"))
+                )
+              )
+            );
+
       // ⚠️ 所有 Hook 都在上面；下面才开始早退（React #310，整个面板白屏）
       const fileInput = h("input", {
         ref: fileRef,
@@ -9567,6 +10181,7 @@
           fileInput,
           addFileInput,
           addDialog,
+          tsEditDialog,
           // 「AI 生成素材」与「新增素材」是**兄弟**：两者不会同时开（点 AI 这颗时
           // 用户是在找素材、不是在填表），同一层就够了。
           aiDialog,
@@ -9725,8 +10340,13 @@
       const paletteTile = (entry) => {
         const owner = tilesets.find((item) => item.id === entry.tilesetId);
         if (owner === undefined) return null;
-        const cellW = owner.cell.width > 0 ? owner.cell.width : entry.rect.width;
-        const cellH = owner.cell.height > 0 ? owner.cell.height : entry.rect.height;
+        /**
+         * 缩放基准是**条目自己的矩形**（不是「一格」）：
+         * 普通 / 整格 / 拼块的条目本来就等于一格；整图那条是**整张**（N×M 格），
+         * 用格子当基准只会缩进左下角的一格，用户看到的是半张图。
+         */
+        const cellW = entry.rect.width > 0 ? entry.rect.width : owner.cell.width;
+        const cellH = entry.rect.height > 0 ? entry.rect.height : owner.cell.height;
         const scaleX = 32 / Math.max(1, cellW);
         const scaleY = 32 / Math.max(1, cellH);
         /**
@@ -9740,7 +10360,8 @@
         const paletteDesc =
           T("点一下选中它，然后在右边地图上按住鼠标左键涂。按住 Shift 或 Ctrl 点可以多选几块 —— 那几块是给「一键生成」随机挑着用的。") +
           (owner.shape === "corner16" || owner.shape === "a2quad" ? T("它是自动连接的图：涂上去边缘会自己接上。") : "") +
-          (owner.animRows === true ? T("这张图会动。") : "");
+          (owner.animRows === true ? T("这张图会动。") : "") +
+          (owner.stamp === undefined ? "" : T("这是 {n0}×{n1} 的整图：点一下在地图上印一整张，右键可以转 90°。", { n0: String(owner.stamp.cols), n1: String(owner.stamp.rows) }));
         return h("button", {
           key: `${entry.tilesetId}:${entry.index}`,
           type: "button",
@@ -9759,7 +10380,9 @@
           },
           onClick: (event) => {
             const additive = event.shiftKey === true || event.ctrlKey === true || event.metaKey === true;
-            setBrush({ index: entry.index });
+            setBrush({ index: entry.index, tilesetId: entry.tilesetId });
+            // 换笔刷 → 旋转归零（上一张的朝向不该带到下一张）。
+            setStampRot(0);
             setMulti((prev) =>
               additive === true
                 ? prev.includes(entry.index)
@@ -9962,7 +10585,12 @@
                       type: "button",
                       className: "SPR_mapEdTsPick",
                       "data-tileset": entry.id,
-                      onClick: () => setTsIndex(index)
+                      title: T("点一下改它的名字 / 播放速度 / 循环方式"),
+                      onClick: () => {
+                        // 点一下 = 选中它（当笔刷用）+ 打开属性窗口（改名 / 速度 / 循环方式）
+                        setTsIndex(index);
+                        openTilesetEditor(entry);
+                      }
                     },
                     h("span", { className: "SPR_mapEdTsName" }, entry.name),
                     h(
@@ -9985,7 +10613,11 @@
                 )
               )
             ),
-        h("p", { className: "SPR_mapEdHint" }, T("素材的属性在新增时就定下来了，之后不能改 —— 要换就删掉重新新增。"))
+        h(
+          "p",
+          { className: "SPR_mapEdHint" },
+          T("点素材那一行可以改**名字 / 播放速度 / 循环方式**（这三样不动图块，随时能改）。形态与格子大小在新增时就定下来了 —— 要换只能删掉重新新增。")
+        )
       );
 
       /**
@@ -10286,10 +10918,21 @@
           T("网格线")
         ),
         h(
+          "label",
+          { className: "SPR_mapEdCheck" },
+          h("input", {
+            type: "checkbox",
+            "data-testid": "map-show-pass",
+            checked: showPass === true,
+            onChange: (event) => setShowPass(event.target.checked)
+          }),
+          T("区域（整图能不能走）")
+        ),
+        h(
           "div",
           { className: "SPR_mapEdHelp" },
           h("h5", null, T("帮助")),
-          h("p", null, T("左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝橡皮。")),
+          h("p", null, T("左键拖动＝用当前工具画；空格拖动或中键拖动＝平移；滚轮＝缩放；右键＝旋转整图；擦除点「橡皮」工具。")),
           h("p", null, T("调色板里点一下选一块图当笔刷，按住 Shift 或 Ctrl 可以多选，「一键生成」会用这些图块。")),
           h("p", null, T("地图四周是接上的：自动连接会把上下、左右两边接起来。画布拖不出地图 —— 拖到边就停，地图左上角对齐后不会再乱动；图外那片空白画不上。"))
         ),

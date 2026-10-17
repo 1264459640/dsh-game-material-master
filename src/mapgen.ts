@@ -40,6 +40,7 @@ import { join } from "node:path";
 import { appendJobLog, messageOf, readJson, sweepTempFiles, writeJsonAtomic, type JobLogEntry } from "./jsonio.js";
 import { dataRoot } from "./config.js";
 import { decodeFile, encodeBitmap, pngSize, probeImageSize, sniffImageExt, type Bitmap } from "./bitmap.js";
+import { keyGreen, DEFAULT_KEY_OPTIONS } from "./chroma.js";
 import {
   addLayer,
   applyOps,
@@ -76,6 +77,7 @@ import {
   bitmapToPng,
   buildPlan,
   rasterize,
+  stampCellsOf,
   type PlanBounds,
   type PlanChunk,
   type PlanLegendEntry,
@@ -99,6 +101,16 @@ import {
   sizeFromBytes,
   parseAssetFps,
   parseAssetLoop,
+  parseStampSpec,
+  bakeStampSheet,
+  composeStampSource,
+  stampTilesetImage,
+  keyStampBackground,
+  STAMP_KEY_OPTIONS,
+  stampSheetCells,
+  stampSpan,
+  STAMP_MAX_CELLS,
+  STAMP_MIN_CELLS,
   parseAssetScale,
   parseClarity,
   resampleToSize,
@@ -111,6 +123,7 @@ import {
   type MapTileset,
   type FlatTile,
   type TilesetShape,
+  assertStampFitsProject,
 } from "./maptiles.js";
 import { exportMap, safeFileName, type ExportFormatOptions, type ExportManifest } from "./mapexport.js";
 import { primeSampleTextures, renderSampleTilesets } from "./mapsamplegen.js";
@@ -302,9 +315,17 @@ function normalizeTileset(raw: unknown): MapTileset {
   const cell = normalizeCell(source.cell) ?? { width: 32, height: 32 };
   const shape = isTilesetShape(source.shape) ? source.shape : "plain";
   const animRows = source.animRows === true;
+  // 整图规格：读盘时**不抛**（老数据 / 坏数据当成「不是整图」处理，等重导），只认能解析出来的。
+  let stamp: ReturnType<typeof parseStampSpec>;
+  try {
+    stamp = parseStampSpec(source.stamp);
+  } catch {
+    stamp = undefined;
+  }
+  const shapeSafe: TilesetShape = stamp !== undefined ? "stamp" : shape === "stamp" ? "plain" : shape;
   const rawTiles = source.tiles;
   const previous: MapTile[] | undefined = Array.isArray(rawTiles) ? (rawTiles as MapTile[]) : undefined;
-  const tiles = buildTiles({ shape, cell, imageWidth, imageHeight, animRows }, previous);
+  const tiles = buildTiles({ shape: shapeSafe, cell, imageWidth, imageHeight, animRows, stamp }, previous);
   const tileset: MapTileset = {
     id: typeof source.id === "string" && source.id !== "" ? source.id : `ts${randomUUID().slice(0, 6)}`,
     name: typeof source.name === "string" && source.name !== "" ? source.name : "素材",
@@ -312,9 +333,10 @@ function normalizeTileset(raw: unknown): MapTileset {
     imageWidth,
     imageHeight,
     cell,
-    shape,
+    shape: shapeSafe,
     animRows,
-    variants: variantsOf(shape, cell, imageWidth, imageHeight, animRows),
+    stamp,
+    variants: stamp === undefined ? variantsOf(shapeSafe, cell, imageWidth, imageHeight, animRows) : stamp.frames,
     loop: parseAssetLoop(source.loop),
     clarity: parseClarity(source.clarity),
     fps: parseAssetFps(source.fps),
@@ -333,13 +355,13 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function isTilesetShape(value: unknown): value is TilesetShape {
-  return value === "plain" || value === "a2quad" || value === "corner16";
+  return value === "plain" || value === "a2quad" || value === "corner16" || value === "stamp";
 }
 
 /** 界面 / 工具面传上来的形态字符串收口：不合法**明确报错**，不静默改成别的值。 */
 export function parseTilesetShape(value: unknown): TilesetShape | undefined {
   if (value === undefined || value === null || value === "") return undefined;
-  if (!isTilesetShape(value)) throw new Error(`未知素材形态：${String(value)}（可选 plain / a2quad / corner16）`);
+  if (!isTilesetShape(value)) throw new Error(`未知素材形态：${String(value)}（可选 plain / a2quad / corner16 / stamp）`);
   return value;
 }
 
@@ -594,6 +616,13 @@ export function renderContextFor(project: MapProject, doc: MapDoc): RenderContex
 
 export interface ApplyOpsOutcome {
   changed: number;
+  /**
+   * 本次动到的**整图张数**（新增 + 删除）。
+   *
+   * 用户只点了一格、整张 3×3 却整块没了 —— 不说清楚会被当成 bug，界面拿这个数提示
+   * 「擦掉了一整张 3×3 整图」。
+   */
+  stamps: number;
   skipped: string[];
   /** 内容真的变了的 chunk（**规范** key，0..nx-1）。 */
   dirtyChunks: string[];
@@ -622,10 +651,47 @@ function pickDropKeys(dirtyCanonical: readonly string[], have: readonly string[]
   return out;
 }
 
-function outcomeOf(projectId: string, changed: number, skipped: string[], layout: ReturnType<typeof layoutOf>, cells: Array<{ r: number; c: number }>, have: readonly string[] | undefined, doc: MapDoc): ApplyOpsOutcome {
+function outcomeOf(
+  projectId: string,
+  changed: number,
+  skipped: string[],
+  layout: ReturnType<typeof layoutOf>,
+  cells: Array<{ r: number; c: number }>,
+  have: readonly string[] | undefined,
+  doc: MapDoc,
+  stamps = 0
+): ApplyOpsOutcome {
   const dirtyChunks = cells.length === 0 ? [] : dirtyChunksFor(cells, layout);
   const state = historyState(projectId);
-  return { changed, skipped, dirtyChunks, dropKeys: pickDropKeys(dirtyChunks, have, doc), canUndo: state.canUndo, canRedo: state.canRedo };
+  return { changed, skipped, stamps, dirtyChunks, dropKeys: pickDropKeys(dirtyChunks, have, doc), canUndo: state.canUndo, canRedo: state.canRedo };
+}
+
+/**
+ * 「素材 id → 占几格」：整图 op 只带素材 id，占格由**宿主**从素材上读
+ * （客户端传 cols/rows 等于把印多大交给界面，一旦对不上就是几何错位）。
+ */
+function stampSpecResolver(project: MapProject): (tilesetId: string) => { cols: number; rows: number } | undefined {
+  const byId = new Map(project.tilesets.map((tileset) => [tileset.id, tileset]));
+  return (tilesetId: string) => {
+    const spec = byId.get(tilesetId)?.stamp;
+    return spec === undefined ? undefined : { cols: spec.cols, rows: spec.rows };
+  };
+}
+
+/**
+ * 整图占的格子 + 每格通行性（区域叠加用）。
+ *
+ * 与渲染计划同一个口径：`stampSpan` 算占格、`tileset.stamp.pass` 取三态、坐标取模。
+ * 越界的格（地图改小过）直接跳过。
+ */
+function passCellsOf(project: MapProject, doc: MapDoc): Array<{ r: number; c: number; kind: number }> {
+  if (doc.stamps.length === 0) return [];
+  const context = renderContextFor(project, doc);
+  const out: Array<{ r: number; c: number; kind: number }> = [];
+  for (const stamp of doc.stamps) {
+    for (const cell of stampCellsOf(context, doc, stamp)) out.push({ r: cell.r, c: cell.c, kind: cell.pass });
+  }
+  return out;
 }
 
 function indexCells(indices: readonly number[], doc: MapDoc): Array<{ r: number; c: number }> {
@@ -653,14 +719,14 @@ export async function applyMapOps(projectId: string, ops: readonly unknown[], op
   const project = await readProjectOrThrow(projectId);
   const doc = await theDocOrFresh(projectId);
   const layout = layoutOf(project.grid, doc.cols, doc.rows);
-  const result = applyOps(doc, ops, layout);
+  const result = applyOps(doc, ops, layout, { stampSpecOf: stampSpecResolver(project) });
   // `touched`（标记改名这类不占格的改动）也要记一步撤销 —— 只看 `changed > 0` 的话，
   // 改名会「生效了但撤不回来」。
   if (result.changed > 0 || result.touched === true) {
     pushHistory(projectId, { undo: result.undo, redo: ops as MapOp[], stroke: opts.stroke }, doc);
     scheduleDocWrite(projectId, doc);
   }
-  return outcomeOf(projectId, result.changed, result.skipped, layout, result.dirty, opts.have, doc);
+  return outcomeOf(projectId, result.changed, result.skipped, layout, result.dirty, opts.have, doc, result.stamps);
 }
 
 export async function undoMap(projectId: string, have?: readonly string[]): Promise<ApplyOpsOutcome> {
@@ -676,7 +742,7 @@ export async function undoMap(projectId: string, have?: readonly string[]): Prom
   } else {
     let indices: number[];
     try {
-      indices = revertOps(doc, entry.undo);
+      indices = revertOps(doc, entry.undo, { stampSpecOf: stampSpecResolver(project) });
     } catch {
       // 栈被容量上限裁剪过之后，这一步的逆操作可能已经对不上：**放弃这一步**，
       // 把它从栈里剔掉让下一次撤销落到更早的一步，而不是每次都卡在同一条上
@@ -706,7 +772,7 @@ export async function redoMap(projectId: string, have?: readonly string[]): Prom
   } else {
     let indices: number[];
     try {
-      indices = revertOps(doc, entry.redo);
+      indices = revertOps(doc, entry.redo, { stampSpecOf: stampSpecResolver(project) });
     } catch {
       state.entries.splice(state.index + 1, 1);
       return outcomeOf(projectId, 0, [], layoutOf(project.grid, doc.cols, doc.rows), [], have, doc);
@@ -837,7 +903,7 @@ interface RegisterInput {
    * 在**量到真实尺寸之后**才套上去 —— 校验用同一套 `normalizeCell` / `parseTilesetShape`，
    * 填了不合法的就退回识别结果，不静默改成别的值。
    */
-  overrides?: { cell?: Record<string, unknown>; shape?: unknown; animRows?: unknown; fps?: unknown; clarity?: unknown; scale?: unknown; loop?: unknown };
+  overrides?: { cell?: Record<string, unknown>; shape?: unknown; animRows?: unknown; fps?: unknown; clarity?: unknown; scale?: unknown; loop?: unknown; stamp?: unknown; stampKey?: unknown };
   /**
    * 项目的地图网格：**没给 cell 时只用来「提醒」**，不改自动识别的结果。
    *
@@ -883,9 +949,22 @@ export async function recomposeMapTileset(
   const bigCell = { width: tileset.cell.width * scale, height: tileset.cell.height * scale };
   const frames: Bitmap[] = [];
   for (const file of files) frames.push(trimUniformBorder(await decodeFile(file)).bitmap);
-  const plan = sheetPlanOf(tileset.shape, bigCell, frames.length);
-  const big = composeAssetSheet(frames, plan, "smooth");
-  const fitted = resampleToSize(big, big.width / scale, big.height / scale, clarity);
+  const plan = sheetPlanOf(tileset.shape, bigCell, frames.length, tileset.stamp);
+  /**
+   * 交给 `registerTileset` 的**源图**：
+   * - 整图 = `cols × rows*frames` 的源图（**不烘旋转**）—— 烘焙由 `registerTileset` 做，
+   *   这里先烘一遍的话会被烘第二次（真机翻车过：1024×2560 的图被再压成 256×64）。
+   * - 其它形态 = 照旧缩到最终尺寸。
+   */
+  const payload =
+    tileset.stamp === undefined
+      ? (() => {
+          const big = composeAssetSheet(frames, plan, "smooth");
+          return resampleToSize(big, big.width / scale, big.height / scale, clarity);
+        })()
+      : composeStampSource(frames, tileset.stamp, bigCell, "smooth");
+  /** 尺寸校验用**成品**尺寸：整图是烘完 4 个旋转之后的大小。 */
+  const fitted = tileset.stamp === undefined ? payload : stampTilesetImage(payload, tileset.stamp, tileset.cell, clarity);
   /**
    * ⚠️ **写盘之前**先对尺寸：重烘只能把「本来就是 AI 整理出来的素材」重新烘一遍。
    * 手动导的图集（例如一张 2×2 的普通图 = 4 块）用 `composeMapAsset` 的口径烘出来只有 1 块，
@@ -902,7 +981,9 @@ export async function recomposeMapTileset(
   const rebuilt = await registerTileset(projectId, {
     id: tileset.id,
     name: tileset.name,
-    bytes: encodeBitmap(fitted),
+    // 整图交**源图**（registerTileset 会缩到格子再烘旋转），其它形态交最终图。
+    bytes: encodeBitmap(payload),
+    overrides: tileset.stamp === undefined ? { clarity } : { clarity, stamp: tileset.stamp },
     known: {
       shape: tileset.shape,
       cell: { width: tileset.cell.width, height: tileset.cell.height },
@@ -930,7 +1011,19 @@ export async function importMapTileset(
   projectId: string,
   name: string,
   base64: string,
-  opts: { cell?: { width?: unknown; height?: unknown }; shape?: unknown; animRows?: unknown; fps?: unknown; clarity?: unknown; scale?: unknown; loop?: unknown } = {}
+  opts: {
+    cell?: { width?: unknown; height?: unknown };
+    shape?: unknown;
+    animRows?: unknown;
+    fps?: unknown;
+    clarity?: unknown;
+    scale?: unknown;
+    loop?: unknown;
+    /** 整图规格：`{cols, rows, frames, pass}`（给了它就是整图，形态强制为 stamp）。 */
+    stamp?: unknown;
+    /** 仅整图：导入时抠掉绿幕背景（手动导图用；AI 那条路在整理时已经抠过）。 */
+    stampKey?: unknown;
+  } = {}
 ): Promise<ImportTilesetResult> {
   const project = await readProjectOrThrow(projectId);
   if (base64.trim() === "") throw new Error("图片内容为空。");
@@ -941,7 +1034,7 @@ export async function importMapTileset(
     id: newTilesetId(),
     name: name.trim() === "" ? `素材 ${project.tilesets.length + 1}` : name.trim(),
     bytes,
-    overrides: { cell: opts.cell, shape: opts.shape, animRows: opts.animRows, fps: opts.fps, clarity: opts.clarity, scale: opts.scale, loop: opts.loop },
+    overrides: { cell: opts.cell, shape: opts.shape, animRows: opts.animRows, fps: opts.fps, clarity: opts.clarity, scale: opts.scale, loop: opts.loop, stamp: opts.stamp, stampKey: opts.stampKey },
     projectGrid: { width: project.grid.tileWidth, height: project.grid.tileHeight }
   }, warnings);
   await patchMapProject(projectId, (fresh) => {
@@ -1046,13 +1139,19 @@ export interface ComposeMapAssetInput {
   cell?: { width?: unknown; height?: unknown };
   /** 留空：普通 = 一列变翻页图；整格 / 拼块 = 静态。 */
   animRows?: boolean;
+  /**
+   * 整图（`shape:"stamp"`）占几格。**每张源图 = 一帧的整张画**（不是一格），
+   * 帧数 = `files.length`；区域（每格能不能走）在导入时由用户点选，这里不管。
+   */
+  stampCols?: unknown;
+  stampRows?: unknown;
 }
 
 export interface ComposeMapAssetResult {
   /** 相对项目目录的路径（`ai/<干名>.png`），资源路由是 `map-assets/<项目 id>/<它>`。 */
   file: string;
   name: string;
-  /** `plain` / `corner16` / `a2quad`：界面据此预选「这块素材怎么用」。 */
+  /** `plain` / `corner16` / `a2quad` / `stamp`：界面据此预选「这块素材怎么用」。 */
   shape: TilesetShape;
   cell: { width: number; height: number };
   width: number;
@@ -1062,6 +1161,13 @@ export interface ComposeMapAssetResult {
   /** 拼块的变体数（普通 / 整格为 1）。 */
   variants: number;
   animRows: boolean;
+  /** 仅整图：占几格 / 几帧（回链与「新增素材」据此预填）。 */
+  stamp?: { cols: number; rows: number; frames: number };
+  /**
+   * 仅整图：**已经抠过绿幕**（被判成背景的像素占比；0 = 没抠到）。
+   * 回链带 `keyed=1`，「新增素材」据此把「导入时抠绿幕」取消勾选 —— 免得抠第二遍。
+   */
+  keyed?: number;
   /** 素材图相对地图格子的倍数（1 = 已经是格子大小；>1 = 导入时按清晰度再缩）。 */
   scale: number;
   /** 给人看的提醒（源图比例与目标差很多之类），界面直接显示。 */
@@ -1098,6 +1204,25 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
   const shape = parseTilesetShape(input.shape) ?? "plain";
   const cell = normalizeCell(input.cell) ?? { width: project.grid.tileWidth, height: project.grid.tileHeight };
   /**
+   * 整图：**每张图 = 一帧的整张图**（不是一格），占几格由 `stampCols / stampRows` 定。
+   *
+   * 与另外三种形态的区别：普通 / 整格 / 拼块都是「一块砖或一格内容」，
+   * 整图是「一张画占 N×M 格」—— 所以这里不做任何「从一块砖拼出全部格子」的事，
+   * 只把每帧缩到 `cols × rows` 格、竖排、交给导入端的烘焙（4 个旋转）。
+   */
+  const stampSpec =
+    shape === "stamp"
+      ? parseStampSpec({ cols: input.stampCols, rows: input.stampRows, frames: files.length })
+      : undefined;
+  if (shape === "stamp" && stampSpec === undefined) {
+    throw new Error(`整图要给「占几格」：stampCols / stampRows（2~${STAMP_MAX_CELLS}）。`);
+  }
+  /** 一张整图最多和整张地图一样大（再大地图上也画不全）。 */
+  if (stampSpec !== undefined) {
+    const owning = await readTheDoc(project.id);
+    if (owning !== undefined) assertStampFitsProject(stampSpec, owning.cols, owning.rows);
+  }
+  /**
    * 整格只有 16 块、**没有「帧」这一维**（4×4 全是接法，动画行也是接法行），
    * 所以多给几张只有两种可能：形态判断错了，或者想要「会动的整格」（做不到）。
    * 两种都要说清楚 —— 默默用第一张会浪费一次真实计费的生图，只回一句「张数不对」
@@ -1114,6 +1239,8 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
   const frames: Bitmap[] = [];
   /** 每张源图裁掉了多少边（全部为 0 时说明没白边，不用提）。 */
   const trimmedAmounts: Array<{ file: string; left: number; top: number; right: number; bottom: number }> = [];
+  /** 整图抠绿幕的结果（keyed = 被判成背景的像素占比；0 = 没抠）。 */
+  const keyedAmounts: number[] = [];
   for (const file of files) {
     let info;
     try {
@@ -1130,7 +1257,14 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
      * ① 这一步拿到的是原图，裁剪无损；② 拼成一张素材图之后再裁就只能裁到整张的边，
      * 多帧竖排时中间几帧的白框裁不到。
      */
-    const trimmed = trimUniformBorder(await decodeFile(file));
+    /**
+     * 整图先抠绿幕：它是「立在格子上的物件」，绿幕是模型加的假背景 ——
+     * 留着会在地图上出现一块绿框，而且把本该空着的角落也涂满。
+     * 其它形态不抠（它们的背景就是材质本身）。
+     */
+    const keyed = shape === "stamp" ? keyStampBackground(await decodeFile(file), (rgba, width, height) => keyGreen(rgba, width, height, STAMP_KEY_OPTIONS)) : undefined;
+    if (keyed !== undefined) keyedAmounts.push(keyed.keyed);
+    const trimmed = trimUniformBorder(keyed === undefined ? (keyed === undefined ? await decodeFile(file) : keyed.bitmap) : keyed.bitmap);
     trimmedAmounts.push({ file, left: trimmed.left, top: trimmed.top, right: trimmed.right, bottom: trimmed.bottom });
     frames.push(trimmed.bitmap);
   }
@@ -1146,12 +1280,34 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
   const sourceBlockPx = (() => {
     if (shape === "corner16") return frames[0].width; // 一张 = 一块
     if (shape === "a2quad") return Math.min(frames[0].width, Math.round(frames[0].height / A2_ROWS)); // 一张 = 一列 5 行
+   /**
+     * 整图：一张 = 一整幅画（cols × rows 格）。按「一格平均多少像素」估倍数，
+     * 这样 2048 的图对上 3×3 格时会留到 4 倍，导进 32px 格子也还够细。
+     */
+    if (shape === "stamp") {
+      const spec = stampSpec as NonNullable<typeof stampSpec>;
+      return Math.min(frames[0].width / spec.cols, frames[0].height / spec.rows);
+    }
     return Math.min(frames[0].width, frames[0].height); // 普通：一张 = 一格
   })();
   const scale = Math.max(1, Math.min(MAX_ASSET_SCALE, Math.floor(sourceBlockPx / Math.max(1, Math.min(cell.width, cell.height)))));
   const bigCell = { width: cell.width * scale, height: cell.height * scale };
-  const plan = sheetPlanOf(shape, bigCell, frames.length);
+  const plan = sheetPlanOf(shape, bigCell, frames.length, stampSpec);
   const notes: string[] = [];
+  if (shape === "stamp") {
+    const keyedCount = keyedAmounts.filter((fraction) => fraction > 0).length;
+    if (keyedCount > 0) {
+      const average = keyedAmounts.reduce((sum, value) => sum + value, 0) / keyedAmounts.length;
+      notes.push(
+        `已抠掉绿幕背景（平均 ${Math.round(average * 100)}% 的像素变成透明${keyedCount < frames.length ? `，${keyedCount}/${frames.length} 张抠掉了` : ""}）：` +
+          `整图是「立在格子上的物件」，背景要透明才看得见地砖；留着绿幕的话地图上会多出一块绿框。`
+      );
+    } else {
+      notes.push(
+        "**没检测到绿幕背景**：这次按原图用了（画面会连背景一起印到地图上）。想要背景透明，让模型把背景画成**纯绿**（#00FF00 一类，不要渐变 / 阴影），或者自己用透明 PNG。"
+      );
+    }
+  }
   {
     const touched = trimmedAmounts.filter((entry) => entry.left + entry.top + entry.right + entry.bottom > 0);
     if (touched.length > 0) {
@@ -1167,11 +1323,12 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
    * 源图比例与目标差得多时提醒一句：整格 / 拼块要的是**一块方砖**，长宽比差得多会被
    * 拉伸（内容变形，但砖的性质还在）；普通要的是格子比例。
    */
-  const targetRatio = cell.width / cell.height;
+  /** 整图比的是「整张画」的比例（cols × rows 格），不是一格的方形。 */
+  const targetRatio = stampSpec === undefined ? cell.width / cell.height : (stampSpec.cols * cell.width) / (stampSpec.rows * cell.height);
   const sourceRatios = frames.map((frame) => frame.width / frame.height);
   const worst = sourceRatios.reduce((acc, ratio) => Math.max(acc, Math.abs(Math.log(ratio / targetRatio))), 0);
   if (worst > Math.log(1.6)) {
-    const wanted = `${cell.width}:${cell.height}`;
+    const wanted = stampSpec === undefined ? `${cell.width}:${cell.height}` : `${stampSpec.cols * cell.width}:${stampSpec.rows * cell.height}（整张 ${stampSpec.cols}×${stampSpec.rows} 格）`;
     notes.push(
       `这张图要求的长宽比是 ${wanted}（${shape === "corner16" ? "整格" : shape === "a2quad" ? "拼块" : "普通"}素材的**一块**），模型给的是 ${sourceRatios
         .map((ratio) => ratio.toFixed(2))
@@ -1182,7 +1339,7 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
    * 砖自身的环绕缝：整格 / 拼块的图都是「一块砖铺出去」，砖左右 / 上下接不上自己的话，
    * 地图上每隔一格就会出现一道可见的缝 —— 那正是这次要根除的东西，所以必须量出来说清。
    */
-  if (shape !== "plain") {
+  if (shape !== "plain" && shape !== "stamp") {
     const seams = frames.map((frame) => tileSeamRatios(resampleToSize(frame, Math.max(1, Math.floor(cell.width)), Math.max(1, Math.floor(cell.height)), "smooth")));
     const bad = seams.filter((seam) => Math.max(seam.horizontal, seam.vertical) > 2.2);
     if (bad.length > 0) {
@@ -1198,12 +1355,12 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
    * 大图 → `cell × k` 这一步同样是**缩小**（2048 → 128 也有 16 倍），最近邻一样会走样，
    * 所以这里固定用面积平均；用户选的清晰度作用于最后那一步 `k× → 1×`（导入时）。
    */
-  const sheet = composeAssetSheet(frames, plan, "smooth");
+  const sheet = stampSpec === undefined ? composeAssetSheet(frames, plan, "smooth") : composeStampSource(frames, stampSpec, bigCell, "smooth");
   const name = input.name === undefined || String(input.name).trim() === "" ? "AI 素材" : String(input.name).trim();
   const file = `ai/${safeAssetStem(name)}.png`;
   await mkdir(join(mapProjectDir(project.id), "ai"), { recursive: true });
   await writeFile(mapAssetPath(project.id, file), encodeBitmap(sheet));
-  const shapeLabel = shape === "plain" ? "普通" : shape === "corner16" ? "整格" : "拼块";
+  const shapeLabel = shape === "plain" ? "普通" : shape === "corner16" ? "整格" : shape === "a2quad" ? "拼块" : "整图";
   await patchMapProject(project.id, (fresh) => {
     appendJobLog(
       fresh.logs,
@@ -1224,6 +1381,9 @@ export async function composeMapAsset(input: ComposeMapAssetInput): Promise<Comp
     frameCount: shape === "corner16" ? 1 : frames.length,
     variants: shape === "a2quad" ? frames.length : 1,
     animRows,
+    /** 仅整图：占几格 / 几帧（回链据此预填「占几格」）。 */
+    ...(stampSpec === undefined ? {} : { stamp: { cols: stampSpec.cols, rows: stampSpec.rows, frames: stampSpec.frames } }),
+    ...(stampSpec === undefined ? {} : { keyed: keyedAmounts.reduce((sum, value) => sum + value, 0) / Math.max(1, keyedAmounts.length) }),
     /** 这张素材图是「每格几倍分辨率」：1 = 就是格子大小；>1 = 导入时还要按清晰度缩一次。 */
     scale,
     notes
@@ -1248,6 +1408,21 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
   const loop = parseAssetLoop(input.overrides?.loop);
   const clarity = parseClarity(input.overrides?.clarity);
   const scale = parseAssetScale(input.overrides?.scale);
+  /**
+   * 整图：规格（占几格 / 几帧 / 区域）先解析、先校验 —— 与别的属性一样「先校验再写文件」。
+   * 有规格就**强制**形态为 `stamp`（用户不用再选一次，也避免「选了整图却没给占格」）。
+   */
+  const stamp = parseStampSpec(input.overrides?.stamp);
+  /**
+   * 整图最多和整张地图一样大。校验放在**写盘之前**（与其它属性同一个原则）：
+   * `projectGrid` 是像素，这里用不到 —— 地图格子数从项目里现读（`registerTileset` 有 projectId）。
+   */
+  if (stamp !== undefined) {
+    // 格子数是**地图文档**的属性（`MapDoc.cols/rows`），不在 project.json 里。
+    const owning = await readTheDoc(projectId);
+    if (owning !== undefined) assertStampFitsProject(stamp, owning.cols, owning.rows);
+  }
+  const forcedShape = parseTilesetShape(input.overrides?.shape);
   const ext = sniffImageExt(input.bytes);
   const relative = `tilesets/${input.id}.${ext}`;
   await mkdir(join(mapProjectDir(projectId), "tilesets"), { recursive: true });
@@ -1263,8 +1438,43 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
   // 先落原字节（解码要读盘），`scale > 1` 时再把它换成缩好的那份。
   await writeFile(target, input.bytes);
   let storedBytes = input.bytes;
+  /**
+   * 整图的格子**必须等于地图网格**（整图一次占 N×M 格，格子不符就必然错位），
+   * 所以这里直接拿项目网格当格尺寸，并缩到 `占格 × 帧数` 的目标尺寸再烘焙 4 个旋转。
+   */
+  const stampCell = stamp === undefined ? undefined : (overrideCell ?? { width: input.projectGrid?.width ?? 32, height: input.projectGrid?.height ?? 32 });
   try {
-    if (scale > 1) {
+    // 「导入时抠绿幕」：手动导一张带绿幕的整图时用（AI 那条路在 composeMapAsset 里已经抠过）。
+    const keyedSource = input.overrides?.stampKey === true;
+    if (stamp !== undefined && stampCell !== undefined) {
+      const rawSource = await decodeFile(target);
+      const source = keyedSource ? keyStampBackground(rawSource, (rgba, width, height) => keyGreen(rgba, width, height, STAMP_KEY_OPTIONS)).bitmap : rawSource;
+      if (keyedSource) {
+        // 抠完的源图要写回去：下面 resample + 烘焙读的是盘上这份（也便于排查）。
+        storedBytes = encodeBitmap(source);
+        await writeFile(target, storedBytes);
+      }
+      const targetWidth = Math.max(1, stamp.cols * stampCell.width);
+      const targetHeight = Math.max(1, stamp.rows * stamp.frames * stampCell.height);
+      /**
+       * ⚠️ 长宽比对不上时说一声：占几格填错了（例如 3×3 填成 3×2）时，画面会被拉伸，
+       * 而「拉伸」这件事本身不报错、只体现在肉眼里。
+       */
+      const ratioSource = source.width / Math.max(1, source.height);
+      const ratioTarget = targetWidth / Math.max(1, targetHeight);
+      if (Math.abs(ratioSource - ratioTarget) / Math.max(1e-6, ratioTarget) > 0.05) {
+        warnings.push(
+          `这张图的长宽比（${source.width}×${source.height}）和「占 ${stamp.cols}×${stamp.rows} 格 × ${stamp.frames} 帧」对不上，` +
+            `已经按目标尺寸拉齐 —— 如果画面看起来被压扁/拉长，多半是占格填错了，删掉重新新增一张。`
+        );
+      }
+      void targetWidth;
+      void targetHeight;
+      // 缩到「一格 = 一格地图格子」再烘 4 个旋转（与原地重烘同一条口径）。
+      const baked = stampTilesetImage(source, stamp, stampCell, clarity);
+      storedBytes = encodeBitmap(baked);
+      await writeFile(target, storedBytes);
+    } else if (scale > 1) {
       const source = await decodeFile(target);
       const fitted = resampleToSize(source, Math.max(1, Math.round(source.width / scale)), Math.max(1, Math.round(source.height / scale)), clarity);
       storedBytes = encodeBitmap(fitted);
@@ -1277,8 +1487,8 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
   }
   const size = await probeSize(target, storedBytes);
   const guess = input.known ?? detectLayout(size.width, size.height);
-  const shape = parseTilesetShape(input.overrides?.shape) ?? guess.shape;
-  const cell = overrideCell ?? guess.cell;
+  const shape: TilesetShape = stamp !== undefined ? "stamp" : (forcedShape ?? guess.shape);
+  const cell = stamp !== undefined ? (stampCell ?? guess.cell) : (overrideCell ?? guess.cell);
   const animRows = input.known?.animRows ?? (input.overrides?.animRows === true);
   /** 播放速度：**先校验再写文件**（`parseAssetFps` 对越界值是抛错的，见同一个函数里的注释）。 */
   const fps = parseAssetFps(input.overrides?.fps);
@@ -1298,7 +1508,7 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
     // 所以这里告诉用户「删掉重新新增」，而不是让他去找一个界面上没有的入口。
     warnings.push(`这张图（${size.width}×${size.height}）不是常见瓦片尺寸的整数倍，已按 ${cell.width}×${cell.height} 试切；不对的话删掉它、按你想要的格子大小重新新增一张。`);
   }
-  const tiles = buildTiles({ shape, cell, imageWidth: size.width, imageHeight: size.height, animRows });
+  const tiles = buildTiles({ shape, cell, imageWidth: size.width, imageHeight: size.height, animRows, stamp });
   const tileset: MapTileset = {
     id: input.id,
     name: input.name,
@@ -1308,7 +1518,8 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
     cell,
     shape,
     animRows,
-    variants: variantsOf(shape, cell, size.width, size.height, animRows),
+    stamp,
+    variants: stamp === undefined ? variantsOf(shape, cell, size.width, size.height, animRows) : stamp.frames,
     loop,
     clarity,
     fps,
@@ -1381,10 +1592,21 @@ export async function saveMapTileset(
     const tileset = fresh.tilesets.find((item) => item.id === tilesetId);
     if (tileset === undefined) throw new Error(`素材不存在：${tilesetId}`);
     /**
-     * 内置素材的属性**不允许修改**（这是产品约定：属性在新增那一刻定下来）。
-     * 想换形态 / 格子就自己新增一张；内置的可以整张删掉，再用「恢复默认素材」拿回来。
+     * 内置素材：**表现层属性可以改**（名字 / 播放速度 / 循环方式），**几何不许改**
+     * （形态 / 格子尺寸 —— 那会重切图块、把画过的格子整体错位，而且内置素材是按 32 格画的）。
+     *
+     * 老约定是「内置一律不许改」，但用户要的恰恰是「改名 / 调速度」这类轻量改动，
+     * 所以这里把边界收在「几何」上，而不是「整张图」。
      */
-    if (tileset.builtin === true) throw new Error(`「${tileset.name}」是内置素材，属性不能改 —— 可以删掉它，或者自己新增一张素材。`);
+    const touchesGeometry =
+      patch.cell !== undefined ||
+      patch.shape !== undefined ||
+      (typeof patch.animRows === "boolean" && patch.animRows !== tileset.animRows) ||
+      (nextCell !== undefined && (nextCell.width !== tileset.cell.width || nextCell.height !== tileset.cell.height)) ||
+      (nextShape !== undefined && nextShape !== tileset.shape);
+    if (tileset.builtin === true && touchesGeometry) {
+      throw new Error(`「${tileset.name}」是内置素材：名字 / 播放速度 / 循环方式可以改，形态与格子尺寸不能改 —— 想换就自己新增一张。`);
+    }
     if (typeof patch.name === "string" && patch.name.trim() !== "") tileset.name = patch.name.trim();
     /**
      * 播放速度是**表现层属性**（不动几何、不动序号），所以单独走一条：不触发重切、
@@ -1476,6 +1698,19 @@ async function remapDocToIndices(projectId: string, before: Map<number, string>,
   return { pruned: lost, warnings };
 }
 
+/** 摘掉引用了某张素材的整图，返回张数（素材被删 / 换过切分时用）。 */
+async function dropStampsOfTileset(projectId: string, tilesetId: string): Promise<number> {
+  const doc = await theDocOrFresh(projectId);
+  const keep = doc.stamps.filter((stamp) => stamp.tilesetId !== tilesetId);
+  const dropped = doc.stamps.length - keep.length;
+  if (dropped === 0) return 0;
+  doc.stamps = keep;
+  doc.updatedAt = new Date().toISOString();
+  scheduleDocWrite(projectId, doc);
+  await flushMapDoc(projectId);
+  return dropped;
+}
+
 export async function removeMapTileset(projectId: string, tilesetId: string): Promise<{ removed: string; pruned: number; warnings: string[] }> {
   const project = await readProjectOrThrow(projectId);
   const tileset = project.tilesets.find((item) => item.id === tilesetId);
@@ -1488,7 +1723,14 @@ export async function removeMapTileset(projectId: string, tilesetId: string): Pr
   await rm(mapAssetPath(projectId, tileset.file), { force: true });
   const fresh = await readProjectOrThrow(projectId);
   const remap = await remapDocToIndices(projectId, beforeKeys, indexKeys(fresh.tilesets));
-  return { removed: tileset.name, pruned: remap.pruned, warnings: remap.warnings };
+  /**
+   * 整图是**独立的对象**（不占 `layer.data`），所以 `remapDocToIndices` 清不到它们 ——
+   * 素材没了、整图还在的话渲染器只会报一句「素材不见了」而地图上留个洞。这里一起摘掉。
+   */
+  const droppedStamps = await dropStampsOfTileset(projectId, tilesetId);
+  const warnings = [...remap.warnings];
+  if (droppedStamps > 0) warnings.push(`顺带删掉了 ${droppedStamps} 张用「${tileset.name}」印的整图（素材没了，它们画不出来）。`);
+  return { removed: tileset.name, pruned: remap.pruned, warnings };
 }
 
 // ── 一键生成（纯本地、同种子逐字节确定性）─────────────────────────────────
@@ -1521,14 +1763,26 @@ function normalizeSeed(seed: unknown): number {
 }
 
 async function normalizeTilePool(tiles: readonly number[] | undefined, project: MapProject): Promise<number[]> {
-  const available = flatTiles(project.tilesets).map((tile) => tile.index);
+  /**
+   * 整图**不进随机池**：它一次占 N×M 格、要旋转、还要带区域，按格刷只会得到一堆错位的碎片
+   * （`paint` 里对整图的图块序号本来就会跳过）。用户手选了也剔掉，并留一条警告说明原因。
+   */
+  const flat = flatTiles(project.tilesets);
+  const stampValues = new Set<number>();
+  for (const tileset of project.tilesets) {
+    if (tileset.stamp === undefined) continue;
+    for (const entry of flat) if (entry.tilesetId === tileset.id) stampValues.add(entry.index);
+  }
+  const available = flat.map((tile) => tile.index).filter((index) => !stampValues.has(index));
   if (tiles === undefined || tiles.length === 0) return available;
-  const max = available.length;
-  return tiles.map((value) => {
-    const n = Math.round(Number(value));
-    if (!Number.isFinite(n) || n < 0 || n > max) throw new Error(`图块序号越界：${String(value)}（可选 0..${max}）`);
-    return n;
-  });
+  const max = flat.length;
+  return tiles
+    .map((value) => {
+      const n = Math.round(Number(value));
+      if (!Number.isFinite(n) || n < 0 || n > max) throw new Error(`图块序号越界：${String(value)}（可选 0..${max}）`);
+      return n;
+    })
+    .filter((n) => !stampValues.has(n));
 }
 
 /**
@@ -1552,6 +1806,9 @@ export async function runMapGenerate(
   const pool = await normalizeTilePool(opts.tiles, project);
   const seed = normalizeSeed(opts.seed);
   const warnings: string[] = [];
+  if (pool.length === 0) {
+    warnings.push("没有可铺的图块：整图不能一笔一格地铺（它一次占 N×M 格），先把普通 / 整格 / 拼块素材选进「一键生成」。");
+  }
   const values = generateValues(opts.kind, doc.cols, doc.rows, pool, seed, warnings);
   const cells: Array<{ r: number; c: number; tile: number }> = [];
   for (let r = 0; r < doc.rows; r++) {
@@ -1799,6 +2056,13 @@ export interface PlanQueryResult {
    * 所以这里每次查询都重发一遍。数量级是「几十个」，重发的代价可以忽略。
    */
   markers: PlanMarker[];
+  /**
+   * 通行区域（只在 `pass: true` 时算）：每格一条 `{r,c,kind}`。
+   *
+   * 只覆盖**整图**占的格子 —— 整图是唯一在导入时逐格标过通行性的素材。
+   * 编辑器不画角色，所以它只用来做颜色叠加，帮助作者核对「哪一格是墙脚、哪一格能绕后」。
+   */
+  pass?: Array<{ r: number; c: number; kind: number }>;
   fps: number;
   /** 计划里最快的那条播放速度（客户端据此推动画时钟）。 */
   fpsMax: number;
@@ -1828,6 +2092,8 @@ export async function mapPlan(
      * chunk 标成待重拉，宿主再用真实数据发一遍，画面不会停在预览上。
      */
     pending?: readonly unknown[];
+    /** 要不要顺带回通行区域（界面「区域」开关打开时）。 */
+    pass?: boolean;
   }
 ): Promise<PlanQueryResult> {
   const project = await readProjectOrThrow(projectId);
@@ -1845,7 +2111,7 @@ export async function mapPlan(
     const preview = cloneDoc(doc);
     // 同一个 applyOps：预览与真实编辑**走同一套校验与语义**，不会画出「提交后不一样」的东西
     const previewLayout = layoutOf(project.grid, preview.cols, preview.rows);
-    const overlay = applyOps(preview, o.pending, previewLayout);
+    const overlay = applyOps(preview, o.pending, previewLayout, { stampSpecOf: stampSpecResolver(project) });
     doc = preview;
     for (const key of dirtyChunksFor(overlay.dirty, previewLayout)) forced.add(key);
   }
@@ -1867,6 +2133,7 @@ export async function mapPlan(
     chunks: plan.chunks.filter((chunk) => wanted.has(chunk.key) && (!have.has(chunk.key) || forced.has(chunk.key))),
     legend: plan.legend,
     markers: plan.markers,
+    ...(o.pass === true ? { pass: passCellsOf(project, doc) } : {}),
     fps: plan.fps,
     fpsMax: plan.fpsMax,
     frameCount: plan.frameCount,
@@ -1898,6 +2165,11 @@ export interface MapViewTileset {
   clarity?: AssetClarity;
   /** 素材自己的播放速度（帧/秒）；`undefined` = 跟「设置 → 动画速度」走。 */
   fps?: number;
+  /**
+   * 仅整图：占几格 / 几帧。界面据此把笔刷变成 N×M、右键转 90°、悬停框跟着换。
+   * 每格通行性不在这里（那是导出用的，界面只需要「区域叠加」那一路：`mapPlan({pass:true})`）。
+   */
+  stamp?: { cols: number; rows: number; frames: number };
   /**
    * 素材图的**版本号**（文件 mtime，毫秒）：界面拼 URL 时带上 `?v=rev`。
    *
@@ -2023,10 +2295,11 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
       loop: tileset.loop,
       clarity: tileset.clarity,
       fps: tileset.fps,
+      stamp: tileset.stamp === undefined ? undefined : { cols: tileset.stamp.cols, rows: tileset.stamp.rows, frames: tileset.stamp.frames },
       tileCount: tileset.tiles.length,
       rev: revisions.get(tileset.id),
       builtin: tileset.builtin === true ? true : undefined,
-      reason: layoutFor(tileset.shape, tileset.cell, tileset.imageWidth, tileset.imageHeight).reason,
+      reason: layoutFor(tileset.shape, tileset.cell, tileset.imageWidth, tileset.imageHeight, tileset.stamp).reason,
       palette: paletteFor(tileset, flat)
     })),
     legend: flat.map((tile) => ({ index: tile.index, tilesetId: tile.tilesetId, rect: tile.tile.rect })),
@@ -2058,6 +2331,23 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
  */
 function paletteFor(tileset: MapTileset, flat: readonly FlatTile[]): Array<{ index: number; rect: MapRect }> {
   const mine = flat.filter((tile) => tile.tilesetId === tileset.id);
+  /**
+   * 整图：调色板里**只有一条**，缩略图是**整张图**（frame 0 / 旋转 0 的整块）。
+   *
+   * 它印出来占 N×M 格、要旋转、要带区域 —— 一条一条列出 36 个小格只会让人
+   * 以为「整图可以一格一格刷」（那正是它要解决的问题）。
+   */
+  if (tileset.shape === "stamp" && tileset.stamp !== undefined) {
+    const spec = tileset.stamp;
+    const first = mine.find((tile) => (tile.tile.stamp?.frame ?? 0) === 0 && tile.tile.stamp?.rot === 0 && tile.tile.stamp.r === 0 && tile.tile.stamp.c === 0);
+    if (first === undefined) return [];
+    return [
+      {
+        index: first.index,
+        rect: { x: 0, y: 0, width: spec.cols * tileset.cell.width, height: spec.rows * tileset.cell.height }
+      }
+    ];
+  }
   if (tileset.shape !== "a2quad") {
     /**
      * 「翻页图」（`animRows`）：同一列的每一行是**同一个逻辑块的不同帧**，帧由宿主按全局帧号

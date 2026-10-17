@@ -32,6 +32,7 @@
  */
 
 import { pngSize, type Bitmap } from "./bitmap.js";
+import type { KeyOptions } from "./chroma.js";
 import { A2_SHAPES } from "./mapauto.js";
 
 export interface MapRect {
@@ -41,8 +42,161 @@ export interface MapRect {
   height: number;
 }
 
-/** 图集的切分形态。 */
-export type TilesetShape = "plain" | "a2quad" | "corner16";
+/**
+ * 图集的切分形态。
+ *
+ *   · `plain`    一格一块；`animRows` 时同列各行 = 各帧
+ *   · `corner16` 4×4 = 16 种接法（墙体，带方向：竖段换向、转角斜接）
+ *   · `a2quad`   一格再拆 2×2，5 种形状 × N 个变体（成片地面）
+ *   · `stamp`    **整图**：一张图一次印满 N×M 格（雕像 / 壁画这类多格建筑），4 个旋转已烘在图里
+ */
+export type TilesetShape = "plain" | "a2quad" | "corner16" | "stamp";
+
+/** 整图每边的格数范围（2 格起步才有「多格」的意义，8 格已经是一整栋大建筑）。 */
+export const STAMP_MIN_CELLS = 2;
+/**
+ * 整图占格的**硬上限**：只是一道「别把 9999 传进来」的保险；真正的业务上限是
+ * **地图本身的大小**（一张整图最多和整张地图一样大）—— 那条在导入 / 整理时按项目尺寸校验
+ * （`assertStampFitsProject`）。
+ */
+export const STAMP_MAX_CELLS = 512;
+/** 整图最多几帧（每帧是一整张图，竖着排）。 */
+export const STAMP_FRAMES_MAX = 16;
+
+/**
+ * 整图每格的通行性。
+ *
+ *   · `0` 不可通过（墙脚、烛台、雕像底座）
+ *   · `1` 可通过 · **被人物遮挡**：角色画在它上面（地毯中心、地面装饰）
+ *   · `2` 可通过 · **遮挡人物**：它画在角色上面（雕像上身 —— 主角从后面走过去会被挡住）
+ */
+export type StampPass = 0 | 1 | 2;
+
+export const STAMP_PASS_LABELS: Record<StampPass, string> = {
+  0: "不可通过",
+  1: "可通过（被人物遮挡）",
+  2: "可通过（遮挡人物）"
+};
+
+/** 整图的规格：占几格、几帧、每格通行性。 */
+export interface StampSpec {
+  /** 宽（格） */
+  cols: number;
+  /** 高（格） */
+  rows: number;
+  /** 帧数（每帧一整张图，竖排存在素材图里） */
+  frames: number;
+  /** 每格通行性，长度 = `cols * rows`，行优先 */
+  pass: StampPass[];
+}
+
+/**
+ * 归一「整图」规格：不认识的值**抛错**（不静默夹）。
+ *
+ * 返回 `undefined` 表示「这不是整图」（没给规格），与 `parseAssetFps` 的约定一致。
+ */
+export function parseStampSpec(raw: unknown): StampSpec | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const source = raw as Record<string, unknown>;
+  const int = (value: unknown): number | undefined => {
+    const n = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+    return Number.isFinite(n) ? Math.round(n) : undefined;
+  };
+  const cols = int(source.cols);
+  const rows = int(source.rows);
+  if (cols === undefined && rows === undefined) return undefined;
+  for (const [label, value] of [["宽", cols], ["高", rows]] as const) {
+    if (value === undefined || value < STAMP_MIN_CELLS || value > STAMP_MAX_CELLS) {
+      throw new Error(`整图的${label}要在 ${STAMP_MIN_CELLS}~${STAMP_MAX_CELLS} 格之间，收到：${String(value)}`);
+    }
+  }
+  const frames = int(source.frames) ?? 1;
+  if (frames < 1 || frames > STAMP_FRAMES_MAX) {
+    throw new Error(`整图的帧数要在 1~${STAMP_FRAMES_MAX} 之间，收到：${String(source.frames)}`);
+  }
+  const rawPass = Array.isArray(source.pass) ? (source.pass as unknown[]) : [];
+  const pass: StampPass[] = [];
+  for (let i = 0; i < (cols as number) * (rows as number); i++) {
+    const value = rawPass[i] === undefined ? 0 : Math.round(Number(rawPass[i]));
+    if (value !== 0 && value !== 1 && value !== 2) {
+      throw new Error(`整图的区域只有三种：0 不可通过 / 1 可通过（被人物遮挡）/ 2 可通过（遮挡人物）—— 第 ${i + 1} 格收到：${String(rawPass[i])}`);
+    }
+    pass.push(value as StampPass);
+  }
+  return { cols: cols as number, rows: rows as number, frames, pass };
+}
+
+/**
+ * 整图在某个旋转下占几格（90° / 270° 时长宽互换）—— 旋转是顺时针。
+ */
+/**
+ * 整图不能比地图大（一张整图最多占满整张地图）。
+ *
+ * 为什么不用固定的「最多 8 格」：用户要做「一张图铺满整张地图」的城门 / 大地图插画，8 格根本不够。
+ * 真正的上限是地图自己 —— 比地图还大的整图永远画不全，只会让人以为是 bug。
+ */
+export function assertStampFitsProject(spec: { cols: number; rows: number }, mapCols: number, mapRows: number): void {
+  if (spec.cols > mapCols || spec.rows > mapRows) {
+    throw new Error(
+      `整图比地图还大：这张是 ${spec.cols}×${spec.rows} 格，而地图只有 ${mapCols}×${mapRows} 格。一张整图最多和整张地图一样大。`
+    );
+  }
+}
+
+export function stampSpan(spec: { cols: number; rows: number }, rot: number): { cols: number; rows: number } {
+  const turn = ((Math.round(rot) % 4) + 4) % 4;
+  return turn % 2 === 1 ? { cols: spec.rows, rows: spec.cols } : { cols: spec.cols, rows: spec.rows };
+}
+
+/** 烘焙后的一块（一帧的一个旋转）。 */
+export interface StampBlock {
+  frame: number;
+  rot: number;
+  /** 该块在素材图里从第几行开始（单位：格） */
+  y: number;
+  cols: number;
+  rows: number;
+}
+
+/**
+ * 烘焙排版：**每帧 4 个旋转，逐块竖排**。
+ *
+ * 顺序是 `frame 0 (rot 0,1,2,3) → frame 1 (rot 0,1,2,3) …`；宽度取 `max(cols, rows)` 格
+ * （竖着的块比横着的块窄一点，右边留透明），这样非方形整图（4×3）也能放进同一张图。
+ */
+export function stampBlocks(spec: StampSpec): StampBlock[] {
+  const out: StampBlock[] = [];
+  let y = 0;
+  for (let frame = 0; frame < spec.frames; frame++) {
+    for (let rot = 0; rot < 4; rot++) {
+      const span = stampSpan(spec, rot);
+      out.push({ frame, rot, y, cols: span.cols, rows: span.rows });
+      y += span.rows;
+    }
+  }
+  return out;
+}
+
+/**
+ * **源图**有多少格宽 / 高（还**没有**烘旋转）。
+ *
+ * ⚠️ 这一条是给「AI 整理」用的：`composeMapAsset` 只负责把每帧拼成 `cols × rows*frames` 的
+ * 源图，**旋转由导入端烘**。两边都烘过一次的话，导入会把「4 个旋转叠起来的图」当成一帧再压成
+ * 一格高 —— 真机就是这么翻的车（`ai/…png` 是 1024×2560，导入压成 256×64，地图上全是横条纹）。
+ */
+export function stampSourceCells(spec: StampSpec): { cols: number; rows: number } {
+  return { cols: spec.cols, rows: spec.rows * spec.frames };
+}
+
+/** 烘焙后的素材图有多少格宽 / 高。 */
+export function stampSheetCells(spec: StampSpec): { cols: number; rows: number } {
+  const blocks = stampBlocks(spec);
+  const last = blocks[blocks.length - 1];
+  return {
+    cols: Math.max(spec.cols, spec.rows),
+    rows: last === undefined ? spec.rows : last.y + last.rows
+  };
+}
 
 export interface MapTile {
   /** 由矩形派生的稳定 id（`t{x}_{y}`）。 */
@@ -55,6 +209,11 @@ export interface MapTile {
   shape?: number;
   variant?: number;
   frame?: number;
+  /**
+   * 仅 stamp（整图）：这一块是「第几帧 / 旋转了几档 / 在整图里的第几行第几列」。
+   * 渲染时按它把一格的 9 张图块摆到各自的格子上。
+   */
+  stamp?: { frame: number; rot: number; r: number; c: number };
 }
 
 export interface MapTileset {
@@ -95,6 +254,8 @@ export interface MapTileset {
   builtin?: boolean;
   /** a2quad：变体数；普通：动画帧数（`animRows` 时 = 行数），否则 1。 */
   variants: number;
+  /** 仅 stamp：占几格、几帧、每格通行性。 */
+  stamp?: StampSpec;
   tiles: MapTile[];
 }
 
@@ -204,10 +365,26 @@ export function layoutFor(
   shape: TilesetShape,
   cell: { width: number; height: number },
   imageWidth: number,
-  imageHeight: number
+  imageHeight: number,
+  /** 仅 stamp：占几格 / 几帧（决定切多少块）。 */
+  stamp?: StampSpec
 ): TileLayoutGuess {
   if (!Number.isInteger(cell.width) || !Number.isInteger(cell.height) || cell.width < 1 || cell.height < 1) {
     throw new Error(`图块尺寸必须是正整数，收到 ${cell.width}×${cell.height}`);
+  }
+  if (shape === "stamp") {
+    // 整图：切分数由规格决定（帧 × 4 旋转 × 占格），具体块阵见 `buildTiles`。
+    const spec = stamp;
+    if (spec === undefined) throw new Error("整图素材缺规格（占几格 / 几帧）——请重新导入这张图。");
+    const size = stampSheetCells(spec);
+    return {
+      cell: { width: cell.width, height: cell.height },
+      shape,
+      cols: size.cols,
+      rows: size.rows,
+      count: size.cols * size.rows,
+      reason: `整图 ${spec.cols}×${spec.rows} 格、${spec.frames} 帧（含 4 个旋转）`
+    };
   }
   if (shape === "a2quad") {
     if (cell.width % 2 !== 0 || cell.height % 2 !== 0) {
@@ -278,6 +455,8 @@ export function buildTiles(
     imageWidth: number;
     imageHeight: number;
     animRows?: boolean;
+    /** 仅 stamp：占几格、几帧（决定切多少块）。 */
+    stamp?: StampSpec;
   },
   previous: readonly MapTile[] = []
 ): MapTile[] {
@@ -299,6 +478,31 @@ export function buildTiles(
     return tile;
   };
 
+  if (shape === "stamp") {
+    /**
+     * 整图：块 = 帧 × 4 个旋转 × 占格。每块都带 `stamp` 元数据，
+     * 渲染时按「第几帧、转几档、第几行第几列」把一张图摆到 N×M 个格子上。
+     * 几何全部来自 `stampBlocks`（与烘焙 `bakeStampSheet` 同一份排版）。
+     */
+    const spec = input.stamp;
+    if (spec === undefined) throw new Error("整图素材缺规格（占几格 / 几帧）——请重新导入这张图。");
+    const tiles: MapTile[] = [];
+    for (const block of stampBlocks(spec)) {
+      for (let r = 0; r < block.rows; r++) {
+        for (let c = 0; c < block.cols; c++) {
+          const tile = tileOf(
+            { x: c * cell.width, y: (block.y + r) * cell.height, width: cell.width, height: cell.height },
+            undefined,
+            undefined,
+            block.frame
+          );
+          tile.stamp = { frame: block.frame, rot: block.rot, r, c };
+          tiles.push(tile);
+        }
+      }
+    }
+    return tiles;
+  }
   if (shape === "a2quad") {
     if (cell.width % 2 !== 0 || cell.height % 2 !== 0) {
       throw new Error(`A2 拼块要求逻辑块尺寸是偶数（小格 = 逻辑块 / 2），收到 ${cell.width}×${cell.height}`);
@@ -917,6 +1121,104 @@ export function rotate90(frame: Bitmap, clockwise = true): Bitmap {
   return { width, height, rgba };
 }
 
+/**
+ * **烘焙整图**：把「每帧一整张」的源图排成 `4 旋转 × 帧` 的素材图。
+ *
+ * 为什么把 4 个旋转烘进去、而不是让渲染器转：地图的绘制契约是「一格一次
+ * `drawImage(rect → 目标格)`」，宿主的光栅化器（导出 PNG）也走同一条。旋转若发生在
+ * 绘制时，客户端与宿主两边都要各写一套旋转几何，还要改黄金对照——烘进图里则只多占
+ * 3 倍的图高，其余一行不动（调色板、legend、导出、客户端全都不用知道旋转这回事）。
+ *
+ * 源图要求：`cols × (rows × frames)` 格，帧自上而下排（与翻页图同一个约定）；
+ * 尺寸不足 / 多出来的部分由 `resampleToSize` 的调用方负责（本函数按目标块切）。
+ */
+export function bakeStampSheet(source: Bitmap, spec: StampSpec, cell: { width: number; height: number }, clarity: AssetClarity = "sharp"): Bitmap {
+  const cellW = Math.max(1, Math.floor(cell.width));
+  const cellH = Math.max(1, Math.floor(cell.height));
+  const frameW = spec.cols * cellW;
+  const frameH = spec.rows * cellH;
+  const size = stampSheetCells(spec);
+  const sheet: Bitmap = { width: size.cols * cellW, height: size.rows * cellH, rgba: Buffer.alloc(size.cols * cellW * size.rows * cellH * 4) };
+  for (let frame = 0; frame < spec.frames; frame++) {
+    // 逐帧取源图（源图可能刚被缩到目标尺寸，这里按格切，避免整图重采样两次）。
+    const frameBitmap: Bitmap = { width: frameW, height: frameH, rgba: Buffer.alloc(frameW * frameH * 4) };
+    for (let y = 0; y < frameH; y++) {
+      const fromY = frame * frameH + y;
+      if (fromY >= source.height) break;
+      source.rgba.copy(frameBitmap.rgba, y * frameW * 4, (fromY * source.width) * 4, (fromY * source.width + Math.min(frameW, source.width)) * 4);
+    }
+    for (let rot = 0; rot < 4; rot++) {
+      let turned = frameBitmap;
+      for (let step = 0; step < rot; step++) turned = rotate90(turned, true);
+      const block = stampBlocks(spec).find((item) => item.frame === frame && item.rot === rot);
+      if (block === undefined) continue;
+      blitInto(turned, sheet, 0, block.y * cellH);
+    }
+  }
+  void clarity;
+  return sheet;
+}
+
+/**
+ * 「每帧一整张」的几张图 → 一张**源图**（`cols × rows*frames` 格，**不烘旋转**）。
+ *
+ * 分工：这里只负责「把每帧缩成一整块、竖着排好」；**4 个旋转由导入端烘**（`stampTilesetImage`）。
+ * 两边都烘的话，导入会把「4 个旋转叠起来的那张图」当成一帧压扁 —— 真机踩过。
+ */
+export function composeStampSource(frames: readonly Bitmap[], spec: StampSpec, cell: { width: number; height: number }, clarity: AssetClarity = "smooth"): Bitmap {
+  if (frames.length === 0) throw new Error("没有可整理的帧");
+  return stackFrames(frames, { width: spec.cols * Math.max(1, Math.floor(cell.width)), height: spec.rows * Math.max(1, Math.floor(cell.height)) }, clarity);
+}
+
+/**
+ * 抠掉绿幕背景（**只给整图用**）：把「纯绿背景」变成透明。
+ *
+ * 为什么整图要抠、别的形态不用：普通 / 整格 / 拼块都是**铺满一格**的材质（背景就是内容），
+ * 而整图是「立在格子上的物件」—— 绿幕是模型为了让人看清而加的假背景，留着就会在地图上
+ * 出现一块绿色方框；而且它会让整图**占满** N×M 格，连本来该空着的角落也涂绿。
+ *
+ * 判定用 `chroma.keyGreen` 的 `backgroundFraction`：
+ * - `< 0.02`：几乎没抠到东西（模型没画绿幕），**原样返回**并说明；
+ * - `> 0.98`：整张都被判成背景（画面里没有主体），同样原样返回 —— 不能把图抠成空白。
+ */
+/**
+ * 整图抠像的参数：**比角色抠像严格得多**，而且**关掉空间分割**。
+ *
+ * 真机教训（用户那张城门）：模型的「背景」其实是一片草地 + 泥土路，绿的优势值只有 26~59；
+ * 角色的默认参数（`keyLow 14`）会把它当绿幕吃掉 82%，而空间分割（`bgTolerance 40`）会从四边
+ * 灌进去把墙内部的阴影也吃掉 —— 城墙被啃成一堆碎片。
+ * 所以整图只认「**饱和纯绿**」（优势值 ≥ 80 才开始透明、≥ 150 全透明），不分割；
+ * 不够绿就原样保留并说明（宁可不抠，也不能把画面啃坏）。
+ */
+export const STAMP_KEY_OPTIONS: KeyOptions = {
+  keyLow: 80,
+  keyHigh: 150,
+  despill: 0.65,
+  edgeShrink: 0,
+  bgTolerance: 0
+};
+
+export function keyStampBackground(frame: Bitmap, keyGreenFn?: (rgba: Buffer, width: number, height: number) => { rgba: Buffer; backgroundFraction: number }): { bitmap: Bitmap; keyed: number } {
+  if (keyGreenFn === undefined) return { bitmap: frame, keyed: 0 };
+  const result = keyGreenFn(frame.rgba, frame.width, frame.height);
+  const fraction = result.backgroundFraction;
+  if (!Number.isFinite(fraction) || fraction < 0.02 || fraction > 0.98) return { bitmap: frame, keyed: 0 };
+  return { bitmap: { width: frame.width, height: frame.height, rgba: result.rgba }, keyed: fraction };
+}
+
+/**
+ * **源图 → 成品素材图**：先缩到「一格 = 一格地图格子」，再烘 4 个旋转。
+ *
+ * 导入（`registerTileset`）与原地重烘（`recomposeMapTileset`）共用这一条口径 ——
+ * 少一处不烘，那一处的整图就永远只有一个朝向。
+ */
+export function stampTilesetImage(source: Bitmap, spec: StampSpec, cell: { width: number; height: number }, clarity: AssetClarity = "smooth"): Bitmap {
+  const cellW = Math.max(1, Math.floor(cell.width));
+  const cellH = Math.max(1, Math.floor(cell.height));
+  const base = resampleToSize(source, spec.cols * cellW, spec.rows * spec.frames * cellH, clarity);
+  return bakeStampSheet(base, spec, { width: cellW, height: cellH }, clarity);
+}
+
 /** 整格的位序：北 1 / 东 2 / 南 4 / 西 8。 */
 const CORNER_SIDES = { N: 1, E: 2, S: 4, W: 8 } as const;
 
@@ -1124,8 +1426,22 @@ export interface AssetSheetPlan {
   rows: number;
 }
 
-/** 按形态算目标几何。`frames` 对普通是帧数、对拼块是变体数；整格固定 4×4。 */
-export function sheetPlanOf(shape: TilesetShape, cell: { width: number; height: number }, frames: number): AssetSheetPlan {
+/**
+ * 按形态算目标几何。`frames` 对普通是帧数、对拼块是变体数；整格固定 4×4；
+ * 整图由 `stamp` 规格决定（帧 × 4 旋转 × 占格）。
+ */
+export function sheetPlanOf(
+  shape: TilesetShape,
+  cell: { width: number; height: number },
+  frames: number,
+  stamp?: StampSpec
+): AssetSheetPlan {
+  if (shape === "stamp") {
+    if (stamp === undefined) throw new Error("整图缺规格（占几格 / 几帧）");
+    // 源图 = `cols × rows*frames`（**不含**旋转烘焙：那是导入端的事）。
+    const size = stampSourceCells(stamp);
+    return { shape, cell: { width: Math.max(1, Math.floor(cell.width)), height: Math.max(1, Math.floor(cell.height)) }, cols: size.cols, rows: size.rows };
+  }
   const width = Math.max(1, Math.floor(cell.width));
   const height = Math.max(1, Math.floor(cell.height));
   const count = Math.max(1, Math.floor(frames) || 1);

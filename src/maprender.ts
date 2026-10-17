@@ -31,7 +31,7 @@
 
 import { encodePng } from "./png.js";
 import { type Bitmap } from "./bitmap.js";
-import { cellIndex, type MapDoc } from "./mapdoc.js";
+import { cellIndex, type MapDoc, type MapStamp } from "./mapdoc.js";
 import {
   cellCenter,
   cellTopLeft,
@@ -45,7 +45,7 @@ import {
   type MapLayout
 } from "./mapgeom.js";
 import { a2QuadrantShapes, corner16Mask, nearestMask, type NeighborAt } from "./mapauto.js";
-import { applyLoop, flatTiles, type FlatTile, type MapRect, type MapTileset } from "./maptiles.js";
+import { applyLoop, flatTiles, stampSpan, type FlatTile, type MapRect, type MapTileset } from "./maptiles.js";
 
 /** 单张导出图的最大像素数（超过就明确拒绝，而不是把进程 OOM 掉）。 */
 export const MAX_RENDER_PIXELS = 64_000_000;
@@ -172,6 +172,8 @@ export function planBounds(context: RenderContext, doc: MapDoc): PlanBounds {
 
 /** 计划生成期间的告警收集（去重 + 计数，避免大地图刷出上万条）。 */
 interface WarnSink {
+  /** 整图引用了不存在（或不是整图）的素材。 */
+  missingStamp: Set<string>;
   /** 地图里引用、但展平后找不到的图块序号。 */
   missing: Set<number>;
   /** 缺掩码回退：`tilesetId|wanted|used` → 格子数。 */
@@ -405,6 +407,68 @@ function a2Ops(
  * - chunk 之间按行优先的 chunk 序拼接，chunk 内按 行 → 列 → 层 稳定排序：
  *   客户端照序 `drawImage` 即可与宿主逐像素同构。
  */
+/** 整图图块表的键：第几帧 / 转几档 / 第几行第几列。 */
+function stampKey(frame: number, rot: number, r: number, c: number): string {
+  return `${frame}|${rot}|${r}|${c}`;
+}
+
+/** 一张整图素材的索引：`frame|rot|r|c` → **1-based 全局序号**（`base` = 该素材在 flatTiles 里的起点）。 */
+function stampTileIndex(tileset: MapTileset, base: number): Map<string, number> {
+  const index = new Map<string, number>();
+  /**
+   * ⚠️ `base` 是这块素材**第 0 块的全局序号**（`tilesetBaseIndex`，已经是从 1 开始的），
+   * `local` 是块在素材里的 **0-based** 下标 —— 所以这里是 `base + local`，**不要再加 1**。
+   *
+   * 真机翻车（用户那张城门）：写成 `base + local + 1` 之后每一格都画成了**下一块** ——
+   * 整张图整体左移一格（「左边少了一块」），最右一格则越过 rot0 的块边界、取到了 rot1 那个
+   * 「竖着的」块（「右边多了点东西」）。这类错位不报任何警告，只能靠黄金对照拦住：
+   * `verify-map-pipeline` 第 22 节会把计划里每条 op 的矩形取出来，逐格和素材图比像素。
+   */
+  tileset.tiles.forEach((tile, local) => {
+    const meta = tile.stamp;
+    if (meta === undefined) return;
+    index.set(stampKey(meta.frame, meta.rot, meta.r, meta.c), base + local);
+  });
+  return index;
+}
+
+/**
+ * 一张整图**占到的每一格** + 每格通行性（导出与「区域叠加」共用同一份几何）。
+ *
+ * - 坐标**取模**落到地图内（与渲染一致：跨接缝的整图每格各自环绕）；
+ * - 通行性取**转前**那一格（转的是图，角色站的位置跟着转）；
+ * - 素材不见了 / 不是整图 → 空表（调用方给警告）。
+ */
+export function stampCellsOf(
+  context: RenderContext,
+  doc: MapDoc,
+  stamp: MapStamp
+): Array<{ r: number; c: number; pass: number }> {
+  const tileset = context.tilesets.find((entry) => entry.id === stamp.tilesetId);
+  const spec = tileset?.stamp;
+  if (spec === undefined) return [];
+  const span = stampSpan(spec, stamp.rot);
+  const out: Array<{ r: number; c: number; pass: number }> = [];
+  for (let dr = 0; dr < span.rows; dr++) {
+    for (let dc = 0; dc < span.cols; dc++) {
+      const r = ((stamp.r + dr) % doc.rows + doc.rows) % doc.rows;
+      const c = ((stamp.c + dc) % doc.cols + doc.cols) % doc.cols;
+      const source = stampSourceCell(spec, stamp.rot, dr, dc);
+      out.push({ r, c, pass: spec.pass[source.r * spec.cols + source.c] ?? 0 });
+    }
+  }
+  return out;
+}
+
+/** 旋转后 (r,c) 对应转前的哪一格（顺时针 90°）。 */
+function stampSourceCell(spec: { cols: number; rows: number }, rot: number, r: number, c: number): { r: number; c: number } {
+  const turn = ((Math.round(rot) % 4) + 4) % 4;
+  if (turn === 1) return { r: spec.rows - 1 - c, c: r };
+  if (turn === 2) return { r: spec.rows - 1 - r, c: spec.cols - 1 - c };
+  if (turn === 3) return { r: c, c: spec.cols - 1 - r };
+  return { r, c };
+}
+
 export function buildPlan(
   context: RenderContext,
   doc: MapDoc,
@@ -424,12 +488,21 @@ export function buildPlan(
     layout,
     baseIndex: tilesetBaseIndex(context.tilesets),
     tilesetById: new Map(context.tilesets.map((tileset) => [tileset.id, tileset])),
-    sink: { missing: new Set(), fallback: new Map(), unmasked: new Set(), a2Layout: new Set(), a2Range: new Set() }
+    sink: { missing: new Set(), fallback: new Map(), unmasked: new Set(), a2Layout: new Set(), a2Range: new Set(), missingStamp: new Set() }
   };
 
   // 每个 op 额外记下**未 wrap** 的 (rr,cc)：op 上的 r/c 是规范坐标，用来排序的话
   // 环绕视口里会把地图的另一头排到前面（屏幕上的行序就乱了）。
   const buckets = new Map<string, Array<{ op: PlanOp; rr: number; cc: number }>>();
+  const push = (op: PlanOp, rr: number, cc: number): void => {
+    const key = chunkKey(chunkOf(rr, cc));
+    let list = buckets.get(key);
+    if (list === undefined) {
+      list = [];
+      buckets.set(key, list);
+    }
+    list.push({ op, rr, cc });
+  };
   for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
     if (keepLayers !== undefined && !keepLayers.has(layerIndex)) continue;
     const layer = doc.layers[layerIndex];
@@ -438,13 +511,66 @@ export function buildPlan(
       for (let cc = range.c0; cc < range.c1; cc++) {
         const ops = cellOpsAt(env, layer.id, layerIndex, rr, cc);
         if (ops.length === 0) continue;
-        const key = chunkKey(chunkOf(rr, cc));
-        let list = buckets.get(key);
-        if (list === undefined) {
-          list = [];
-          buckets.set(key, list);
+        for (const op of ops) push(op, rr, cc);
+      }
+    }
+    /**
+     * 整图（多格印花）：**同一层里画在图块之后**（它是立在格子上的物件）。
+     *
+     * 一格一条 op，`t` 指向「该帧 / 该旋转 / 第几行第几列」的那块图 —— 旋转已经烘在素材图里，
+     * 运行期不转任何东西；坐标与像素位置都由这里算好，客户端照旧只 drawImage。
+     */
+    for (const stamp of doc.stamps) {
+      if (stamp.layerId !== layer.id) continue;
+      const tileset = env.tilesetById.get(stamp.tilesetId);
+      const spec = tileset?.stamp;
+      if (tileset === undefined || spec === undefined) {
+        env.sink.missingStamp.add(stamp.tilesetId);
+        continue;
+      }
+      const span = stampSpan(spec, stamp.rot);
+      const base = env.baseIndex.get(tileset.id) ?? 0;
+      const index = stampTileIndex(tileset, base);
+      /** 一格的帧序（frames > 1 时才展开）。 */
+      const cycleOf = (r: number, c: number): number[] | undefined => {
+        if (spec.frames <= 1) return undefined;
+        const frames: number[] = [];
+        for (let frame = 0; frame < spec.frames; frame++) {
+          const tile = index.get(stampKey(frame, stamp.rot, r, c));
+          if (tile === undefined) break;
+          frames.push(tile);
         }
-        for (const op of ops) list.push({ op, rr, cc });
+        return frames.length > 1 ? applyLoop(frames, tileset.loop ?? "forward") : undefined;
+      };
+      for (let dr = 0; dr < span.rows; dr++) {
+        for (let dc = 0; dc < span.cols; dc++) {
+          const rr = stamp.r + dr;
+          const cc = stamp.c + dc;
+          if (rr < range.r0 || rr >= range.r1 || cc < range.c0 || cc >= range.c1) continue;
+          const cell = wrapCell(env.layout, rr, cc);
+          if (cell.r < 0 || cell.c < 0 || cell.r >= doc.rows || cell.c >= doc.cols) continue;
+          const cycle = cycleOf(dr, dc);
+          const first = index.get(stampKey(0, stamp.rot, dr, dc));
+          if (first === undefined && cycle === undefined) {
+            env.sink.missingStamp.add(stamp.tilesetId);
+            continue;
+          }
+          const position = cellTopLeft(env.layout, rr, cc, env.layout.stepX, env.layout.stepY);
+          const op: PlanOp = {
+            l: layerIndex,
+            r: cell.r,
+            c: cell.c,
+            t: cycle === undefined ? (first as number) : cycle[0],
+            x: position.x,
+            y: position.y,
+            a: 1
+          };
+          if (cycle !== undefined) {
+            op.cycle = cycle;
+            if (tileset.fps !== undefined) op.fps = tileset.fps;
+          }
+          push(op, rr, cc);
+        }
       }
     }
   }
@@ -463,6 +589,7 @@ export function buildPlan(
   for (const id of env.sink.unmasked) warnings.push(`图集「${nameOf(id)}」是自动连接形态，但没有一块带掩码，统一按第一块绘制。`);
   for (const id of env.sink.a2Layout) warnings.push(`图集「${nameOf(id)}」的 A2 小格排列与预期（小格行优先）不一致，拼出来的地块可能错位。`);
   for (const id of env.sink.a2Range) warnings.push(`图集「${nameOf(id)}」的变体 / 形状数超过了素材里的小格，画不出来的帧被丢掉了。`);
+  for (const id of env.sink.missingStamp) warnings.push(`地图里引用了「${nameOf(id)}」的整图，但那块素材不见了（或已经不是整图），这些整图没有画出来。`);
 
   const chunks: PlanChunk[] = [];
   const cycles: number[][] = [];

@@ -55,6 +55,30 @@ export interface MapMarker {
   name: string;
 }
 
+/**
+ * 一个「整图」实例（多格印花）：雕像 / 壁画这类**一贴就占 N×M 格**的物件。
+ *
+ * ## 为什么单独存、不写进 `layer.data`
+ *
+ * 一格的 `data` 只装得下一个图块序号，而整图要记「参考点 + 旋转 + 是哪一个素材」。
+ * 写进格子里就只能存代表序号，撤销 / 旋转 / 删除都要反查——旧模块那三份缓存（buildings /
+ * buildingGround / map.pixel）就是这条路翻车的。整图是**自己的源数据**：位置、旋转、
+ * 属于哪张素材都只在这里；占哪些格子由 `stampSpan` 现算（派生数据不落盘）。
+ *
+ * 一格的通行性（墙脚 / 地毯 / 绕后）不在这里，它在素材上（`MapTileset.stamp.pass`）——
+ * 同一张素材印十次，通行性当然一样。
+ */
+export interface MapStamp {
+  id: string;
+  tilesetId: string;
+  layerId: string;
+  /** 参考点（左上格，规范坐标）。 */
+  r: number;
+  c: number;
+  /** 顺时针旋转档数：0 / 1 / 2 / 3。 */
+  rot: number;
+}
+
 export interface MapDoc {
   id: string;
   name: string;
@@ -65,8 +89,16 @@ export interface MapDoc {
   data: Record<string, number[]>;
   /** 标记点（数组顺序 = 编号顺序）。 */
   markers: MapMarker[];
+  /** 整图实例（多格印花；图层数据里没有它们）。 */
+  stamps: MapStamp[];
   createdAt: string;
   updatedAt: string;
+}
+
+/** 整图旋转后占几格（顺时针 90° 的长宽互换）—— 与 `maptiles.stampSpan` 同一口径。 */
+function stampSpanOf(spec: { cols: number; rows: number }, rot: number): { cols: number; rows: number } {
+  const turn = ((Math.round(rot) % 4) + 4) % 4;
+  return turn % 2 === 1 ? { cols: spec.rows, rows: spec.cols } : { cols: spec.cols, rows: spec.rows };
 }
 
 export function cellIndex(doc: { cols: number }, r: number, c: number): number {
@@ -99,7 +131,7 @@ export function createMapDoc(id: string, name: string, cols: number, rows: numbe
   const layers = defaultLayers();
   const data: Record<string, number[]> = {};
   for (const layer of layers) data[layer.id] = emptyData(cols, rows);
-  return { id, name, cols, rows, layers, data, markers: [], createdAt: now, updatedAt: now };
+  return { id, name, cols, rows, layers, data, markers: [], stamps: [], createdAt: now, updatedAt: now };
 }
 
 /** 读盘 / 外部输入 → 合法文档：补缺字段、把图层数据裁齐到 `cols × rows`。 */
@@ -162,6 +194,7 @@ export function normalizeMapDoc(raw: unknown, fallbackId: string): MapDoc | unde
     layers,
     data,
     markers: normalizeMarkers(input.markers, cols, rows),
+    stamps: normalizeStamps(input.stamps, cols, rows),
     createdAt: typeof input.createdAt === "string" ? input.createdAt : now,
     updatedAt: typeof input.updatedAt === "string" ? input.updatedAt : now
   };
@@ -199,12 +232,49 @@ function normalizeMarkers(raw: unknown, cols: number, rows: number): MapMarker[]
   return out;
 }
 
+/**
+ * 读盘 / 外部输入 → 合法整图表。
+ *
+ * - 缺字段（老文档 @3）→ 空表，不抛；
+ * - **越界的丢掉**（地图被改小过）：留着的话它有一半格子在地图外面，导出坐标也对不上；
+ * - 引用了不存在的素材 / 图层 → 也丢掉（素材被删过）——这一步在 `mapgen` 拿到 project 之后
+ *   还会再核一次（`pruneStamps`），这里只保证结构与坐标合法。
+ */
+function normalizeStamps(raw: unknown, cols: number, rows: number): MapStamp[] {
+  if (!Array.isArray(raw)) return [];
+  const used = new Set<string>();
+  const out: MapStamp[] = [];
+  let seq = 0;
+  const nextId = (): string => {
+    seq++;
+    while (used.has(`s${seq}`)) seq++;
+    return `s${seq}`;
+  };
+  for (const item of raw) {
+    const entry = item as Record<string, unknown> | null;
+    const r = Math.round(Number(entry?.r));
+    const c = Math.round(Number(entry?.c));
+    const rot = Math.round(Number(entry?.rot));
+    if (!Number.isFinite(r) || !Number.isFinite(c)) continue;
+    if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+    const tilesetId = typeof entry?.tilesetId === "string" ? entry.tilesetId : "";
+    const layerId = typeof entry?.layerId === "string" ? entry.layerId : "";
+    if (tilesetId === "" || layerId === "") continue;
+    const given = typeof entry?.id === "string" && entry.id !== "" ? entry.id : "";
+    const id = given !== "" && !used.has(given) ? given : nextId();
+    used.add(id);
+    out.push({ id, tilesetId, layerId, r, c, rot: Number.isFinite(rot) ? ((rot % 4) + 4) % 4 : 0 });
+  }
+  return out;
+}
+
 export function cloneDoc(doc: MapDoc): MapDoc {
   const data: Record<string, number[]> = {};
   for (const [key, value] of Object.entries(doc.data)) data[key] = [...value];
   return {
     ...doc,
     layers: doc.layers.map((layer) => ({ ...layer })),
+    stamps: doc.stamps.map((stamp) => ({ ...stamp })),
     data,
     markers: doc.markers.map((marker) => ({ ...marker }))
   };
@@ -325,6 +395,17 @@ export type MapOp =
    * - `rename`：不占格、不脏任何块（名字只出现在列表与小标签里），但它**真的改了文档**，
    *   所以靠 `ApplyResult.touched` 让上游照样记一步撤销。
    */
+  /**
+   * 整图（多格印花）。**一次 op 就是一整张图**（不是逐格）：
+   *
+   * - `stampPlace`：参考点 + 旋转档；占几格由素材规格决定（客户端不许自己算，也不许传 cols/rows）。
+   *   已经压在同一层别的整图上时，先盖的那些会被替换掉（同一步撤销能整张还原）。
+   * - `stampRemove`：只认 `id`（下标会因为别的删除而变）。
+   *
+   * 两者都**不动** `layer.data` 里的图块：整图是立在格子上的物件，下面的地砖还在。
+   */
+  | { kind: "stampPlace"; layerId: string; tilesetId: string; r: number; c: number; rot: number; id?: string }
+  | { kind: "stampRemove"; id: string }
   | { kind: "marker"; op: "add"; id?: string; r: number; c: number; name?: string; at?: number }
   | { kind: "marker"; op: "remove"; id: string }
   | { kind: "marker"; op: "move"; id: string; r: number; c: number }
@@ -339,6 +420,11 @@ export interface ApplyResult {
   skipped: string[];
   /** 被改动的格子（**规范**坐标），上游用 `dirtyChunksFor` 换算脏 chunk。 */
   dirty: Array<{ r: number; c: number }>;
+  /**
+   * 本次动到的**整图张数**（新增 + 删除）。界面上「擦掉了一整张 3×3 整图」这句
+   * 就是靠它说的 —— 用户只点了一格，实际整张都没了，不说清楚会以为是 bug。
+   */
+  stamps: number;
   /** 逆操作（撤销就是把它们按原顺序应用回去）。 */
   undo: MapOp[];
 }
@@ -388,13 +474,23 @@ function tileValue(input: unknown): number {
  * `layout` 是**双层保险**：上游（`mapPlan` / 客户端命中测试）已经给过规范坐标，
  * 这里再按 `layout` wrap 一次。`layout.wrap` 为 false 时越界就是越界，直接跳过。
  */
-export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout): ApplyResult {
+export interface ApplyOpsOptions {
+  /**
+   * 查「这张素材占几格」：整图 op 只带素材 id，**占格必须由宿主（素材本身）决定** ——
+   * 让客户端传 cols/rows 等于把「印多大」交给界面，一旦对不上就是几何错位。
+   */
+  stampSpecOf?: (tilesetId: string) => { cols: number; rows: number } | undefined;
+}
+
+export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout, options: ApplyOpsOptions = {}): ApplyResult {
   const changed = new Set<number>();
   const dirty = new Map<number, { r: number; c: number }>();
   const undo: MapOp[] = [];
   const skipped: string[] = [];
   /** 有不占格的改动（标记改名）。它不进 `changed`，但文档真的变了。 */
   let touched = false;
+  /** 动到的整图张数（新增 + 删除）。 */
+  let stampsTouched = 0;
 
   const canonical = (r: number, c: number): { r: number; c: number } | undefined => {
     if (!Number.isInteger(r) || !Number.isInteger(c)) return undefined;
@@ -443,6 +539,42 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
     }
   };
 
+  /** 整图占的格子（规范坐标的索引）。规格缺失时返回空表 —— 那张素材多半被删了。 */
+  const stampCellIndices = (stamp: MapStamp): number[] => {
+    const spec = options.stampSpecOf?.(stamp.tilesetId);
+    if (spec === undefined) return [];
+    const span = stampSpanOf(spec, stamp.rot);
+    const out: number[] = [];
+    for (let dr = 0; dr < span.rows; dr++) {
+      for (let dc = 0; dc < span.cols; dc++) {
+        const cell = canonical(stamp.r + dr, stamp.c + dc);
+        if (cell === undefined) continue;
+        out.push(cell.r * doc.cols + cell.c);
+      }
+    }
+    return out;
+  };
+
+  /**
+   * 落笔前把压在这些格子上的整图摘掉（同一图层）。
+   *
+   * 为什么连「值没变」也要摘：橡皮擦一格时那一格的图块值本来就是 0，`paintValue` 里
+   * `previous === tile` 会直接跳过 —— 不在这里先摘的话，用户对着雕像按橡皮什么都不发生。
+   */
+  const dropStampsAt = (layerId: string, indices: ReadonlySet<number>): void => {
+    if (doc.stamps.length === 0 || indices.size === 0) return;
+    for (let i = doc.stamps.length - 1; i >= 0; i--) {
+      const stamp = doc.stamps[i];
+      if (stamp.layerId !== layerId) continue;
+      const cells = stampCellIndices(stamp);
+      if (!cells.some((index) => indices.has(index))) continue;
+      doc.stamps.splice(i, 1);
+      undo.push({ kind: "stampPlace", layerId: stamp.layerId, tilesetId: stamp.tilesetId, r: stamp.r, c: stamp.c, rot: stamp.rot, id: stamp.id });
+      for (const index of cells) markCell(Math.floor(index / doc.cols), index % doc.cols);
+      stampsTouched++;
+    }
+  };
+
   for (const raw of ops) {
     const op = raw as MapOp | null;
     if (op === null || typeof op !== "object" || typeof (op as { kind?: unknown }).kind !== "string") {
@@ -451,6 +583,69 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
     }
     if (op.kind === "marker") {
       touched = applyMarkerOp(doc, op, { canonical, markCell, markNumberingFrom }, skipped, undo) || touched;
+      continue;
+    }
+    if (op.kind === "stampRemove") {
+      const at = typeof op.id === "string" ? doc.stamps.findIndex((stamp) => stamp.id === op.id) : -1;
+      if (at < 0) {
+        skipped.push(`没有这张整图：${String(op.id)}`);
+        continue;
+      }
+      const stamp = doc.stamps[at];
+      const cells = stampCellIndices(stamp);
+      doc.stamps.splice(at, 1);
+      undo.push({ kind: "stampPlace", layerId: stamp.layerId, tilesetId: stamp.tilesetId, r: stamp.r, c: stamp.c, rot: stamp.rot, id: stamp.id });
+      for (const index of cells) markCell(Math.floor(index / doc.cols), index % doc.cols);
+      stampsTouched++;
+      continue;
+    }
+    if (op.kind === "stampPlace") {
+      if (typeof op.layerId !== "string" || doc.data[op.layerId] === undefined) {
+        skipped.push(`图层不存在：${String(op.layerId)}`);
+        continue;
+      }
+      const spec = options.stampSpecOf?.(String(op.tilesetId));
+      if (spec === undefined) {
+        skipped.push(`整图素材不存在或不是整图：${String(op.tilesetId)}`);
+        continue;
+      }
+      const start = canonical(op.r, op.c);
+      if (start === undefined) {
+        skipped.push(`越界格 (${op.r},${op.c})`);
+        continue;
+      }
+      const span = stampSpanOf(spec, op.rot);
+      if (span.cols > doc.cols || span.rows > doc.rows) {
+        skipped.push(`整图 ${span.cols}×${span.rows} 格比地图还大`);
+        continue;
+      }
+      // 整图的每一格都得落在地图内（不环绕时 wrapCell 会原样返回，这里逐格核）。
+      const cells: number[] = [];
+      let outside = false;
+      for (let dr = 0; dr < span.rows && !outside; dr++) {
+        for (let dc = 0; dc < span.cols && !outside; dc++) {
+          const cell = canonical(start.r + dr, start.c + dc);
+          if (cell === undefined) outside = true;
+          else cells.push(cell.r * doc.cols + cell.c);
+        }
+      }
+      if (outside) {
+        skipped.push(`整图放不下（参考点 ${start.r},${start.c} 处会越界）`);
+        continue;
+      }
+      // 同层已有整图压在这些格子上：替换掉（与「后画的在上」一致）。
+      dropStampsAt(op.layerId, new Set(cells));
+      const used = new Set(doc.stamps.map((stamp) => stamp.id));
+      let id = typeof op.id === "string" && op.id !== "" ? op.id : "";
+      if (id === "" || used.has(id)) {
+        let seq = doc.stamps.length + 1;
+        while (used.has(`s${seq}`)) seq++;
+        id = `s${seq}`;
+      }
+      doc.stamps.push({ id, tilesetId: String(op.tilesetId), layerId: op.layerId, r: start.r, c: start.c, rot: ((Math.round(Number(op.rot)) % 4) + 4) % 4 });
+      undo.push({ kind: "stampRemove", id });
+      for (const index of cells) markCell(Math.floor(index / doc.cols), index % doc.cols);
+      stampsTouched++;
       continue;
     }
     if (typeof op.layerId !== "string" || doc.data[op.layerId] === undefined) {
@@ -462,6 +657,10 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
         skipped.push("paint 缺 cells");
         continue;
       }
+      dropStampsAt(op.layerId, new Set(op.cells.map((cell) => {
+        const target = cell === null || typeof cell !== "object" ? undefined : canonical(cell.r, cell.c);
+        return target === undefined ? -1 : target.r * doc.cols + target.c;
+      }).filter((index) => index >= 0)));
       const before = paintValue(op.layerId, op.cells);
       if (before.length > 0) undo.push({ kind: "paint", layerId: op.layerId, cells: before });
     } else if (op.kind === "fill") {
@@ -489,6 +688,10 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
         cells.push({ r: cell.r, c: cell.c, tile });
         stack.push({ r: cell.r + 1, c: cell.c }, { r: cell.r - 1, c: cell.c }, { r: cell.r, c: cell.c + 1 }, { r: cell.r, c: cell.c - 1 });
       }
+      dropStampsAt(op.layerId, new Set(cells.map((cell) => {
+        const target = canonical(cell.r, cell.c);
+        return target === undefined ? -1 : target.r * doc.cols + target.c;
+      }).filter((index) => index >= 0)));
       const before = paintValue(op.layerId, cells);
       if (before.length > 0) undo.push({ kind: "paint", layerId: op.layerId, cells: before });
     } else if (op.kind === "rect") {
@@ -510,6 +713,10 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
           if (onEdge || op.filled !== false) cells.push({ r, c, tile });
         }
       }
+      dropStampsAt(op.layerId, new Set(cells.map((cell) => {
+        const target = canonical(cell.r, cell.c);
+        return target === undefined ? -1 : target.r * doc.cols + target.c;
+      }).filter((index) => index >= 0)));
       const before = paintValue(op.layerId, cells);
       if (before.length > 0) undo.push({ kind: "paint", layerId: op.layerId, cells: before });
     } else if (op.kind === "replace") {
@@ -521,6 +728,10 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
         if (data[index] !== from) continue;
         cells.push({ r: Math.floor(index / doc.cols), c: index % doc.cols, tile: to });
       }
+      dropStampsAt(op.layerId, new Set(cells.map((cell) => {
+        const target = canonical(cell.r, cell.c);
+        return target === undefined ? -1 : target.r * doc.cols + target.c;
+      }).filter((index) => index >= 0)));
       const before = paintValue(op.layerId, cells);
       if (before.length > 0) undo.push({ kind: "paint", layerId: op.layerId, cells: before });
     } else {
@@ -531,6 +742,7 @@ export function applyOps(doc: MapDoc, ops: readonly unknown[], layout: MapLayout
   return {
     changed: changed.size,
     touched,
+    stamps: stampsTouched,
     skipped,
     dirty: [...dirty.values()].sort((a, b) => a.r - b.r || a.c - b.c),
     undo: undo.reverse()
@@ -646,9 +858,9 @@ export function nextMarkerId(doc: MapDoc): string {
  * 契约里没有 `layout` 参数 —— 逆操作记下来的坐标本来就是**规范坐标**，这里补一个
  * 只为了能复用 `applyOps`；wrap 对规范坐标是恒等变换，所以用哪个网格都不影响结果。
  */
-export function revertOps(doc: MapDoc, undo: readonly MapOp[]): number[] {
+export function revertOps(doc: MapDoc, undo: readonly MapOp[], options: ApplyOpsOptions = {}): number[] {
   const layout = layoutOf(DEFAULT_GRID, doc.cols, doc.rows);
-  return applyOps(doc, undo, layout).dirty.map((cell) => cell.r * doc.cols + cell.c);
+  return applyOps(doc, undo, layout, options).dirty.map((cell) => cell.r * doc.cols + cell.c);
 }
 
 /** 用到的图块序号（删图集 / 改切分前查引用）。 */
