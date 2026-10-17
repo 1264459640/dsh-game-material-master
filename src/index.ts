@@ -1158,7 +1158,14 @@ export class GameStudioGateway extends TypertRemoteService {
     const result = await mapgen.importMapTileset(asString(input.projectId), asString(input.name), asString(input.data), {
       cell: input.cell,
       shape: input.shape,
-      animRows: input.animRows
+      animRows: input.animRows,
+      // 素材自己的播放速度：0.5~30 帧/秒；留空 = 跟全局（校验在 mapgen.parseAssetFps 里）。
+      fps: input.fps,
+      // 把大图缩到格子时的清晰度与倍数（校验在 mapgen.parseClarity / parseAssetScale 里）。
+      clarity: input.clarity,
+      scale: input.scale,
+      // 会动的素材怎么循环（校验在 mapgen.parseAssetLoop 里）。
+      loop: input.loop
     });
     return { tilesets: result.tilesets.map(mapTilesetBrief), warnings: result.warnings };
   }
@@ -1167,13 +1174,35 @@ export class GameStudioGateway extends TypertRemoteService {
     const result = await mapgen.importSampleTileset(asString(asRecord(payload).projectId));
     return { tilesets: result.tilesets.map(mapTilesetBrief), warnings: result.warnings };
   }
+  /**
+   * 整理 AI 生成的那几张图 → 一张落在 `ai/` 的待确认素材图。
+   *
+   * `shape`（普通 / 整格 / 拼块）是**生图前就定好的计划**：宿主按它把图规整成地图
+   * 编辑器要的几何。只整理、不导入 —— 素材属性在新增那一刻定死，所以交给用户在
+   * 「新增素材」窗口里确认一次（界面按返回的 openUrl 把图预选好、用法也预选好）。
+   */
+  async composeMapAsset(payload: any) {
+    const input = asRecord(payload);
+    const files = Array.isArray(input.files) ? input.files.map((file: unknown) => asString(file)) : [];
+    return mapgen.composeMapAsset({
+      projectId: asString(input.projectId),
+      name: asString(input.name),
+      files,
+      shape: input.shape,
+      cell: input.cell,
+      animRows: input.animRows === true ? true : input.animRows === false ? false : undefined
+    });
+  }
   async saveMapTileset(payload: any) {
     const input = asRecord(payload);
     const result = await mapgen.saveMapTileset(asString(input.projectId), asString(input.tilesetId), {
       name: typeof input.name === "string" ? input.name : undefined,
       cell: input.cell === undefined ? undefined : { width: Number(asRecord(input.cell).width), height: Number(asRecord(input.cell).height) },
       shape: mapgen.parseTilesetShape(input.shape),
-      animRows: typeof input.animRows === "boolean" ? input.animRows : undefined
+      animRows: typeof input.animRows === "boolean" ? input.animRows : undefined,
+      // `null` = 清掉自己的速度（跟全局）；`undefined` = 这次不动它。
+      fps: input.fps === undefined ? undefined : input.fps === null ? null : Number(input.fps),
+      loop: input.loop
     });
     return { tileset: mapTilesetBrief(result.tileset), warnings: result.warnings };
   }
@@ -1536,7 +1565,12 @@ export class GameStudioGateway extends TypertRemoteService {
     const jobId = asString(asRecord(payload).jobId);
     const job = await imagegen.readImageJob(jobId);
     if (job === undefined) throw new Error(`任务不存在：${jobId}`);
-    return { ...job, assetBase: `${ROUTE_PREFIX}/image-assets/${jobId}/` };
+    /**
+     * `dir` 是**本机绝对目录**：对话里的 agent 要把生成结果交给别的模块
+     * （例如 `composeMapAsset` 整理地图素材），而 `assetBase` 是给浏览器用的 URL。
+     * 产物绝对路径 = `dir + "/" + item.file`（`out/img-00.png`）。
+     */
+    return { ...job, dir: imagegen.imageJobDir(jobId), assetBase: `${ROUTE_PREFIX}/image-assets/${jobId}/` };
   }
 
   async deleteImageJob(payload) {
@@ -1643,7 +1677,16 @@ export class GameStudioGateway extends TypertRemoteService {
     const jobId = asString(asRecord(payload).jobId);
     const job = await seqgen.readSequenceJob(jobId);
     if (job === undefined) throw new Error(`任务不存在：${jobId}`);
-    return { ...job, tasks: seqgen.listSequenceTasks(jobId), assetBase: `${ROUTE_PREFIX}/sequence-assets/${jobId}/` };
+    /**
+     * `dir` 与本机绝对路径的用法同 `getImageJob`：抽帧产物的绝对路径 =
+     * `dir + "/" + file`，其中 `file` 取 `frames.files` 里那串相对路径。
+     */
+    return {
+      ...job,
+      dir: seqgen.sequenceJobDir(jobId),
+      tasks: seqgen.listSequenceTasks(jobId),
+      assetBase: `${ROUTE_PREFIX}/sequence-assets/${jobId}/`
+    };
   }
 
   async deleteSequenceJob(payload) {
@@ -2291,6 +2334,12 @@ function mapTilesetBrief(tileset: {
   shape: string;
   animRows: boolean;
   variants: number;
+  /** 会动的素材怎么循环（正放 / 倒放 / 来回）。 */
+  loop?: string;
+  /** 导入时用的清晰度（图像已烘进去，这里只作显示 / 排查）。 */
+  clarity?: string;
+  /** 素材自己的播放速度（帧/秒）；省略 = 跟「设置 → 动画速度」走。 */
+  fps?: number;
   /** 内置素材：界面上要标「自带」，也不允许改属性。 */
   builtin?: boolean;
   tiles: readonly unknown[];
@@ -2305,6 +2354,9 @@ function mapTilesetBrief(tileset: {
     shape: tileset.shape,
     animRows: tileset.animRows,
     variants: tileset.variants,
+    loop: tileset.loop,
+    clarity: tileset.clarity,
+    fps: tileset.fps,
     builtin: tileset.builtin === true ? true : undefined,
     tileCount: tileset.tiles.length
   };
@@ -2330,15 +2382,18 @@ const SERVABLE_RIG_DIRS = new Set(["source", "sheet", "parts", "layout", "rig", 
 /** 地图地块：模板、原始生成、规整产物、装饰、地图、导出包。 */
 const SERVABLE_TILE_DIRS = new Set(["template", "raw", "cell", "decor", "map", "export"]);
 /**
- * 地图编辑器（模块六）：素材原图、验收预览图、导出包。
+ * 地图编辑器（模块六）：素材原图、验收预览图、导出包、AI 素材暂存区。
  *
- * ⚠️ 这个白名单、`AssetScope` 类型、`resolveAssetTarget` 的分支、`SCOPES`
- * 数组**四处必须同步**：漏一处就是 403，而界面只表现为「图裂了」。
+ * **唯一真源在 `mapgen.SERVABLE_MAP_DIRS`**（建项目时的目录清单读的也是它）——
+ * 两处各写一份的话，漏掉的那条只会以「图裂了 / 403」的形式出现，不报错。
+ *
+ * ⚠️ 另一半仍要同步：`AssetScope` 类型、`resolveAssetTarget` 的分支、`SCOPES`
+ * 数组（那三处是 **scope** 级；`ai/` 是子目录级，只比对第一段路径，加一行就够）。
  *
  * 单项目 = 单张地图之后 `maps/` 目录不存在了（地图就是项目根下的 `map.json`，
  * 不通过资源路由读）。
  */
-const SERVABLE_MAP_DIRS = new Set(["tilesets", "preview", "export"]);
+const SERVABLE_MAP_DIRS = mapgen.SERVABLE_MAP_DIRS;
 
 type AssetScope = "assets" | "image-assets" | "sequence-assets" | "rig-assets" | "tile-assets" | "map-assets";
 

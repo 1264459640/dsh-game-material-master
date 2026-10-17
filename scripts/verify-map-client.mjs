@@ -23,7 +23,7 @@
  * 用法：node scripts/verify-map-client.mjs [lib/client.js]
  */
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -544,6 +544,29 @@ try {
     hidden: false
   };
   globalThis.URL = URL;
+  /**
+   * `FileReader` 的最小桩：Node 有 `File` / `Blob`，但没有 `FileReader`，而面板读完文件
+   * 才把 base64 交给宿主（`readBase64`）—— 少了它，「新增素材」这条路永远停在上传之前，
+   * 自检就只能验到「草稿填了什么」，验不到「真的发了什么」。
+   */
+  globalThis.FileReader = class {
+    constructor() {
+      this.result = null;
+      this.onload = null;
+      this.onerror = null;
+    }
+    readAsDataURL(file) {
+      void file
+        .arrayBuffer()
+        .then((buffer) => {
+          this.result = `data:${file.type || "image/png"};base64,${Buffer.from(buffer).toString("base64")}`;
+          if (typeof this.onload === "function") this.onload();
+        })
+        .catch((error) => {
+          if (typeof this.onerror === "function") this.onerror(error);
+        });
+    }
+  };
 
   try {
     new Function("window", "require", source)(windowStub, (name) => {
@@ -778,6 +801,10 @@ try {
     saves: [],
     samples: 0,
     imports: 0,
+    /** 每次 `createMapProject` 的入参（要看界面有没有把「一格多大」传下去）。 */
+    created: [],
+    /** 每次 `importMapTileset` 带过去的属性（格子 / 用法 / 会动吗 / 动画速度）。 */
+    importOptions: [],
     generates: [],
     exports: 0,
     exportPayloads: [],
@@ -786,7 +813,10 @@ try {
   };
   const apiRaw = {
     listMapProjects: async () => ({ projects: await G.listMapProjects() }),
-    createMapProject: async ({ name, cols, rows }) => G.mapView(await G.createMapProject(name, { cols, rows })),
+    createMapProject: async ({ name, cols, rows, grid }) => {
+      apiLog.created.push({ name, cols, rows, grid });
+      return G.mapView(await G.createMapProject(name, { cols, rows, grid }));
+    },
     getMapProject: async ({ projectId: id }) => G.mapView(await G.readMapProject(id)),
     deleteMapProject: async ({ projectId: id }) => {
       await G.deleteMapProject(id);
@@ -798,9 +828,14 @@ try {
       });
       return { ok: true };
     },
-    importMapTileset: async (payload) => {
+    importMapTileset: async ({ projectId: id, name, data, ...opts }) => {
       apiLog.imports++;
-      return G.importMapTileset(payload.projectId, payload.name, payload.data);
+      /**
+       * ⚠️ 属性（格子 / 用法 / 会动吗 / 动画速度）要**原样转给宿主** —— 假桥少转一个字段，
+       * 「界面选了什么」就永远验不到（真实宿主的 schema 也是这么收的）。
+       */
+      apiLog.importOptions.push(opts);
+      return G.importMapTileset(id, name, data, opts);
     },
     importSampleTileset: async ({ projectId: id }) => {
       apiLog.samples++;
@@ -1779,6 +1814,158 @@ try {
     check("撤销 / 重做走的是宿主（apiLog 里各记了一次）", apiLog.undos >= 1 && apiLog.redos >= 1, `undo=${apiLog.undos} redo=${apiLog.redos}`);
   }
 
+  // ══ 8b. 素材自己的播放速度 ══════════════════════════════════════════════
+  section("8b) 动画播放速度（新增时能设，而且画面真的按它走）");
+  {
+    /**
+     * ★ 用户的原话：「我希望新增素材时能设置动画播放速度」。
+     *
+     * ① 对话框里真有这一项，且只对**会动的**素材出现（静态素材显示了只会让人以为没生效）；
+     * ② 素材列表上看得见它（不然用户不知道这张自己跑多快）；
+     * ③ **画面真的按它走**：同一张地图上，一张 8 帧/秒的素材与一张跟全局（1 帧/秒）的素材，
+     *    同样走 1 秒，前者必须走 8 帧、后者只走 1 帧。少了 ③，速度就只是存了个数。
+     */
+    byClass(tree, "SPR_mapEdTopBtn")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-add-open")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const addDlgOf = (mounted) => collect(mounted, (node) => node.props?.["data-testid"] === "map-add-dialog")[0];
+    const fpsOf = (mounted) => collect(addDlgOf(mounted), (node) => node.props?.["data-testid"] === "map-add-fps")[0];
+    check(
+      "静态素材（普通 + 不动）不显示「动画速度」与「循环方式」",
+      addDlgOf(tree) !== undefined &&
+        fpsOf(tree) === undefined &&
+        collect(addDlgOf(tree), (node) => typeof node.props?.["data-loop"] === "string").length === 0
+    );
+    collect(addDlgOf(tree), (node) => node.props?.["data-anim"] === "rows")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("勾「翻页图」后出现「动画速度」，默认跟设置里的那条走", fpsOf(tree) !== undefined && fpsOf(tree).props.value === "", String(fpsOf(tree)?.props.value));
+    check(
+      "可选值：跟全局 / 1 / 2 / 4 / 6 / 8 / 12 帧每秒",
+      (fpsOf(tree).props.children ?? []).map((option) => String(option.props.value)).join(",") === ",1,2,4,6,8,12",
+      (fpsOf(tree).props.children ?? []).map((option) => String(option.props.value)).join(",")
+    );
+    /**
+     * 「循环方式」：勾了「翻页图」之后出现，默认正放，三个选项都在；
+     * 点「倒放」/「来回」按钮真的切过去。
+     */
+    const loopPicker = (mounted) => collect(addDlgOf(mounted), (node) => typeof node.props?.["data-loop"] === "string");
+    check("勾「翻页图」后出现「循环方式」：正放 / 倒放 / 来回 三个选项", loopPicker(tree).length === 3, `${loopPicker(tree).length} 个`);
+    check("默认是「正放」", loopPicker(tree).some((node) => node.props["data-loop"] === "forward" && node.props["data-on"] === "true"));
+    loopPicker(tree)[1].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("点「倒放」之后按钮切过去（data-on 真的动了）", loopPicker(tree).some((node) => node.props["data-loop"] === "reverse" && node.props["data-on"] === "true"));
+    loopPicker(tree)[2].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("点「来回」之后也切过去", loopPicker(tree).some((node) => node.props["data-loop"] === "pingpong" && node.props["data-on"] === "true"));
+    collect(addDlgOf(tree), (node) => node.props?.["data-shape"] === "a2quad")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("用法选「拼块」时也显示（拼块的动画靠变体）", fpsOf(tree) !== undefined && loopPicker(tree).length === 3);
+    fpsOf(tree).props.onChange({ target: { value: "6" } });
+    tree = await renderTree(() => MapModule({ api }));
+    check("选了 6 帧/秒：选择框跟着走，说明也换成「自己按 6 帧/秒播」", fpsOf(tree).props.value === "6" && /6 帧\/秒/.test(textOf(addDlgOf(tree))));
+    collect(addDlgOf(tree), (node) => node.props?.["data-testid"] === "map-add-cancel")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("取消后对话框关掉（别挡住后面的画布断言）", addDlgOf(tree) === undefined);
+
+    // ── 造一张 8 帧/秒的拼块素材（3 个变体），和内置道具（5 帧、跟全局 1 帧/秒）比快慢 ──
+    const fastDir = join(HOME, "client-fast");
+    await mkdir(fastDir, { recursive: true });
+    const fastFiles = [];
+    for (let index = 0; index < 3; index++) {
+      const rgba = Buffer.alloc(32 * 32 * 4);
+      for (let pixel = 0; pixel < 32 * 32; pixel++) {
+        rgba[pixel * 4] = 20 + index * 90;
+        rgba[pixel * 4 + 1] = 100;
+        rgba[pixel * 4 + 2] = 210;
+        rgba[pixel * 4 + 3] = 255;
+      }
+      const file = join(fastDir, `cf${index}.png`);
+      await writeFile(file, encodePng(rgba, 32, 32));
+      fastFiles.push(file);
+    }
+    const fastSheet = await G.composeMapAsset({ projectId, name: "客户端快水", files: fastFiles, shape: "a2quad" });
+    const fastBytes = await readFile(G.mapAssetPath(projectId, fastSheet.file));
+    const importedFast = await G.importMapTileset(projectId, "客户端快水", fastBytes.toString("base64"), { shape: "a2quad", cell: { width: 32, height: 32 }, fps: 8 });
+    check("夹具：8 帧/秒的拼块素材建出来了（3 个变体）", importedFast.tilesets[0].fps === 8 && importedFast.tilesets[0].variants === 3, JSON.stringify({ fps: importedFast.tilesets[0].fps, variants: importedFast.tilesets[0].variants }));
+
+    const viewNow = await G.mapView(await G.readMapProject(projectId));
+    const layer0 = viewNow.layers[0].id;
+    const fastEntry = viewNow.tilesets.find((entry) => entry.id === importedFast.tilesets[0].id);
+    const slowEntry = viewNow.tilesets.find((entry) => entry.animRows === true);
+    check("夹具：内置道具是「跟全局」的那张（没有 fps）", slowEntry !== undefined && slowEntry.fps === undefined);
+    /**
+     * 画在**当前视口里**（外面画了也不会进这一份计划）。取相机左上角往里两格，
+     * 两个格子错开三格，免得互相盖住。
+     */
+    const camNow = windowStub.__mapCamera;
+    const viewR = Math.min(30, Math.floor(camNow.pan.y / 32) + 2);
+    const viewC = Math.min(30, Math.floor(camNow.pan.x / 32) + 2);
+    const fastCell = { r: viewR, c: viewC };
+    const slowCell = { r: Math.min(31, viewR + 3), c: Math.min(31, viewC + 3) };
+    await G.applyMapOps(projectId, [
+      { kind: "paint", layerId: layer0, cells: [{ ...fastCell, tile: fastEntry.palette[0].index }] },
+      { kind: "paint", layerId: layer0, cells: [{ ...slowCell, tile: slowEntry.palette[0].index }] }
+    ]);
+    // 素材变了（多了一张）→ 客户端的计划身份里带着素材签名，重挂一次就得拿到新计划。
+    tree = await renderTree(() => MapModule({ api }));
+    await tickTimers();
+    tree = await renderTree(() => MapModule({ api }));
+    const hostPlanFast = await G.mapPlan(projectId, { view: apiLog.plans[apiLog.plans.length - 1].view, have: [] });
+    const opAtCell = (result, r, c) => result.chunks.flatMap((chunk) => chunk.ops).find((op) => op.r === r && op.c === c);
+    check(
+      "宿主给这张素材下发 fps = 8，另一张没有（跟全局）",
+      opAtCell(hostPlanFast, fastCell.r, fastCell.c)?.fps === 8 && opAtCell(hostPlanFast, slowCell.r, slowCell.c)?.fps === undefined,
+      `${String(opAtCell(hostPlanFast, fastCell.r, fastCell.c)?.fps)} / ${String(opAtCell(hostPlanFast, slowCell.r, slowCell.c)?.fps)}`
+    );
+    check("计划 fpsMax = 8（客户端据此推时钟，慢素材不会被拖住）", hostPlanFast.fpsMax === 8, String(hostPlanFast.fpsMax));
+
+    const rectToIndex = new Map(hostPlanFast.legend.map((entry) => [`${entry.tilesetId}|${entry.rect.x}|${entry.rect.y}`, entry.index]));
+    const indexAt = (draw) => (draw === undefined ? undefined : rectToIndex.get(`${draw.tilesetId}|${draw.sx}|${draw.sy}`));
+    /** 那一格画的是哪一块：用**左上象限**那条 op 的源矩形反查（拼块一格有 4 条 op）。 */
+    const drawAt = (frame, cell) => frame.find((draw) => draw.dx === cell.c * 32 && draw.dy === cell.r * 32);
+    /** 那一格的帧序（`cycle`）：走的帧数要按**帧序里的位置**算，索引步长不等于帧数。 */
+    const cycleAt = (cell) => (hostPlanFast.chunks.flatMap((chunk) => chunk.ops).find((op) => op.x === cell.c * 32 && op.y === cell.r * 32) ?? {}).cycle ?? [];
+    const posIn = (cycle, index) => cycle.indexOf(index);
+    const before = frameOf();
+    const beforeFast = indexAt(drawAt(before, fastCell));
+    const beforeSlow = indexAt(drawAt(before, slowCell));
+    const realNow2 = Date.now;
+    const ticks2 = [...rafQueue.values()];
+    rafQueue.clear();
+    check("画面里有会动的素材时确实注册了动画回调", ticks2.length > 0, `${ticks2.length} 个`);
+    try {
+      // 拨**恰好一秒**：8 帧/秒的走 8 帧（3 个变体 → 模 3 = +2），1 帧/秒的只走 1 帧。
+      Date.now = () => realNow2() + 1000;
+      for (const tick of ticks2) tick();
+    } finally {
+      Date.now = realNow2;
+    }
+    tree = await renderTree(() => MapModule({ api }));
+    const after = frameOf();
+    const afterFast = indexAt(drawAt(after, fastCell));
+    const afterSlow = indexAt(drawAt(after, slowCell));
+    const cycleFast = cycleAt(fastCell);
+    const cycleSlow = cycleAt(slowCell);
+    check(
+      "★ 一秒之后：8 帧/秒 的素材走了 8 帧（3 个变体 → 模 3 = +2），跟全局 1 帧/秒 的那张只走了 1 帧",
+      cycleFast.length === 3 &&
+        cycleSlow.length === 5 &&
+        posIn(cycleFast, beforeFast) >= 0 &&
+        posIn(cycleFast, afterFast) >= 0 &&
+        posIn(cycleSlow, beforeSlow) >= 0 &&
+        posIn(cycleSlow, afterSlow) >= 0 &&
+        (posIn(cycleFast, afterFast) - posIn(cycleFast, beforeFast) + 3) % 3 === 8 % 3 &&
+        (posIn(cycleSlow, afterSlow) - posIn(cycleSlow, beforeSlow) + 5) % 5 === 1,
+      `快水 帧序位置 ${posIn(cycleFast, beforeFast)}→${posIn(cycleFast, afterFast)}（cycle=${cycleFast.length}），道具 ${posIn(cycleSlow, beforeSlow)}→${posIn(cycleSlow, afterSlow)}（cycle=${cycleSlow.length}）`
+    );
+
+    // 列表上看得见速度。
+    const listText = textOf(collect(tree, (node) => node.props?.["data-testid"] === "map-tileset-list")[0]);
+    check("素材列表上标出「8 帧/秒」", /8 帧\/秒/.test(listText), listText.replace(/\s+/g, " ").slice(0, 140));
+    check("反向验证：跟全局的那张只写帧数、不写速度", /会动 5 帧(?! ·)/.test(listText.replace(/\s+/g, " ")), listText.replace(/\s+/g, " ").slice(0, 140));
+  }
+
   // ══ 9. 单层预览：过滤由宿主做 ════════════════════════════════════════════
   section("9) 单层预览（layerIds 交给宿主过滤，界面不筛 op）");
   {
@@ -2127,6 +2314,18 @@ try {
       nameInput?.props.value === "我的地图" && windowStub.__promptCalls.length === 0,
       `值 ${nameInput?.props.value} / prompt 调用 ${windowStub.__promptCalls.length} 次`
     );
+    /**
+     * ★ 「一格多大」：新建时能选 16 / 32 / 48 / 64 —— 这一下就定了。
+     * 选 64 之后建出来的项目，网格必须真的是 64（否则 AI 素材还是按 32 出块，白选）。
+     */
+    const gridSelect = collect(dlg, (node) => node.props?.["data-testid"] === "map-create-grid")[0];
+    check("新建对话框里有「一格多大」，默认 32", gridSelect !== undefined && gridSelect.props.value === "32", String(gridSelect?.props.value));
+    check(
+      "可选 16 / 32 / 48 / 64 四档",
+      (gridSelect.props.children ?? []).map((option) => String(option.props.value)).join(",") === "16,32,48,64",
+      (gridSelect.props.children ?? []).map((option) => String(option.props.value)).join(",")
+    );
+    check("说明里写清「这一下就定了」", /这一下就定了/.test(textOf(dlg)), textOf(dlg).match(/这一下就定了[^。]*。/)?.[0] ?? "");
     check(
       "对话框标题与「取消 / 确定」都在",
       dlg !== undefined && textOf(dlg).includes("新建项目") && collect(dlg, (node) => node.props?.["data-testid"] === "map-name-ok").length === 1 && collect(dlg, (node) => node.props?.["data-testid"] === "map-name-cancel").length === 1,
@@ -2141,6 +2340,48 @@ try {
     check("项目真的建出来了，并且已经切过去", textOf(byClass(tree, "SPR_mapEdProj")[0] ?? null).includes("自检建的项目"), textOf(byClass(tree, "SPR_mapEdProj")[0] ?? null));
     const built = await G.listMapProjects();
     check("宿主侧确实多出这个名字的项目", built.some((item) => item.name === "自检建的项目"), built.map((item) => item.name).join(" / "));
+    /**
+     * ★ 「一格多大」的**真机行为**：选 64 建出来的项目，网格必须真的是 64。
+     *
+     * ⚠️ 建完立刻删掉：这个自检后面很多用例都按 32 网格算（相机、坐标、红框），
+     * 留一个 64 的项目当「当前项目」会把它们全带偏。
+     */
+    {
+      const before64 = (await G.listMapProjects()).length;
+      (await ensureMenu()).find((node) => textOf(node) === "新建项目").props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      const dlg64 = byClass(tree, "SPR_mapEdDlg")[0];
+      collect(dlg64, (node) => node.props?.["data-testid"] === "map-create-grid")[0].props.onChange({ target: { value: "64" } });
+      tree = await renderTree(() => MapModule({ api }));
+      collect(tree, (node) => node.props?.["data-testid"] === "map-name-input")[0].props.onChange({ target: { value: "64 网格的项目" } });
+      tree = await renderTree(() => MapModule({ api }));
+      collect(tree, (node) => node.props?.["data-testid"] === "map-name-ok")[0].props.onClick();
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      const list64 = await G.listMapProjects();
+      const made = list64.find((item) => item.name === "64 网格的项目");
+      check("★ 选「一格多大 = 64」真的传给宿主了（创建入参里带 grid）", apiLog.created.some((entry) => entry.name === "64 网格的项目" && entry.grid?.tileWidth === 64 && entry.grid?.tileHeight === 64), JSON.stringify(apiLog.created.at(-1) ?? null));
+      check(
+        "★ 建出来的项目网格就是 64×64（不是永远 32）",
+        made !== undefined && (await G.readMapProject(made.id)).grid.tileWidth === 64,
+        made === undefined ? "(没建出来)" : String((await G.readMapProject(made.id)).grid.tileWidth)
+      );
+      if (made !== undefined) await G.deleteMapProject(made.id);
+      check("（清理）临时建的 64 项目已删掉，后面的用例仍按 32 网格跑", (await G.listMapProjects()).length === before64);
+      /**
+       * 切回 32 那个项目：后面的用例（相机 / 红框 / 重命名）都按它算。
+       *
+       * ⚠️ 切项目是异步的（`loadProject` 要读盘），一次渲染不一定落地 —— 这里重试几轮，
+       * 别让「刚好没赶上渲染」变成一条假的失败。
+       */
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (textOf(byClass(tree, "SPR_mapEdProj")[0] ?? null).includes("自检建的项目")) break;
+        (await ensureMenu()).find((node) => textOf(node) === "自检建的项目")?.props.onClick();
+        await tickTimers();
+        tree = await renderTree(() => MapModule({ api }));
+      }
+      check("**切回** 32 网格的项目了（标题上还是它）", textOf(byClass(tree, "SPR_mapEdProj")[0] ?? null).includes("自检建的项目"), textOf(byClass(tree, "SPR_mapEdProj")[0] ?? null));
+    }
     // 取消路径：一个项目都不能多出来
     (await ensureMenu()).find((node) => textOf(node) === "新建项目").props.onClick();
     tree = await renderTree(() => MapModule({ api }));
@@ -2649,6 +2890,463 @@ try {
     };
     tree = await freshPanel(apiNoMarkers);
     check("反向验证：视图里有标记但计划没带 → 画布一个圈都不画", arcs.length === 0, `${arcs.length} 个圈`);
+  }
+
+  // ══ 20) AI 生成素材：对话框 → 新对话 → 回链预填「新增素材」 ══════════════
+  section("20) AI 生成素材（对话框 / 新对话桥 / 回链预填）");
+  {
+    /**
+     * 假的浏览器侧服务：`sessions` 只记账不真建会话，`uiWorkspace.openSession` 记账
+     * 「有没有切到对话界面」。这样「点了生成到底做了什么」可以逐条断言，而不是靠看界面。
+     */
+    const bridgeLog = { created: [], retained: [], submitted: [], prompted: [], opened: [], released: 0, abandoned: 0 };
+    const bridgeSessions = {
+      create: async (opts) => {
+        bridgeLog.created.push(opts);
+        return "session-ai-1";
+      },
+      retain: (id, opts) => {
+        bridgeLog.retained.push({ id, ...opts });
+        return {
+          sessionId: id,
+          ready: Promise.resolve(),
+          release: () => {
+            bridgeLog.released++;
+          },
+          binding: {
+            session: {
+              beginSubmission: (input) => {
+                bridgeLog.submitted.push(input);
+                return {
+                  requestId: "req-ai-1",
+                  abandon: () => {
+                    bridgeLog.abandoned++;
+                  }
+                };
+              },
+              prompt: async (content, mode, signal, requestId) => {
+                bridgeLog.prompted.push({ content, mode, requestId });
+                return { ok: true, value: { accepted: true } };
+              }
+            }
+          }
+        };
+      }
+    };
+    const bridgeWorkspace = { openSession: (id) => bridgeLog.opened.push(id) };
+    test.attachSessionBridge({
+      get: (name) => (name === "sessions" ? bridgeSessions : name === "uiWorkspace" ? bridgeWorkspace : undefined)
+    });
+
+    // ── 提示词：纯函数，先把三种形态分支钉住（拼错了只会「对话里做错」，界面看不出来）──
+    const promptOf = (over) =>
+      test.buildAssetRequestPrompt({
+        projectId,
+        projectName: "客户端自检",
+        cell: { width: 32, height: 32 },
+        name: "岩浆",
+        prompt: "一片岩浆，缓慢翻涌",
+        frames: 1,
+        mode: "image",
+        shape: "auto",
+        ...over
+      });
+    const oneFrame = promptOf({});
+    check(
+      "提示词：带上项目 id / 素材名 / 帧数 1 / 生图模型 / 用户原文",
+      oneFrame.includes(projectId) && oneFrame.includes("岩浆") && oneFrame.includes("一片岩浆，缓慢翻涌") && oneFrame.includes("动画帧数：1") && oneFrame.includes("生图模型"),
+      oneFrame.slice(0, 80)
+    );
+    check("提示词：写明「按地图网格出图」与「不要绿幕 / 不做抠像」", oneFrame.includes("32×32") && oneFrame.includes("绿幕") && oneFrame.includes("抠像"));
+    check("提示词：帧数 1 时只走图片生成（不含序列帧那几步）", oneFrame.includes("runImageJob") && !oneFrame.includes("runSequenceVideo"), "");
+    const threeFrames = promptOf({ frames: 3 });
+    check("提示词：帧数 3 + 生图模型 → count:3 的一次图片生成", threeFrames.includes("runImageJob({jobId, count:3})"), "");
+    const videoFrames = promptOf({ frames: 3, mode: "video" });
+    check(
+      "提示词：帧数 3 + 视频模型 → 先出首帧，再序列帧抽 3 帧",
+      videoFrames.includes("静态首帧图") && videoFrames.includes("runSequenceVideo") && videoFrames.includes("runSequenceFrames({jobId, count:3})") && videoFrames.includes("kind:'firstFrame'"),
+      ""
+    );
+    check(
+      "提示词：notes 报「砖接不上自己」时不要自动重跑（那是真花钱），要把情况交给用户决定",
+      threeFrames.includes("不要**自动重跑") && threeFrames.includes("让他决定")
+    );
+    check("提示词：要求用 composeMapAsset 整理、并把返回的 openUrl 原样贴出来", threeFrames.includes("composeMapAsset") && threeFrames.includes("openUrl") && threeFrames.includes("原样"));
+    check("提示词：写明审核模式按自动、不要再问任何问题", threeFrames.includes("自动") && threeFrames.includes("不要") && threeFrames.includes("问"));
+    check("提示词：帧数越界被夹到 1..16", promptOf({ frames: 99 }).includes("动画帧数：16") && promptOf({ frames: 0 }).includes("动画帧数：1"));
+    /**
+     * ── 形态：先定用法，再按用法规划排布（用户这次的追加需求）───────────────
+     *
+     * 「自动判断」时三种排布都要写进提示词（连同判据），并把 `shape` 交给
+     * `composeMapAsset`；用户指定时只写它，且明确「不要改」。
+     */
+    check(
+      "提示词（自动）：写明判据（成片铺开→拼块 / 连成一条→整格 / 单独摆→普通）",
+      oneFrame.includes("你来判断") && oneFrame.includes("成片铺开") && oneFrame.includes("连成一条") && oneFrame.includes("单独摆")
+    );
+    check(
+      "提示词（自动）：三种排布都给了 —— 普通一格内容、整格一块无缝墙砖、拼块每个变体一块无缝材质",
+      oneFrame.includes("每张图 = 一格内容") &&
+        oneFrame.includes("只画**一块**正方形、**可以无缝平铺**的墙面") &&
+        oneFrame.includes("只画**一块**正方形、**可以无缝平铺**的材质") &&
+        oneFrame.includes("16 种接法") &&
+        oneFrame.includes("5 种接法")
+    );
+    check(
+      "提示词（自动/整格拼块）：明确要求「不要分格、不要画多格排布」（这次返工的根因）",
+      oneFrame.includes("**不要**分格") && oneFrame.includes("由插件从这一块砖的像素自己拼出来") && oneFrame.includes("别自己先拼多格排布")
+    );
+    check(
+      "提示词（自动）：要求把 shape 传给 composeMapAsset，并说清少了它会全碎",
+      oneFrame.includes("shape:'<你选的形态") && oneFrame.includes("shape 必须是你这次选定的那个")
+    );
+    const plainPrompt = promptOf({ shape: "plain" });
+    check(
+      "提示词（指定普通）：标了「用户已经指定，不要改」，只写普通那段排布",
+      plainPrompt.includes("用户已经指定，不要改") && plainPrompt.includes("每张图 = 一格内容") && !plainPrompt.includes("4 列 × 4 行")
+    );
+    const cornerWantsAnimation = promptOf({ shape: "corner16", frames: 8, mode: "video" });
+    check(
+      "★ 指定整格 + 用户选了视频 / 8 帧：提示词里帧数归一到 1、方式归一到生图（不再自相矛盾）",
+      cornerWantsAnimation.includes("动画帧数：1") && cornerWantsAnimation.includes("动画生成方式：生图模型") && !cornerWantsAnimation.includes("runSequenceVideo")
+    );
+    check(
+      "★ 同一条：明确要求 agent「这次按静态做，并在回答里告诉用户为什么 / 怎么换成会动的」",
+      cornerWantsAnimation.includes("这次按静态做") && cornerWantsAnimation.includes("请在回答里明确告诉他") && cornerWantsAnimation.includes("拼块")
+    );
+    check(
+      "形态待判断 + 用户要动画：要求 agent 判断成整格时改用拼块（别默默把动画丢掉）",
+      promptOf({ shape: "auto", frames: 4 }).includes("如果你判断成「整格」，请**改用「拼块」**")
+    );
+    check(
+      "反向验证：没要动画（帧数 1 / 生图模型）时不会多出这段提醒",
+      !oneFrame.includes("这次按静态做") && !promptOf({ shape: "corner16" }).includes("这次按静态做")
+    );
+    const cornerPrompt = promptOf({ shape: "corner16" });
+    check(
+      "提示词（指定整格）：只写「一块无缝墙砖」那段（要求四边能接上自己、不要画边框），并说明帧数按 1 处理",
+      cornerPrompt.includes("**可以无缝平铺**的墙面") &&
+        cornerPrompt.includes("左右边缘能接上自己、上下边缘也能接上自己") &&
+        cornerPrompt.includes("不要画边框、收口、阴影、网格线") &&
+        cornerPrompt.includes("没有「帧」这一维") &&
+        !cornerPrompt.includes("每张图 = 一格内容")
+    );
+    const a2Prompt = promptOf({ shape: "a2quad", frames: 3 });
+    check(
+      "提示词（指定拼块）：一块无缝材质、四边能接上自己、帧数=变体数（每张一块砖）",
+      a2Prompt.includes("**可以无缝平铺**的材质") &&
+        a2Prompt.includes("四边都能与自己相接") &&
+        a2Prompt.includes("一共 3 张（每张一块砖）") &&
+        a2Prompt.includes("5 种接法") &&
+        !a2Prompt.includes("5 行是 5 种接法")
+    );
+    check("提示词：composeMapAsset 的示例里带着 shape 占位（不是写死的某个形态）", oneFrame.includes("shape:'<你选的形态"), "");
+    check(
+      "deriveAssetName：取提示词开头、压掉换行；空则兜底「AI 素材」",
+      test.deriveAssetName("  岩浆\n  纹理  ") === "岩浆 纹理" && test.deriveAssetName("") === "AI 素材",
+      `${test.deriveAssetName("  岩浆\n  纹理  ")} / ${test.deriveAssetName("")}`
+    );
+
+    // ── 对话框：点开、四个控件、帧数为 1 时视频模型点不动 ─────────────────
+    tree = await freshPanel();
+    byClass(tree, "SPR_mapEdTopBtn")[0].props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const aiOpen = collect(tree, (node) => node.props?.["data-testid"] === "map-ai-open")[0];
+    check("素材卡片里有「AI 生成素材」按钮", aiOpen !== undefined && textOf(aiOpen) === "AI 生成素材", textOf(aiOpen));
+    aiOpen.props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    const aiDialogAt = (mounted) => collect(mounted, (node) => node.props?.["data-testid"] === "map-ai-dialog")[0];
+    const aiDialog = aiDialogAt(tree);
+    check("点开的是**新对话框**（不是「新增素材」）", aiDialog !== undefined && collect(tree, (node) => node.props?.["data-testid"] === "map-add-dialog").length === 0);
+    const aiPromptBox = (mounted) => collect(aiDialogAt(mounted), (node) => node.props?.["data-testid"] === "map-ai-prompt")[0];
+    const aiNameBox = (mounted) => collect(aiDialogAt(mounted), (node) => node.props?.["data-testid"] === "map-ai-name")[0];
+    /**
+     * 帧数用的是共用的 `NumField`（失焦提交）。
+     *
+     * ⚠️ 不要试图把它「渲染出来」再找里面的 `<input>`：`collect` 只展开 `Btn`
+     * （`NumField` 有 hooks，在本 harness 外调用会污染 hook 存储）。直接读它的
+     * props 更干净 —— `value` 就是草稿值，`onChange` 就是失焦后的那个回调。
+     */
+    const aiFrameField = (mounted) =>
+      collect(
+        aiDialogAt(mounted),
+        (node) => typeof node.type === "function" && node.type.name === "NumField" && node.props?.label === "帧"
+      )[0];
+    const aiModeBtn = (mounted, value) => collect(aiDialogAt(mounted), (node) => node.props?.["data-ai-mode"] === value)[0];
+    const aiShapeBtn = (mounted, value) => collect(aiDialogAt(mounted), (node) => node.props?.["data-ai-shape"] === value)[0];
+    check(
+      "五个控件齐了：提示词 / 素材名字 / 动画帧数 / 动画生成方式 / 这块素材怎么用",
+      aiPromptBox(tree) !== undefined &&
+        aiNameBox(tree) !== undefined &&
+        aiFrameField(tree) !== undefined &&
+        aiModeBtn(tree, "image") !== undefined &&
+        aiModeBtn(tree, "video") !== undefined &&
+        aiShapeBtn(tree, "auto") !== undefined &&
+        aiShapeBtn(tree, "corner16") !== undefined &&
+        aiShapeBtn(tree, "a2quad") !== undefined
+    );
+    check(
+      "默认值：帧数 1、方式=生图模型、用法=自动判断、名字与提示词都是空的",
+      aiFrameField(tree).props.value === 1 &&
+        aiFrameField(tree).props.min === 1 &&
+        aiFrameField(tree).props.max === 16 &&
+        aiModeBtn(tree, "image").props["data-on"] === "true" &&
+        aiShapeBtn(tree, "auto").props["data-on"] === "true" &&
+        aiPromptBox(tree).props.value === "" &&
+        aiNameBox(tree).props.value === ""
+    );
+    check("默认（自动判断）时给了判据说明", /成片铺开/.test(textOf(aiDialogAt(tree))) && /连成一条/.test(textOf(aiDialogAt(tree))));
+    aiShapeBtn(tree, "corner16").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check(
+      "用法选「整格」：说明「只画一块无缝墙砖、插件拼 16 种接法」",
+      aiShapeBtn(tree, "corner16").props["data-on"] === "true" && /一块\*\*无缝墙砖/.test(textOf(aiDialogAt(tree))) && /拼出 16 种接法/.test(textOf(aiDialogAt(tree)))
+    );
+    /**
+     * ★ 整格没有帧这一维：不许让用户配出一个**做不到**的组合。
+     *
+     * 真机踩过：用户在整格上选了「视频模型 + 8 帧」，派出去的提示词里同时写着「帧数 8」和
+     * 「整格没有帧这一维」，agent 按静态做完，出来的图不动、**而且没人告诉他**。
+     * 现在：帧数灰掉、视频模型点不动、并且明确写出「想要会动请改拼块」。
+     */
+    check(
+      "整格：帧数输入框被禁用（灰掉，不让改）",
+      aiFrameField(tree).props.disabled === true && aiFrameField(tree).props.value === 1,
+      String(aiFrameField(tree).props.disabled)
+    );
+    check(
+      "整格：说明里点明「没有动画 / 想要会动改成拼块」",
+      /整格没有动画/.test(textOf(aiDialogAt(tree))) && /改成「拼块」/.test(textOf(aiDialogAt(tree)))
+    );
+    aiModeBtn(tree, "video").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("整格：视频模型点不动（出来还是一张静态图，白多一次计费）", aiModeBtn(tree, "video").props["data-on"] !== "true" && aiModeBtn(tree, "image").props["data-on"] === "true");
+    // 从整格切到别的用法：帧数重新可用。
+    aiShapeBtn(tree, "plain").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("切回「普通」后帧数恢复可用（禁用只跟着整格）", aiFrameField(tree).props.disabled !== true);
+    aiShapeBtn(tree, "a2quad").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check(
+      "用法选「拼块」：说明「每个变体一块无缝材质 / 拼成 N 列 × 5 行」",
+      aiShapeBtn(tree, "a2quad").props["data-on"] === "true" && /一块\*\*无缝材质/.test(textOf(aiDialogAt(tree))) && /N 列 × 5 行/.test(textOf(aiDialogAt(tree)))
+    );
+    aiShapeBtn(tree, "plain").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("用法选「普通」：说明「每张 = 一格内容 / 帧数 > 1 竖排翻页图」", aiShapeBtn(tree, "plain").props["data-on"] === "true" && /一格内容/.test(textOf(aiDialogAt(tree))));
+    aiShapeBtn(tree, "auto").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("再切回「自动判断」", aiShapeBtn(tree, "auto").props["data-on"] === "true");
+    check("帧数为 1 时给了「只用生图模型」的说明", /帧数为 1 时只用生图模型/.test(textOf(aiDialogAt(tree))));
+    aiModeBtn(tree, "video").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("帧数为 1 时点视频模型不生效（点不动）", aiModeBtn(tree, "image").props["data-on"] === "true" && aiModeBtn(tree, "video").props["data-on"] !== "true");
+
+    // 改帧数（NumField 失焦提交）→ 视频模型可选。
+    aiFrameField(tree).props.onChange(3);
+    tree = await renderTree(() => MapModule({ api }));
+    check("帧数改成 3 之后控件跟着走", Number(aiFrameField(tree).props.value) === 3, String(aiFrameField(tree).props.value));
+    aiModeBtn(tree, "video").props.onClick();
+    tree = await renderTree(() => MapModule({ api }));
+    check("帧数大于 1 时视频模型可以选（data-on 真的动了）", aiModeBtn(tree, "video").props["data-on"] === "true");
+    check("选视频模型时说明了「会多一次生图计费」", /先出一张静态首帧/.test(textOf(aiDialogAt(tree))));
+
+    // 空提示词：拒绝并提示（不建会话）。
+    const createdBeforeEmpty = bridgeLog.created.length;
+    collect(tree, (node) => node.props?.["data-testid"] === "map-ai-ok")[0].props.onClick();
+    await tickTimers();
+    tree = await renderTree(() => MapModule({ api }));
+    check("空提示词：明确提示「先写一段提示词」且不建会话", /先写一段提示词/.test(textOf(tree)) && bridgeLog.created.length === createdBeforeEmpty);
+
+    // 填提示词 → 生成 → 建会话 + 切到对话 + 发提示词。
+    aiPromptBox(tree).props.onChange({ target: { value: "一片岩浆，缓慢翻涌" } });
+    tree = await renderTree(() => MapModule({ api }));
+    collect(tree, (node) => node.props?.["data-testid"] === "map-ai-ok")[0].props.onClick();
+    await tickTimers();
+    tree = await renderTree(() => MapModule({ api }));
+    check(
+      "生成：建的是**不挂靠项目**的新会话（不带 workspaceId / cwd）",
+      bridgeLog.created.length === 1 && bridgeLog.created[0].workspaceId === undefined && bridgeLog.created[0].cwd === undefined,
+      JSON.stringify(bridgeLog.created)
+    );
+    check("生成：先切到对话界面（uiWorkspace.openSession）", bridgeLog.opened.join(",") === "session-ai-1", bridgeLog.opened.join(","));
+    check(
+      "生成：以 queue 模式把提示词作为第一轮发进去（带 beginSubmission 的 requestId）",
+      bridgeLog.prompted.length === 1 &&
+        bridgeLog.prompted[0].mode === "queue" &&
+        bridgeLog.prompted[0].requestId === "req-ai-1" &&
+        bridgeLog.prompted[0].content.length === 1 &&
+        bridgeLog.prompted[0].content[0].type === "text",
+      JSON.stringify(bridgeLog.prompted.map((entry) => entry.mode))
+    );
+    const sentText = bridgeLog.prompted[0].content[0].text;
+    check(
+      "生成：发出去的正文就是拼出来的那段（项目 id / 名字 / 帧数 3 / 视频模型 / composeMapAsset）",
+      sentText.includes(projectId) &&
+        sentText.includes("一片岩浆，缓慢翻涌") &&
+        sentText.includes("动画帧数：3") &&
+        sentText.includes("视频模型") &&
+        sentText.includes("composeMapAsset"),
+      sentText.slice(0, 100)
+    );
+    check("生成：本地回显登记的附件是空的（只用文字）", bridgeLog.submitted.length === 1 && bridgeLog.submitted[0].attachments.length === 0 && bridgeLog.submitted[0].text === sentText);
+    check("生成：对话框关掉、给出「已在新对话里开始生成」提示", aiDialogAt(tree) === undefined && /已在新对话里开始生成/.test(textOf(tree)));
+    check("生成：会话引用用后即放（不长期占着）", bridgeLog.released === 1, String(bridgeLog.released));
+
+    // ── 回链：`dialog=add&asset=…&frames=2` → 打开「新增素材」并预填 ───────
+    /**
+     * 夹具帧用 **128×128**（地图格子 32 → 4 倍）：这样 `composeMapAsset` 会把素材图留到
+     * 4 倍分辨率，回链带上 `scale=4`，「新增素材」里才会出现「清晰度」那一项。
+     */
+    const composedFrame = join(HOME, "client-frames", "f0.png");
+    await mkdir(join(HOME, "client-frames"), { recursive: true });
+    await writeFile(composedFrame, encodePng(Buffer.alloc(128 * 128 * 4, 180), 128, 128));
+    const composed = await G.composeMapAsset({ projectId, name: "回链素材", files: [composedFrame, composedFrame] });
+    check(
+      "夹具：宿主真的整理出一张 ai/ 下的素材图（4 倍分辨率，等用户在「新增素材」里选清晰度）",
+      composed.file === "ai/回链素材.png" && composed.frameCount === 2 && composed.scale === 4,
+      `${composed.file} scale=${composed.scale}`
+    );
+
+    const fetched = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      fetched.push(String(url));
+      if (String(url).includes("missing")) return { ok: false, status: 404, blob: async () => new Blob([]) };
+      const bytes = await readFile(G.mapAssetPath(projectId, composed.file));
+      return new Response(bytes, { headers: { "content-type": "image/png" } });
+    };
+    try {
+      test.openStudioIntent({ get: () => undefined }, { module: "map", jobId: projectId, stage: "assets", dialog: "add", asset: composed.file, frames: 2, scale: composed.scale });
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      const addDialog = (mounted) => collect(mounted, (node) => node.props?.["data-testid"] === "map-add-dialog")[0];
+      check("回链：打开的是「新增素材」" + (addDialog(tree) === undefined ? "（没打开）" : ""), addDialog(tree) !== undefined);
+      check("回链：素材窗口同时展开", collect(tree, (node) => node.props?.["data-testid"] === "map-assets-card").length === 1);
+      check(
+        "回链：图已经预选好（显示的是文件名，不是「还没选」）",
+        addDialog(tree) !== undefined && /回链素材\.png/.test(textOf(addDialog(tree))) && !/还没选/.test(textOf(addDialog(tree))),
+        textOf(addDialog(tree) ?? null).slice(0, 80)
+      );
+      check("回链：名字预填成文件干名", collect(addDialog(tree), (node) => node.props?.["data-testid"] === "map-add-name")[0].props.value === "回链素材");
+      const addCellFields = collect(
+        addDialog(tree),
+        (node) => typeof node.type === "function" && node.type.name === "NumField"
+      );
+      check(
+        "回链：格子大小预填成项目网格（32×32）",
+        addCellFields.map((node) => `${node.props.label}=${String(node.props.value)}`).join(",") === "宽=32,高=32",
+        addCellFields.map((node) => `${node.props.label}=${String(node.props.value)}`).join(",")
+      );
+      check(
+        "回链：用法按回链里的 shape 预选成「普通」，而不是「自动识别」",
+        collect(addDialog(tree), (node) => node.props?.["data-shape"] === "plain" && node.props?.["data-on"] === "true").length === 1 &&
+          collect(addDialog(tree), (node) => node.props?.["data-shape"] === "auto" && node.props?.["data-on"] === "true").length === 0
+      );
+      check("回链：帧数 2 → 「会动吗」预选翻页图", collect(addDialog(tree), (node) => node.props?.["data-anim"] === "rows" && node.props?.["data-on"] === "true").length === 1);
+      check(
+        "回链：取的就是项目资源路由下那张图（assetBase + 相对路径）",
+        fetched.length >= 1 &&
+          fetched.every((url) => url.endsWith(composed.file) && url.includes(`/dsh-game-material-master/map-assets/${projectId}/`)),
+        fetched[0] ?? "(没发请求)"
+      );
+
+      /**
+       * ── 回链预填之后还能调「动画速度」，点「确定」真的发给宿主 ────────────────
+       *
+       * 「新增素材时能设置动画播放速度」这条需求的最小闭环：界面上选了 → 提交时带上
+       * （假桥会把 import 的属性原样转给宿主，所以这里能验到真发了什么）。
+       */
+      const fpsSelect = collect(addDialog(tree), (node) => node.props?.["data-testid"] === "map-add-fps")[0];
+      check("回链预填的草稿上也有「动画速度」（预填的是会动的素材）", fpsSelect !== undefined && fpsSelect.props.value === "");
+      const importsBefore = apiLog.importOptions.length;
+      fpsSelect.props.onChange({ target: { value: "4" } });
+      tree = await renderTree(() => MapModule({ api }));
+      /**
+       * 清晰度：回链带了 `scale`（这张 AI 素材图是 4 倍分辨率）时才出现 ——
+       * 选了「锐利」再点确定，宿主应当收到 `clarity: "sharp"` + `scale: 4`。
+       */
+      const clarityPicker = collect(addDialog(tree), (node) => typeof node.props?.["data-clarity"] === "string");
+      check("回链带了 scale=4 → 「新增素材」里出现「清晰度」三个选项", clarityPicker.length === 3, `${clarityPicker.length} 个`);
+      check("默认选的是「平滑」（面积平均，AI 图最清楚的那档）", clarityPicker.some((node) => node.props["data-clarity"] === "smooth" && node.props["data-on"] === "true"));
+      check("说明里写清「每格 128px（4 倍）、会缩到 32px」", /4 倍/.test(textOf(addDialog(tree))) && /128px/.test(textOf(addDialog(tree))), textOf(addDialog(tree)).match(/这张图每格[^。]*。/)?.[0] ?? "");
+      collect(addDialog(tree), (node) => node.props?.["data-clarity"] === "sharp")[0].props.onClick();
+      tree = await renderTree(() => MapModule({ api }));
+      collect(tree, (node) => node.props?.["data-testid"] === "map-add-ok")[0].props.onClick();
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      check(
+        "点「确定」后宿主真的收到 fps=4（不是只改了个界面状态）",
+        apiLog.importOptions.length === importsBefore + 1 && apiLog.importOptions[apiLog.importOptions.length - 1].fps === 4,
+        JSON.stringify(apiLog.importOptions[apiLog.importOptions.length - 1] ?? null)
+      );
+      check(
+        "循环方式也一起发出去了（默认正放）",
+        apiLog.importOptions[apiLog.importOptions.length - 1].loop === "forward",
+        JSON.stringify(apiLog.importOptions[apiLog.importOptions.length - 1] ?? null)
+      );
+      check(
+        "★ 清晰度与倍数也一起发出去了（clarity=sharp、scale=4 —— 宿主据此把 4 倍图缩到格子）",
+        apiLog.importOptions[apiLog.importOptions.length - 1].clarity === "sharp" && apiLog.importOptions[apiLog.importOptions.length - 1].scale === 4,
+        JSON.stringify(apiLog.importOptions[apiLog.importOptions.length - 1] ?? null)
+      );
+      check(
+        "同一批提交里用法 / 会动吗 / 格子也一起发过去了（回链预填的普通 + 翻页图）",
+        apiLog.importOptions[apiLog.importOptions.length - 1].animRows === true &&
+          apiLog.importOptions[apiLog.importOptions.length - 1].shape === "plain" &&
+          apiLog.importOptions[apiLog.importOptions.length - 1].cell.width === 32,
+        JSON.stringify(apiLog.importOptions[apiLog.importOptions.length - 1] ?? null)
+      );
+
+      /**
+       * ── 形态跟着回链走：拼块 / 整格不会退回「普通」 ───────────────────────
+       *
+       * 少了这一条，用户点开链接看到的是「用法 = 普通」，一确定就把拼块图当成普通素材
+       * 导入 —— 画出来全是碎块，而且不报错。
+       */
+      const a2Sheet = await G.composeMapAsset({ projectId, name: "回链拼块", files: [composedFrame, composedFrame], shape: "a2quad" });
+      test.openStudioIntent({ get: () => undefined }, { module: "map", jobId: projectId, stage: "assets", dialog: "add", asset: a2Sheet.file, frames: 2, shape: a2Sheet.shape });
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      check(
+        "回链（拼块）：用法预选成「拼块」、会动吗 = 不动（拼块的动画走变体，不是翻页图）",
+        collect(addDialog(tree), (node) => node.props?.["data-shape"] === "a2quad" && node.props?.["data-on"] === "true").length === 1 &&
+          collect(addDialog(tree), (node) => node.props?.["data-anim"] === "off" && node.props?.["data-on"] === "true").length === 1,
+        `shape=${collect(addDialog(tree), (node) => node.props?.["data-shape"] === "a2quad")[0]?.props?.["data-on"]}`
+      );
+      const cornerSheet = await G.composeMapAsset({ projectId, name: "回链整格", files: [composedFrame], shape: "corner16" });
+      test.openStudioIntent({ get: () => undefined }, { module: "map", jobId: projectId, stage: "assets", dialog: "add", asset: cornerSheet.file, frames: 1, shape: cornerSheet.shape });
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      check(
+        "回链（整格）：用法预选成「整格」、会动吗 = 不动",
+        collect(addDialog(tree), (node) => node.props?.["data-shape"] === "corner16" && node.props?.["data-on"] === "true").length === 1 &&
+          collect(addDialog(tree), (node) => node.props?.["data-anim"] === "off" && node.props?.["data-on"] === "true").length === 1
+      );
+      // 反向验证：asset 指到一个不存在的文件 → 仍然打开「新增素材」（空的），并给出提示。
+      fetched.length = 0;
+      test.openStudioIntent({ get: () => undefined }, { module: "map", jobId: projectId, stage: "assets", dialog: "add", asset: "ai/missing.png", frames: 1 });
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      await tickTimers();
+      tree = await renderTree(() => MapModule({ api }));
+      check("反向验证：图取不回来时仍然打开「新增素材」（空的）", addDialog(tree) !== undefined && /还没选/.test(textOf(addDialog(tree))));
+      check("反向验证：并明确提示「没取到刚生成的那张图」", /没取到刚生成的那张图/.test(textOf(tree)), textOf(tree).match(/没取到[^。]*。/)?.[0] ?? "");
+      check("反向验证：帧数 1 时不会预选「翻页图」", collect(addDialog(tree), (node) => node.props?.["data-anim"] === "off" && node.props?.["data-on"] === "true").length === 1);
+      check(
+        "反向验证：不认识的 shape 不会带进界面（退回普通）",
+        collect(addDialog(tree), (node) => node.props?.["data-shape"] === "plain" && node.props?.["data-on"] === "true").length === 1
+      );
+    } finally {
+      if (realFetch === undefined) delete globalThis.fetch;
+      else globalThis.fetch = realFetch;
+    }
   }
 
 } finally {

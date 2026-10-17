@@ -45,7 +45,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 生成类调用必须带 loading 反馈，批量任务要按 `job.targets` 盖住**还没轮到**的方向 | 不盖遮罩时界面看着完全正常，只是「点了没反应」，用户会反复点——每次点击都真实计费。`verify-client.mjs` / `verify-feedback.mjs` 会拦 |
 | 本地自选视频必须与远端生成的产物**同形**，且导入时作废该槽位已有的下游产物 | 两条路只差 `origin` / `originalName` 两个字段，阶段③④才不用改。不作废（尤其是 `frames/<方向>/raw.bin`）就会拿上一段视频的帧去合成——界面看着完全正常，只是动作 / 朝向对不上；同理，导入时要摘掉在跑的远端 `taskId`，否则它稍后会把本地视频覆盖掉。`verify-host.mjs` 的 9d 段逐条钉住这几条 |
 | 生图一律走 `imageprovider.generateImageWithProvider`，模块里不许自己判 `imageProvider` | 分发只在一个地方，漏掉的那一处**不报错**，只是偷偷继续用另一家模型（用户以为换成了自己的服务，其实还在扣火山方舟的钱）。`verify-custom-image.mjs` 会打一台本地假服务端核对端点真的换了 |
-| 新增产物子目录时，`SERVABLE_DIRS`（`src/index.ts`）必须同步加一条 | 静态资源路由按**第一段路径**比对白名单，漏掉就 403。界面只表现为「图裂了」、不报错——转圈截帧的 `turn/` 就踩过。模块六是**四处**同步：`SERVABLE_MAP_DIRS` / `AssetScope` 类型 / `resolveAssetTarget` 分支 / `SCOPES` 数组，`verify-map-gateway.mjs` 会真调一遍路由 |
+| 新增产物子目录时，`SERVABLE_DIRS`（`src/index.ts`）必须同步加一条 | 静态资源路由按**第一段路径**比对白名单，漏掉就 403。界面只表现为「图裂了」、不报错——转圈截帧的 `turn/` 就踩过。模块六的子目录白名单**唯一真源是 `mapgen.SERVABLE_MAP_DIRS`**（`index.ts` 的资源路由直接引用它，别再各写一份）；scope 级那三处（`AssetScope` 类型 / `resolveAssetTarget` 分支 / `SCOPES` 数组）改 scope 时要同步。`verify-map-gateway.mjs` 会真调一遍路由（含 `ai/` 的 200 与未列入目录的 403） |
 | 模块六：**客户端只能执行宿主下发的绘制计划**，不许自己算变体 / 形状 / chunk / 坐标变换 | 界面里唯一允许复刻的是 `MAP_pointToCell` / `MAP_cellAnchor` / `MAP_cellTopLeft` / `MAP_lineCells` 四个坐标函数（命中测试必需），且有黄金对照盯着；**连「哪些 chunk 可见」都由宿主算**（`mapPlan({view})` 回 `visibleKeys`）。多写一套口径就是旧模块「预览好看、导出位移」的老路，`verify-map-client.mjs` 会扫源码拦 |
 | 模块六：**环绕（wrap）是默认行为**，凡涉及「邻居」的地方都必须先取模 | 网格、命中测试、绘制范围、脏块、自动连接的邻域判断都要 wrap。漏掉一处的表现是「接缝处形状不对 / 撤销后画面花掉」，只在贴边时看得出来 —— `verify-map.mjs` 里有「画第 0 行必须连带弄脏最后一行」这条断言，且配了非环绕的反向验证 |
 | 模块六：**界面文案不许出现旧术语** | 用户对第一版的反馈就是「门槛太高、专业名词太多」。`verify-map.mjs` 与 `verify-map-client.mjs` 各扫一遍**模块六那一段**（`模块六 · 地图编辑器` 到下一个分节注释），`地形族 / 掩码 / 优先级 / 切分 / 图集 / 变体种子 / 高度偏移 / Tiled / 等距` 0 命中，`chunk` 按**词边界**判（所以协议字段 `"chunks"` 可以照实写 —— 曾经为了骗过这条自检写出过 `"chu" + "nks"`，那种写法比术语本身更坏）。⚠️ **只有模块六这一段**：`图集`（模块④ Spine 图集）与 `等距`（模块⑤ 45° 地块）在别处是正确的词，全文件扫会误伤 |
@@ -76,7 +76,7 @@ npm run typecheck    # 只做类型检查
 ```bash
 node scripts/verify-host.mjs       # 宿主全链路（385 项）
 node scripts/verify-client.mjs     # 浏览器半区契约（352 项）
-node scripts/verify-tools.mjs      # 对话调用面（153 项）
+node scripts/verify-tools.mjs      # 对话调用面（169 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
 node scripts/verify-feedback.mjs   # 浏览器半区真渲染（203 项，含功能管理、侧栏菜单、生图后端设置页与语义保存错误）
 node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
@@ -88,10 +88,10 @@ node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115
 node scripts/verify-tile-gateway.mjs   # 地图地块走真实网关（81 项：payload / 验收 / 作废边界 / 建筑 / 布局冻住 / 保存往返）
 node scripts/verify-tile-client.mjs    # 地图地块界面真渲染（200 项，拦「遮罩没出现」「地图不显示」这类静默问题）
 
-node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点内核（123 项，含反向验证与术语黑名单）
-node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（276 项，含 A2 每格 4 条 op、动画循环、翻页图调色板每列一条、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
-node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（160 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透）
-node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（298 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，以及「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证）
+node scripts/verify-map.mjs            # 地图编辑器几何 / 环绕 / 自动连接 / 标记点 / AI 素材按形态规整与「收口 + 无缝」/ 播放速度 / 清晰度重采样 / 循环方式 / 自动裁边的内核（201 项，含反向验证与术语黑名单）
+node scripts/verify-map-pipeline.mjs   # 地图编辑器数据层与流水线（352 项，含 A2 每格 4 条 op、动画循环、翻页图调色板每列一条、dropKeys、标记点 op 与撤销、老文档升级、导出逐字段与真解包的 ZIP）
+node scripts/verify-map-gateway.mjs    # 地图编辑器走真实网关（192 项，含资源路由 403 / 目录穿越 / zip 的 MIME / 并发提交 / 标记 op 的 schema 穿透 / `ai/` 白名单 / AI 素材的形态透传与 openUrl）
+node scripts/verify-map-client.mjs     # 地图编辑器界面真渲染 + 黄金对照（394 项：坐标函数逐点一致、drawImage 序列 == 宿主计划、挂载首帧 == 同视口的计划、导出卡片的选择/执行/下载三段、图层改名与标记层圆圈数字、工具小标签的 z-index 层级、「素材说明」三页的示例图逐字节 == 生成器产出且网格百分比按真实列数现算、网格循环动画的数值，「模块⑥已转正」的角标 / 弹窗 / 常驻提示条三处反向验证，以及「AI 生成素材」（提示词的形态判据与「一块无缝砖」约定 / 用法控件 / 帧数为 1 时视频模型点不动 / 点生成时用假 sessions 断言建的会话与发出去的正文 / 回链按 shape 预填「新增素材」））
 ```
 
 `scripts/find-missing-i18n.mjs` 不是断言脚本，是**工具**：列出所有还没进词条表的
@@ -161,7 +161,109 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 
 ### ⏳ 尚未发布：下一版
 
-`package.json` 目前是 `0.7.0`（0.7.0 已发布；是否发下一版由用户决定）。相对已发布的 0.7.0，还多出一个**本地 ComfyUI 视频后端**
+`package.json` 目前是 `0.7.0`（0.7.0 已发布；是否发下一版由用户决定）。相对已发布的 0.7.0，还多出一个
+**模块六「AI 生成素材」**（`feat(map)`）：素材卡片上多一颗按钮，点开填「提示词 / 素材名字 / 动画帧数（默认 1）/ 动画生成方式（生图模型 | 视频模型）」，
+点「生成」**不在插件里生成图**，而是**开一个新对话**（`sessions.create({})`：不给 workspaceId / cwd = 不挂靠项目）→
+切到对话界面 → 把拼好的需求作为第一句话发进去（`buildAssetRequestPrompt`，逐行 `T()` 拼，别整段塞进一条 `T()`）；
+对话里的 agent 用**现成工具**生成（帧数 1 = 图片生成 count:1；帧数 > 1 + 生图模型 = count:N；
++ 视频模型 = 先出静态首帧，再序列帧 `upload(firstFrame)` → `runSequenceVideo` → `runSequenceFrames`），
+最后调**新的宿主方法 `composeMapAsset`**（`scripts/verify-*` 会拦「新增方法忘了归模块 / 忘了进客户端清单」）
+把帧整理成**一张图**：等比裁到**当前地图网格**、最近邻缩放、**按帧自上而下堆成一列**，落在项目的 `ai/` 暂存区 ——
+**只整理、不进素材列表**。工具返回的 `openUrl` 带 `dialog=add&asset=ai/<名字>.png&frames=<N>&shape=<形态>`，
+点开就回到地图编辑器、素材窗口展开、「新增素材」已打开并预填（图 / 名字 / 格子=项目网格 / 用法=**回链里的形态** / 会动吗按形态定），
+用户点「确定」才真的导入。⚠️ 三处必须记住：格子必须等于地图网格（否则图块压边）、预填的用法**不能**是「自动识别」
+（`32×(32×N)` 在 N=5 这类情形会被认成拼块）、`ai/` 必须进资源白名单（真源 `mapgen.SERVABLE_MAP_DIRS`，
+`index.ts` 的路由直接引用它）。
+**这块素材怎么用（普通 / 整格 / 拼块）是生图前就定好的计划**：对话框里默认「自动判断」（由对话里的 agent 按提示词判据定，也可以在那里替它拍板），
+agent 再把这个形态原样传给 `composeMapAsset`；宿主按它**规整几何**。回链多带一个 `shape` 参数，
+「新增素材」按它预选用法 —— 少了它拼块 / 整格会被当成普通素材导入，画出来全是碎块而且不报错。
+
+⚠️ **整格 / 拼块绝不能让模型画「多格排布」，只能让它画「一块砖」**（这条是被真实素材打回来过的，见 ENGINEERING.md「AI 素材的接缝」）：
+一排墙在地图上用到的是**三块不同的图块**（掩码 2 / 10 / 8），模型画的 16 个格子却是各自独立的（霓虹灯带、板缝各偏几十像素），
+拼起来边缘差 201、块内相邻列才 58 —— 那就是用户看到的接缝。现在：**模型画一块无缝砖（四边能接上自己），
+代码从同一块砖的像素拼出全部格子**（`corner16SheetFromTile` / `a2SheetFromTiles`），
+「断」的边由 `shadeSide` / `shadeCorner` 加收口（整格 4px、拼块小格 2px，`capThicknessFor` 按尺寸算）。
+于是任何「连」的边都是砖自己的边缘，接缝等于砖的环绕缝（最好的可能值）；`tileSeamRatios` 还会把它量出来 ——
+砖接不上自己时 `notes` 会直接说「平铺每隔一格会有一道缝，让模型重画一张更均匀的无缝材质」，提示词里也写明**这种情况不要自动重跑（要花钱）**，交给用户决定。
+
+⚠️ **三种用法里只有两种会动**，界面与提示词都必须照这个来（这条也是真机踩出来的：用户在整格上选了「视频模型 + 8 帧」，
+提示词里同时写着「帧数 8」和「整格没有帧这一维」，agent 按静态做完，出来的图不动、**而且没人告诉他**）：
+
+| 用法 | 会动吗 | 怎么动 |
+|---|---|---|
+| 整格 `corner16` | **不会** | 4×4 全是接法（动画行也是接法行），没有帧这一维 |
+| 拼块 `a2quad` | 会 | 帧数 = 变体数，宿主给每格 4 条等长 `cycle`，客户端按全局帧号循环 —— **既自动连接又会动** |
+| 普通 `plain` | 会 | 帧数 = 翻页图的行，`animRows` 一开就有 `cycle` |
+
+所以：对话框里选整格会把**帧数灰掉、视频模型点不动**（外加一句「想要会动改用拼块」）；
+`buildAssetRequestPrompt` 对整格一律把帧数 / 方式**归一到静态**，并在用户原本要动画时要求 agent「**在回答里说清这件事**」；
+形态待判断（自动）而用户要动画时，提示词直接要求 agent「判断成整格就改用拼块」；
+`composeMapAsset` 收到「整格 + 多张」时报错也点明「整格没有动画，要会动请用拼块」。
+自检：`verify-map-client` 钉住「整格 ⇒ 帧数 disabled / 视频点不动 / 提示词归一到 1 且带说明」，`verify-map-pipeline` 钉住那条报错文案。
+
+⚠️ **动画播放速度是「素材自己的属性」，在「新增素材」里定**（`MapTileset.fps`，0.5~30 帧/秒；留空 = 跟
+「设置 → 动画速度」那条全局速度走）。它不是「属性一次定死」那一类 —— 纯表现层、不动几何也不动序号，
+所以 `saveMapTileset({fps})` 随时能改（`null` = 清掉回全局），内置素材仍不许改。
+链路必须**一路带到底**，少一环都只是「存了个数」：
+`importMapTileset/saveMapTileset` 的 wire schema → `mapgen`（`parseAssetFps` 越界抛错，不静默夹）→
+`maprender` 把速度写进每一条 op（`PlanOp.fps`）+ 计划里给 `fpsMax`（= 最快那条）→
+客户端用它推动画时钟（`clockFps = max(全局, fpsMax)`，否则 8 帧/秒的素材会被 1 帧/秒的时钟拖住）
+并按**每一格自己的速度**算帧号（`floor(经过秒数 × op.fps)`）。
+⚠️ 还有两个静默坑：① `index.ts` 的 `mapTilesetBrief` 少列一个字段，界面就永远看不到速度
+（网关自检专门盯它，这次真是它漏的）；② 客户端的计划身份（`planKey`）要带**素材动画属性签名**，
+否则改完速度缓存里的 op 还带着旧 fps，表现是「改了没反应」。
+自检：`verify-map`（`parseAssetFps` 边界）、`verify-map-pipeline`（第 18 节：导入带上 / op 带 fps / `fpsMax` /
+改与清 / 越界报错 / 内置不许改）、`verify-map-gateway`（schema 不吞字段 + `mapPlan.fpsMax`）、
+`verify-map-client`（8b 节：对话框只对会动的素材显示、可选值、提交真的带上 fps，
+以及**拨 1 秒后 8 帧/秒的走 8 帧、跟全局 1 帧/秒的只走 1 帧**）。
+
+⚠️ **「图片最终处理的清晰度」在「新增素材」里定**（`MapTileset.clarity`：`smooth` 面积平均 / `sharp` 最近邻 /
+`crisp` 平均+锐化，默认 `smooth`）。为了让这个选择**真的有用**，`composeMapAsset` 不再把 AI 大图直接缩到
+格子 —— 它先留 `cell × k`（k = 源图每块 ÷ 格子，上限 `MAX_ASSET_SCALE = 4`），**导入那一步才按清晰度缩**
+（`importMapTileset({clarity, scale})`：先按 `1/scale` 重采样再把缩好的图存进 `tilesets/`）。
+于是：
+- 回链多带一个 `scale`（`scale > 1` 时「新增素材」才显示「清晰度」，并写明「这张图每格 128px，会缩到 32px」）；
+- `scale = 1`（自己导格子大小的图，绝大多数手动导入）**逐字节原样存**，一个像素都不动（自检钉死了这条）；
+- 缩法是**一次**的：结果烘进 `tilesets/<id>.png`，所以 `clarity` 只作记录，改它不会重算 —— 要换就删掉重导。
+⚠️ 两个坑：① `mapTilesetBrief` 少列 `clarity` 界面就看不到（网关自检盯着）；② 抠像素材必须**预乘 alpha 再平均**，
+不预乘的话透明边缘会被拖黑一圈（`verify-map` 有专门一条）。
+自检：`verify-map`（`parseClarity` / `parseAssetScale` / `resampleToSize` 三档的像素与 alpha）、
+`verify-map-pipeline`（棋盘格 1px：锐利 0 个混色、平滑 256 个混色；波纹：清晰比平滑对比更强；
+`scale=1` 逐字节原样；越界报错）、`verify-map-gateway`（`clarity`/`scale` 不被 schema 吞）、
+`verify-map-client`（回链带 `scale=4` → 出现三个选项、默认平滑、点确定时 `clarity`/`scale` 一起发出去）。
+
+⚠️ **循环方式（`MapTileset.loop`：`forward` 正放 / `reverse` 倒放 / `pingpong` 来回）也在「新增素材」里定**，
+跟播放速度并列、只对会动的素材显示。实现上它**只是把帧序展开**（`maptiles.applyLoop`，宿主在 `maprender` 里做）：
+正放 `0,1,2,3`；倒放 `3,2,1,0`；来回 `0,1,2,3,2,1`（= `[...frames, ...frames.slice(1,-1).reverse()]`，2 帧时等于正放）。
+**客户端一行都不用改** —— 帧号照旧 `cycle[floor(经过秒数 × 速度) % 长度]`，只是 `cycle` 变长了（`frameCount` 跟着变：
+来回 4 帧 → 6）。它同样属于「表现层」：`saveMapTileset({loop})` 随时能改、下一次 `mapPlan` 就生效，不用重切素材。
+⚠️ `mapTilesetBrief` 少列 `loop` 界面就看不到（跟 `clarity` / `fps` 是同一个坑，网关自检都盯着）。
+自检：`verify-map`（`parseAssetLoop` 边界 + `applyLoop` 三种展开、2 帧/单帧/空数组的边界）、
+`verify-map-pipeline`（第 19 节：三种方式下 `mapPlan` 的帧序真的不同、`frameCount` 跟着变、改完立刻生效、越界报错）、
+`verify-map-gateway`（`loop` 过 schema 不丢）、`verify-map-client`（静态素材不显示 / 三个选项 / 点「倒放」「来回」真的切过去 / 提交时带上 `loop`）。
+
+⚠️ **自动裁边**（`maptiles.trimUniformBorder`）：模型经常无视「四边不留白」，在自己画的图外面又留一圈白框；
+留着的话每块素材边上都带一道白边（用户那张赛博墙：2048² 里 79/81/77/78px 是白框）。裁在 **`composeMapAsset` 里、
+对每张源图单独裁**（不是裁合成图：多帧竖排时中间几帧的白框裁不到）。四道保险缺一不可，否则会把内容裁坏：
+① 只裁**浅色**带（亮度 ≥ 170，深色平底是道具自己的背景）；② 每边最多 6%（更宽的纯色带是背景，不是画布边）；
+③ 裁完至少留 60%；④ 四条边都得有浅色带，而且**里面必须真的有内容**（≥2% 像素与边框色明显不同）——
+所以整张纯色 / 单色砖**一个像素都不动**。裁了会写进 `notes`（`verify-map` 与 `verify-map-pipeline` 都有正反用例）。
+
+⚠️ **一格多大（地图网格）在新建项目时定**（客户端「新建项目」对话框的 16 / 32 / 48 / 64，默认 32；设置卡里只读显示）。
+它是**项目级、建完不能改**的属性（改了所有素材都要重切）。32 一格时 2K 的 AI 图必然被压扁 —— 要真的清楚就开 48 / 64。
+连带三处必须跟着走：① `composeMapAsset` 的默认 `cell` = 项目网格（已是如此，AI 素材按 64 出块、`scale` ×4 = 256px）；
+② **内置素材**是按 32 画的，`importSampleTileset` 现在按 `项目网格 / 32` 重采样（整数倍放大用最近邻，缩小 / 非整数倍用面积平均）
+—— 不缩放的话图块只有半格，看起来像缩小了一圈；③ `importMapTileset` **不给 cell 时仍按自动识别**（手动导「8×8 个 32px 小格」
+是常见用法，拿网格当默认会把小格切成 4 倍大小），但**素材格子 ≠ 地图网格时会给一条明确告警**（`verify-map-pipeline` 第 20 节盯着）。
+自检：`verify-map`（`trimUniformBorder` 的六条正反用例）、`verify-map-pipeline`（第 17 节自动裁边、第 20 节 16/32/64 网格与内置素材缩放）、
+`verify-map-gateway`（`createMapProject.grid` 过 schema）、`verify-map-client`（新建对话框的四档 / 说明 / 建出来真的是 64 网格，建完即删并切回 32）。同批还加了：深链接意图的 `dialog` / `asset` / `frames` / `shape` 四个参数、
+`getImageJob` / `getSequenceJob` 返回的 `dir`（本机绝对目录，agent 拼帧路径用）、
+工具描述与系统提示词里的「AI 生成素材」固定流程。⚠️ **宿主半区改了，要重启 DSH**。
+自检项数：verify-host 385 / verify-client 352 / verify-tools 153 → **169** / verify-pipeline 40 / verify-feedback 203 /
+verify-i18n 9 / verify-map 123 → **201** / verify-map-pipeline 276 → **352** / verify-map-gateway 160 → **192** /
+verify-map-client 298 → **394**。
+
+另外，相对已发布的 0.7.0，还多出一个**本地 ComfyUI 视频后端**
 （`feat(comfy)`，可选、不影响默认链路）：设置页新增「本地 ComfyUI（图生视频）」，勾选后**只有「图生视频」这一步**
 改走 ComfyUI（替代 MiniMax）——工作流收 JSON（**API 格式**直通，编辑器里保存的界面格式会先自动转成 API 格式），
 注入点（提示词 / 宽高 / 时长 / 种子 / 首尾帧）自动探测，工作流里没连的 optional `IMAGE` 输入按 `/object_info`

@@ -8,9 +8,14 @@
  * ├── project.json          元数据：网格、素材、阶段、日志
  * ├── map.json              这张地图：图层元数据 + 每层数据（0 = 空）
  * ├── tilesets/<tsId>.png   导入的素材原图（原样保存，不改写）
+ * ├── ai/<名字>.png         AI 生成素材的**暂存区**：对话里整理好、等用户确认的那张图
  * ├── preview/map.png       验收图：宿主算好的地图渲染图
  * └── export/<安全名>/      导出：map.png + map.json + manifest.json
  * ```
+ *
+ * ⚠️ `ai/` 里的东西**不是素材**：素材的属性在「新增素材」那一刻定死、之后只能删掉
+ * 重来，所以宿主只把图整理好（`composeMapAsset`），由用户确认后走
+ * `importMapTileset` 才进 `tilesets/`。
  *
  * 参考 AsLib 的 RPG Map Maker：一屏、零术语、地图四周**环绕**、A2 素材自动连接、
  * 动画地块、内置素材、一键生成。旧的「多地图 / 地形族 / 掩码覆盖 / 等距网格 /
@@ -28,13 +33,13 @@
  * 撤销栈 —— 旧模块那个「整份草稿 + 客户端撤销栈」正是「撤销跳步」的来源。
  */
 
-import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { appendJobLog, messageOf, readJson, sweepTempFiles, writeJsonAtomic, type JobLogEntry } from "./jsonio.js";
 import { dataRoot } from "./config.js";
-import { decodeFile, pngSize, probeImageSize, sniffImageExt, type Bitmap } from "./bitmap.js";
+import { decodeFile, encodeBitmap, pngSize, probeImageSize, sniffImageExt, type Bitmap } from "./bitmap.js";
 import {
   addLayer,
   applyOps,
@@ -80,15 +85,32 @@ import {
 import {
   COMMON_TILE_SIZES,
   buildTiles,
+  composeAssetSheet,
   detectLayout,
   flatIndexByValue,
   flatTiles,
   layoutFor,
+  safeAssetStem,
+  sheetPlanOf,
+  stackFrames,
+  stretchToSize,
+  tileSeamRatios,
+  trimUniformBorder,
+  sizeFromBytes,
+  parseAssetFps,
+  parseAssetLoop,
+  parseAssetScale,
+  parseClarity,
+  resampleToSize,
+  type AssetClarity,
+  type AssetLoop,
+  A2_ROWS,
+  MAX_ASSET_SCALE,
   type MapTile,
   type MapRect,
   type MapTileset,
   type FlatTile,
-  type TilesetShape
+  type TilesetShape,
 } from "./maptiles.js";
 import { exportMap, safeFileName, type ExportFormatOptions, type ExportManifest } from "./mapexport.js";
 import { primeSampleTextures, renderSampleTilesets } from "./mapsamplegen.js";
@@ -164,10 +186,15 @@ export function isValidMapProjectId(id: string): boolean {
 /**
  * 子目录白名单（静态资源路由按**第一段**比对，漏一条就是 403 + 图裂）。
  *
- * ⚠️ 与 `index.ts` 的 `AssetScope` 类型、`resolveAssetTarget` 分支、`SCOPES` 数组
- * **四处必须同步**。`maps/` 已经不存在了（单项目单地图 → `map.json` 在项目根）。
+ * **这是唯一真源**：`index.ts` 的资源路由直接引用这一份，建项目时的目录清单也用它 ——
+ * 两边各写一份的话，「建了目录但路由 403」只会以「图裂了」的形式出现（曾经踩过）。
+ *
+ * ⚠️ 另一半仍要同步：`index.ts` 的 `AssetScope` 类型、`resolveAssetTarget` 分支、
+ * `SCOPES` 数组（那三处是 **scope** 级，不是子目录级）。`maps/` 已经不存在了
+ * （单项目单地图 → `map.json` 在项目根）；`ai/` 是「AI 生成素材」的暂存区
+ * （整理好、等用户在「新增素材」里确认的那张图）。
  */
-export const SERVABLE_MAP_DIRS = new Set(["tilesets", "preview", "export"]);
+export const SERVABLE_MAP_DIRS = new Set(["tilesets", "preview", "export", "ai"]);
 
 /** 新项目默认地图尺寸（单屏一屏就能画完）。 */
 const DEFAULT_COLS = 32;
@@ -288,6 +315,9 @@ function normalizeTileset(raw: unknown): MapTileset {
     shape,
     animRows,
     variants: variantsOf(shape, cell, imageWidth, imageHeight, animRows),
+    loop: parseAssetLoop(source.loop),
+    clarity: parseClarity(source.clarity),
+    fps: parseAssetFps(source.fps),
     builtin: source.builtin === true ? true : undefined,
     tiles
   };
@@ -798,7 +828,14 @@ interface RegisterInput {
    * 在**量到真实尺寸之后**才套上去 —— 校验用同一套 `normalizeCell` / `parseTilesetShape`，
    * 填了不合法的就退回识别结果，不静默改成别的值。
    */
-  overrides?: { cell?: Record<string, unknown>; shape?: unknown; animRows?: unknown };
+  overrides?: { cell?: Record<string, unknown>; shape?: unknown; animRows?: unknown; fps?: unknown; clarity?: unknown; scale?: unknown; loop?: unknown };
+  /**
+   * 项目的地图网格：**没给 cell 时只用来「提醒」**，不改自动识别的结果。
+   *
+   * 为什么不用它当默认值：手动导入一张「8×8 个 32px 小格」的图集是常见用法，
+   * 把网格当默认会把 32px 的小格切成 64px 的（4 倍少了一半块）—— 那才是静默坏掉。
+   */
+  projectGrid?: { width: number; height: number };
 }
 
 /**
@@ -810,7 +847,7 @@ export async function importMapTileset(
   projectId: string,
   name: string,
   base64: string,
-  opts: { cell?: { width?: unknown; height?: unknown }; shape?: unknown; animRows?: unknown } = {}
+  opts: { cell?: { width?: unknown; height?: unknown }; shape?: unknown; animRows?: unknown; fps?: unknown; clarity?: unknown; scale?: unknown; loop?: unknown } = {}
 ): Promise<ImportTilesetResult> {
   const project = await readProjectOrThrow(projectId);
   if (base64.trim() === "") throw new Error("图片内容为空。");
@@ -821,7 +858,8 @@ export async function importMapTileset(
     id: newTilesetId(),
     name: name.trim() === "" ? `素材 ${project.tilesets.length + 1}` : name.trim(),
     bytes,
-    overrides: { cell: opts.cell, shape: opts.shape, animRows: opts.animRows }
+    overrides: { cell: opts.cell, shape: opts.shape, animRows: opts.animRows, fps: opts.fps, clarity: opts.clarity, scale: opts.scale, loop: opts.loop },
+    projectGrid: { width: project.grid.tileWidth, height: project.grid.tileHeight }
   }, warnings);
   await patchMapProject(projectId, (fresh) => {
     fresh.tilesets.push(tileset);
@@ -847,16 +885,46 @@ export async function importSampleTileset(projectId: string): Promise<ImportTile
   const existing = new Set(project.tilesets.map((tileset) => tileset.name));
   const warnings: string[] = [];
   const created: MapTileset[] = [];
-  for (const sample of renderSampleTilesets()) {
+  /**
+   * 内置素材是按 **32×32 一格**画出来的。项目的网格可能是 16 / 48 / 64 —— 直接塞进去
+   * 图块会压边（渲染按素材自己的格子画，和地图网格不一致就错位），所以这里按比例重采样：
+   * 整数倍放大用最近邻（像素画放大，边缘干净），缩小 / 非整数倍用面积平均。
+   */
+  const samples = renderSampleTilesets();
+  const targetCell = Math.max(1, Math.round(project.grid.tileWidth));
+  const sourceCell = Math.max(1, samples[0]?.cell.width ?? 32);
+  const scaled = targetCell !== sourceCell;
+  const ratio = targetCell / sourceCell;
+  // 整数倍放大用最近邻（像素画放大，边缘干净）；缩小 / 非整数倍用面积平均。
+  const clarity: AssetClarity = ratio >= 2 && Number.isInteger(ratio) ? "sharp" : "smooth";
+  for (const sample of samples) {
     if (existing.has(sample.name)) {
       warnings.push(`内置素材「${sample.name}」已经在项目里了，跳过。`);
       continue;
     }
+    let bytes = sample.bytes;
+    if (scaled) {
+      /**
+       * PNG 解码统一走 ffmpeg，而 ffmpeg 只认文件路径 —— 落一个临时文件再删。
+       * （`png.ts` 只有编码器；为这一点在 src 里再写一个 PNG 解码器不值得。）
+       */
+      const size = sizeFromBytes(sample.bytes) ?? { width: sample.cell.width, height: sample.cell.height };
+      const scratch = join(mapProjectDir(projectId), `tilesets/${sample.file}.in.png`);
+      await writeFile(scratch, sample.bytes);
+      try {
+        const source = await decodeFile(scratch);
+        const fitted = resampleToSize(source, Math.max(1, Math.round(size.width * ratio)), Math.max(1, Math.round(size.height * ratio)), clarity);
+        bytes = encodeBitmap(fitted);
+      } finally {
+        await rm(scratch, { force: true });
+      }
+    }
     const tileset = await registerTileset(projectId, {
       id: newTilesetId(),
       name: sample.name,
-      bytes: sample.bytes,
-      known: { shape: sample.shape, cell: sample.cell, animRows: sample.animRows, builtin: true }
+      bytes,
+      known: { shape: sample.shape, cell: { width: targetCell, height: targetCell }, animRows: sample.animRows, builtin: true },
+      projectGrid: { width: targetCell, height: targetCell }
     }, warnings);
     await patchMapProject(projectId, (fresh) => {
       fresh.tilesets.push(tileset);
@@ -870,6 +938,213 @@ export async function importSampleTileset(projectId: string): Promise<ImportTile
     });
   }
   return { tilesets: created, warnings };
+}
+
+// ── AI 生成素材：把对话里生成的一批帧整理成一张暂存的素材图 ────────────────
+
+/** 一帧源图的字节上限（与上传那条路同一个上限）。 */
+const FRAME_MAX_BYTES = 30 * 1024 * 1024;
+/** 一列最多几帧。 */
+const FRAME_COUNT_MAX = 64;
+
+export interface ComposeMapAssetInput {
+  projectId: string;
+  name?: string;
+  /** 每帧的本机绝对路径，顺序即帧顺序。 */
+  files: readonly string[];
+  /**
+   * 这块素材怎么用（**生图前就定好的计划**，见 `composeAssetSheet`）：
+   *   · `plain`（默认）每张 = 一帧 → 竖排一列翻页图
+   *   · `corner16`    只能 1 张 = 4×4 的接法排布
+   *   · `a2quad`      每张 = 一列（5 行形状）→ 横排成 N 列变体
+   */
+  shape?: unknown;
+  /** 留空 = 用地图项目的网格尺寸（推荐：图块必须与网格同尺寸，否则画出来会压边）。 */
+  cell?: { width?: unknown; height?: unknown };
+  /** 留空：普通 = 一列变翻页图；整格 / 拼块 = 静态。 */
+  animRows?: boolean;
+}
+
+export interface ComposeMapAssetResult {
+  /** 相对项目目录的路径（`ai/<干名>.png`），资源路由是 `map-assets/<项目 id>/<它>`。 */
+  file: string;
+  name: string;
+  /** `plain` / `corner16` / `a2quad`：界面据此预选「这块素材怎么用」。 */
+  shape: TilesetShape;
+  cell: { width: number; height: number };
+  width: number;
+  height: number;
+  /** 普通 = 帧数；拼块 = 变体数；整格 = 1。 */
+  frameCount: number;
+  /** 拼块的变体数（普通 / 整格为 1）。 */
+  variants: number;
+  animRows: boolean;
+  /** 素材图相对地图格子的倍数（1 = 已经是格子大小；>1 = 导入时按清晰度再缩）。 */
+  scale: number;
+  /** 给人看的提醒（源图比例与目标差很多之类），界面直接显示。 */
+  notes: string[];
+}
+
+/**
+ * 把「AI 生成的那几张图」按**事先定好的素材形态**整理成一张可直接导入的素材图，
+ * 落在项目的 `ai/` 暂存区。
+ *
+ * 与 `importMapTileset` 的分工：这里**不进素材列表**。素材的属性在新增那一刻定死、
+ * 之后只能删掉重来，所以放给用户在地图编辑器的「新增素材」窗口里确认一次
+ * （名字 / 格子 / 用法 / 会动吗都预填好）—— 对话替用户把图整理好，但不替他拍板。
+ *
+ * 几何口径全在这里定死，调用方（对话里的 agent）不需要自己算：
+ *   · **格子 = 地图网格**（`cell` 留空时）。图块按原始尺寸画在格子左上角，一格素材
+ *     与网格不同尺寸就会压到邻居格上；
+ *   · 普通：每张裁成方格 → 竖排（`stackFrames`）；
+ *   · 整格：**一块**无缝墙砖 → 从同一块砖的像素拼出 16 种接法（`corner16SheetFromTile`），
+ *     「断」的边由代码加收口；
+ *   · 拼块：每个变体**一块**无缝砖 → 拼出 N 列 × 5 行（`a2SheetFromTiles`），
+ *     每一格的四个小格按它自己那一侧的接法加收口。
+ *
+ * ⚠️ 整格 / 拼块**不再让模型直接画多格排布**：模型画的 n 个格子是各自独立的，而地图上
+ * 相邻两格常常取自不同格子 —— 实测一条墙的接缝处边缘差 201、块内相邻列才 58，就是那条
+ * 「接缝」。把「一块砖」交给模型、把「怎么拼」留给代码，接缝等于砖自身的环绕缝（最好的
+ * 可能值），`tileSeamRatios` 还会把这个环绕缝量出来写进 `notes`。
+ */
+export async function composeMapAsset(input: ComposeMapAssetInput): Promise<ComposeMapAssetResult> {
+  const project = await readProjectOrThrow(input.projectId);
+  const files = (input.files ?? []).map((file) => String(file));
+  if (files.length === 0) throw new Error("没有可整理的帧：files 不能为空。");
+  if (files.length > FRAME_COUNT_MAX) throw new Error(`一份素材最多 ${FRAME_COUNT_MAX} 张图，收到 ${files.length} 张。`);
+  const shape = parseTilesetShape(input.shape) ?? "plain";
+  const cell = normalizeCell(input.cell) ?? { width: project.grid.tileWidth, height: project.grid.tileHeight };
+  /**
+   * 整格只有 16 块、**没有「帧」这一维**（4×4 全是接法，动画行也是接法行），
+   * 所以多给几张只有两种可能：形态判断错了，或者想要「会动的整格」（做不到）。
+   * 两种都要说清楚 —— 默默用第一张会浪费一次真实计费的生图，只回一句「张数不对」
+   * 则会让调用方/用户一直以为是参数问题。
+   */
+  if (shape === "corner16" && files.length !== 1) {
+    throw new Error(
+      `整格自动连接的素材需要**一块**无缝墙砖（收到 ${files.length} 张：16 种接法由宿主从这一块拼出来）。` +
+        `整格**没有动画** —— 它只有 16 种接法，多出来的帧没有地方放；想要「既自动连接、又会动」的素材请改用拼块（a2quad），它的帧数就是变体。`
+    );
+  }
+  const animRows = shape === "plain" ? input.animRows ?? files.length > 1 : false;
+
+  const frames: Bitmap[] = [];
+  /** 每张源图裁掉了多少边（全部为 0 时说明没白边，不用提）。 */
+  const trimmedAmounts: Array<{ file: string; left: number; top: number; right: number; bottom: number }> = [];
+  for (const file of files) {
+    let info;
+    try {
+      info = await stat(file);
+    } catch {
+      throw new Error(`读不到帧文件：${file}`);
+    }
+    if (!info.isFile()) throw new Error(`不是文件：${file}`);
+    if (info.size > FRAME_MAX_BYTES) {
+      throw new Error(`帧文件 ${(info.size / 1024 / 1024).toFixed(1)}MB 超过上限 ${FRAME_MAX_BYTES / 1024 / 1024}MB：${file}`);
+    }
+    /**
+     * 模型经常在四周留一圈白边（提示词里写了「不要留边」也拦不住）。裁边要在**这里**做：
+     * ① 这一步拿到的是原图，裁剪无损；② 拼成一张素材图之后再裁就只能裁到整张的边，
+     * 多帧竖排时中间几帧的白框裁不到。
+     */
+    const trimmed = trimUniformBorder(await decodeFile(file));
+    trimmedAmounts.push({ file, left: trimmed.left, top: trimmed.top, right: trimmed.right, bottom: trimmed.bottom });
+    frames.push(trimmed.bitmap);
+  }
+
+  /**
+   * 「图片最终处理的清晰度」：**这一步先不缩到格子**。
+   *
+   * 用户在「新增素材」里选好清晰度再缩，才可能真的更清楚 —— 如果这里就用最近邻缩到
+   * 32px，细节已经丢了，后面再选什么算法都救不回来。所以这里只留到 `cell × k`
+   * （k 由源图每块多大决定，上限 `MAX_ASSET_SCALE`），并把这个倍数交给回链：
+   * 「新增素材」据此知道「这张图每格 128px，导入时按清晰度缩到 32px」。
+   */
+  const sourceBlockPx = (() => {
+    if (shape === "corner16") return frames[0].width; // 一张 = 一块
+    if (shape === "a2quad") return Math.min(frames[0].width, Math.round(frames[0].height / A2_ROWS)); // 一张 = 一列 5 行
+    return Math.min(frames[0].width, frames[0].height); // 普通：一张 = 一格
+  })();
+  const scale = Math.max(1, Math.min(MAX_ASSET_SCALE, Math.floor(sourceBlockPx / Math.max(1, Math.min(cell.width, cell.height)))));
+  const bigCell = { width: cell.width * scale, height: cell.height * scale };
+  const plan = sheetPlanOf(shape, bigCell, frames.length);
+  const notes: string[] = [];
+  {
+    const touched = trimmedAmounts.filter((entry) => entry.left + entry.top + entry.right + entry.bottom > 0);
+    if (touched.length > 0) {
+      const first = touched[0];
+      const sides = [first.left > 0 ? `左 ${first.left}px` : "", first.top > 0 ? `上 ${first.top}px` : "", first.right > 0 ? `右 ${first.right}px` : "", first.bottom > 0 ? `下 ${first.bottom}px` : ""].filter(Boolean).join("、");
+      notes.push(
+        `自动裁掉了四周的纯色边框（${sides}${touched.length > 1 ? `，${touched.length}/${frames.length} 张都有` : ""}）：模型在提示词之外另留了一圈边，` +
+          `留着的话每块素材边上都会带一道白框。裁完才是真正的画面范围。`
+      );
+    }
+  }
+  /**
+   * 源图比例与目标差得多时提醒一句：整格 / 拼块要的是**一块方砖**，长宽比差得多会被
+   * 拉伸（内容变形，但砖的性质还在）；普通要的是格子比例。
+   */
+  const targetRatio = cell.width / cell.height;
+  const sourceRatios = frames.map((frame) => frame.width / frame.height);
+  const worst = sourceRatios.reduce((acc, ratio) => Math.max(acc, Math.abs(Math.log(ratio / targetRatio))), 0);
+  if (worst > Math.log(1.6)) {
+    const wanted = `${cell.width}:${cell.height}`;
+    notes.push(
+      `这张图要求的长宽比是 ${wanted}（${shape === "corner16" ? "整格" : shape === "a2quad" ? "拼块" : "普通"}素材的**一块**），模型给的是 ${sourceRatios
+        .map((ratio) => ratio.toFixed(2))
+        .join(" / ")}：已经拉伸对齐，但内容会被压扁或拉长。下次可以在提示词里要求按这个比例出图。`
+    );
+  }
+  /**
+   * 砖自身的环绕缝：整格 / 拼块的图都是「一块砖铺出去」，砖左右 / 上下接不上自己的话，
+   * 地图上每隔一格就会出现一道可见的缝 —— 那正是这次要根除的东西，所以必须量出来说清。
+   */
+  if (shape !== "plain") {
+    const seams = frames.map((frame) => tileSeamRatios(resampleToSize(frame, Math.max(1, Math.floor(cell.width)), Math.max(1, Math.floor(cell.height)), "smooth")));
+    const bad = seams.filter((seam) => Math.max(seam.horizontal, seam.vertical) > 2.2);
+    if (bad.length > 0) {
+      const worstSeam = bad.reduce((acc, seam) => (Math.max(seam.horizontal, seam.vertical) > Math.max(acc.horizontal, acc.vertical) ? seam : acc), bad[0]);
+      notes.push(
+        `这块砖自己接不上自己（左右缝是内部的 ${worstSeam.horizontal.toFixed(1)} 倍、上下缝是 ${worstSeam.vertical.toFixed(1)} 倍）：平铺出去每隔一格会有一道可见的缝。` +
+          `让模型重画一张**四边都能与自身相接**的无缝材质（画面均匀、边缘不要有只出现一次的细节），比调格子参数有用。`
+      );
+    }
+  }
+
+  /**
+   * 大图 → `cell × k` 这一步同样是**缩小**（2048 → 128 也有 16 倍），最近邻一样会走样，
+   * 所以这里固定用面积平均；用户选的清晰度作用于最后那一步 `k× → 1×`（导入时）。
+   */
+  const sheet = composeAssetSheet(frames, plan, "smooth");
+  const name = input.name === undefined || String(input.name).trim() === "" ? "AI 素材" : String(input.name).trim();
+  const file = `ai/${safeAssetStem(name)}.png`;
+  await mkdir(join(mapProjectDir(project.id), "ai"), { recursive: true });
+  await writeFile(mapAssetPath(project.id, file), encodeBitmap(sheet));
+  const shapeLabel = shape === "plain" ? "普通" : shape === "corner16" ? "整格" : "拼块";
+  await patchMapProject(project.id, (fresh) => {
+    appendJobLog(
+      fresh.logs,
+      "info",
+      `整理 AI 素材：${name}（${shapeLabel} / ${frames.length} 张 → ${sheet.width}×${sheet.height}${
+        scale > 1 ? `，每格 ${bigCell.width}px（${scale} 倍，导入时按清晰度缩到 ${cell.width}px）` : ""
+      }，落在 ${file}，等你在「新增素材」里确认）`
+    );
+  });
+
+  return {
+    file,
+    name,
+    shape,
+    cell,
+    width: sheet.width,
+    height: sheet.height,
+    frameCount: shape === "corner16" ? 1 : frames.length,
+    variants: shape === "a2quad" ? frames.length : 1,
+    animRows,
+    /** 这张素材图是「每格几倍分辨率」：1 = 就是格子大小；>1 = 导入时还要按清晰度缩一次。 */
+    scale,
+    notes
+  };
 }
 
 function newTilesetId(): string {
@@ -887,16 +1162,54 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
    * （明确拒绝，不静默改成别的值），而原图是在这个函数里写盘的 —— 先写后抛会留下孤儿图。
    */
   const overrideCell = input.overrides?.cell === undefined ? undefined : normalizeCell(input.overrides.cell);
+  const loop = parseAssetLoop(input.overrides?.loop);
+  const clarity = parseClarity(input.overrides?.clarity);
+  const scale = parseAssetScale(input.overrides?.scale);
   const ext = sniffImageExt(input.bytes);
   const relative = `tilesets/${input.id}.${ext}`;
   await mkdir(join(mapProjectDir(projectId), "tilesets"), { recursive: true });
-  // 写原图（不改写：形态参数随便调，随时能重算）
-  await writeFile(mapAssetPath(projectId, relative), input.bytes);
-  const size = await probeSize(mapAssetPath(projectId, relative), input.bytes);
+  /**
+   * 「图片最终处理的清晰度」就是在这一步生效的：
+   * 素材图如果是「每格 k 倍分辨率」（AI 生成的那条路会带 `scale`），先按用户选的清晰度
+   * 缩到 1 倍再落盘 —— 于是**存下来的素材图正好是格子大小**，调色板 / 渲染 / legend
+   * 全都不用改，缩小的算法只在这一处决定。
+   *
+   * `scale = 1`（自己导一张格子大小的图，绝大多数情况）时一个像素都不动。
+   */
+  const target = mapAssetPath(projectId, relative);
+  // 先落原字节（解码要读盘），`scale > 1` 时再把它换成缩好的那份。
+  await writeFile(target, input.bytes);
+  let storedBytes = input.bytes;
+  try {
+    if (scale > 1) {
+      const source = await decodeFile(target);
+      const fitted = resampleToSize(source, Math.max(1, Math.round(source.width / scale)), Math.max(1, Math.round(source.height / scale)), clarity);
+      storedBytes = encodeBitmap(fitted);
+      await writeFile(target, storedBytes);
+    }
+  } catch (error) {
+    // 缩图失败不能留下一张「半成品」素材图：删掉再抛，用户重试时不会撞见上一张坏图。
+    await rm(target, { force: true });
+    throw error;
+  }
+  const size = await probeSize(target, storedBytes);
   const guess = input.known ?? detectLayout(size.width, size.height);
   const shape = parseTilesetShape(input.overrides?.shape) ?? guess.shape;
   const cell = overrideCell ?? guess.cell;
   const animRows = input.known?.animRows ?? (input.overrides?.animRows === true);
+  /** 播放速度：**先校验再写文件**（`parseAssetFps` 对越界值是抛错的，见同一个函数里的注释）。 */
+  const fps = parseAssetFps(input.overrides?.fps);
+  if (
+    input.projectGrid !== undefined &&
+    input.overrides?.cell === undefined &&
+    input.known === undefined &&
+    (cell.width !== input.projectGrid.width || cell.height !== input.projectGrid.height)
+  ) {
+    warnings.push(
+      `这张素材一格是 ${cell.width}×${cell.height}，而地图格子是 ${input.projectGrid.width}×${input.projectGrid.height} —— ` +
+        `图块只会画在格子左上角，看起来像缩小了一圈。导入时把「格子大小」填成 ${input.projectGrid.width}×${input.projectGrid.height}（= 地图网格）就对了。`
+    );
+  }
   if (!commonSizeFits(size.width, size.height)) {
     // ⚠️ 文案要跟着产品规则走：属性在新增时定死、界面不再提供修改入口 ——
     // 所以这里告诉用户「删掉重新新增」，而不是让他去找一个界面上没有的入口。
@@ -913,6 +1226,9 @@ async function registerTileset(projectId: string, input: RegisterInput, warnings
     shape,
     animRows,
     variants: variantsOf(shape, cell, size.width, size.height, animRows),
+    loop,
+    clarity,
+    fps,
     // 内置素材：属性**不允许修改**（见 saveMapTileset），可以整张删掉，也能一键恢复
     builtin: input.known?.builtin === true ? true : undefined,
     tiles
@@ -970,7 +1286,7 @@ async function probeSize(file: string, bytes: Buffer): Promise<{ width: number; 
 export async function saveMapTileset(
   projectId: string,
   tilesetId: string,
-  patch: { name?: string; cell?: { width: number; height: number }; shape?: TilesetShape; animRows?: boolean }
+  patch: { name?: string; cell?: { width: number; height: number }; shape?: TilesetShape; animRows?: boolean; fps?: number | null; loop?: unknown }
 ): Promise<{ tileset: MapTileset; warnings: string[] }> {
   const project = await readProjectOrThrow(projectId);
   const beforeKeys = indexKeys(project.tilesets);
@@ -987,6 +1303,29 @@ export async function saveMapTileset(
      */
     if (tileset.builtin === true) throw new Error(`「${tileset.name}」是内置素材，属性不能改 —— 可以删掉它，或者自己新增一张素材。`);
     if (typeof patch.name === "string" && patch.name.trim() !== "") tileset.name = patch.name.trim();
+    /**
+     * 播放速度是**表现层属性**（不动几何、不动序号），所以单独走一条：不触发重切、
+     * 不重映射图层数据，只是换个数 —— 想调快调慢随时改，不用删掉重来。
+     * `null` = 清掉（跟「设置 → 动画速度」那条全局速度走）。
+     */
+    /**
+     * 循环方式：只改「帧序怎么展开」，同样不动几何 / 序号，随时能改。
+     * 改完立刻生效（下一次 `mapPlan` 就是新帧序），不需要重切素材。
+     */
+    if (patch.loop !== undefined) {
+      const nextLoop = parseAssetLoop(patch.loop);
+      if (nextLoop !== tileset.loop) {
+        tileset.loop = nextLoop;
+        appendJobLog(fresh.logs, "info", `改素材循环方式：${tileset.name}（${nextLoop === "forward" ? "正放" : nextLoop === "reverse" ? "倒放" : "来回"}）`);
+      }
+    }
+    if (patch.fps !== undefined) {
+      const nextFps = parseAssetFps(patch.fps);
+      if (nextFps !== tileset.fps) {
+        tileset.fps = nextFps;
+        appendJobLog(fresh.logs, "info", `改素材播放速度：${tileset.name}（${nextFps === undefined ? "跟全局" : `${nextFps} 帧/秒`}）`);
+      }
+    }
     const shape = patch.shape ?? tileset.shape;
     const cell = nextCell ?? tileset.cell;
     const animRows = typeof patch.animRows === "boolean" ? patch.animRows : tileset.animRows;
@@ -1378,6 +1717,8 @@ export interface PlanQueryResult {
    */
   markers: PlanMarker[];
   fps: number;
+  /** 计划里最快的那条播放速度（客户端据此推动画时钟）。 */
+  fpsMax: number;
   frameCount: number;
   truncated: boolean;
   warnings: string[];
@@ -1444,6 +1785,7 @@ export async function mapPlan(
     legend: plan.legend,
     markers: plan.markers,
     fps: plan.fps,
+    fpsMax: plan.fpsMax,
     frameCount: plan.frameCount,
     truncated,
     warnings: plan.warnings
@@ -1467,6 +1809,12 @@ export interface MapViewTileset {
   shape: TilesetShape;
   animRows: boolean;
   variants: number;
+  /** 会动的素材怎么循环（`forward` 正放 / `reverse` 倒放 / `pingpong` 来回）。 */
+  loop?: AssetLoop;
+  /** 导入时用的清晰度（图像已经烘进去，这里只作显示 / 排查）。 */
+  clarity?: AssetClarity;
+  /** 素材自己的播放速度（帧/秒）；`undefined` = 跟「设置 → 动画速度」走。 */
+  fps?: number;
   tileCount: number;
   /** 识别说明（中文、人话）。 */
   reason: string;
@@ -1555,6 +1903,9 @@ export async function mapView(p: MapProject, options: { projectId?: string; orig
       shape: tileset.shape,
       animRows: tileset.animRows,
       variants: tileset.variants,
+      loop: tileset.loop,
+      clarity: tileset.clarity,
+      fps: tileset.fps,
       tileCount: tileset.tiles.length,
       builtin: tileset.builtin === true ? true : undefined,
       reason: layoutFor(tileset.shape, tileset.cell, tileset.imageWidth, tileset.imageHeight).reason,

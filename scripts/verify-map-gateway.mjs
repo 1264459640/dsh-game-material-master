@@ -19,7 +19,7 @@
  *
  * 用法：node scripts/verify-map-gateway.mjs
  */
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { deepStrictEqual } from "node:assert";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
@@ -81,7 +81,8 @@ check("注册了 8 个 game_material_* 工具", captured.tools.length === 8, cap
 const tool = (name) => captured.tools.find((entry) => entry.name === name);
 const run = async (name, args) => tool(name).execute(args, { signal: undefined });
 
-/** 契约 §8 的 20 个方法（顺序即清单顺序）。 */
+/** 契约 §8 的 21 个方法（顺序即清单顺序）。 */
+
 const CONTRACT_METHODS = [
   "listMapProjects",
   "createMapProject",
@@ -90,6 +91,7 @@ const CONTRACT_METHODS = [
   "deleteMapProject",
   "importMapTileset",
   "importSampleTileset",
+  "composeMapAsset",
   "saveMapTileset",
   "removeMapTileset",
   "saveMapDoc",
@@ -184,12 +186,12 @@ try {
   // ══ 1. wire 方法表与契约 §8 逐条对齐 ═════════════════════════════════════
   section("1) wire 方法表与契约 §8 逐条对齐");
   const declared = wire.METHODS.map((entry) => entry.method).filter((method) => CONTRACT_METHODS.includes(method) || REMOVED_METHODS.includes(method));
-  check("wire 声明的地图方法恰好是契约里的 20 个（不多不少）", declared.length === 20 && CONTRACT_METHODS.every((method) => declared.includes(method)), declared.join(","));
-  check("契约 §8 的 20 个方法一个不少", CONTRACT_METHODS.every((method) => specOf(method) !== undefined), CONTRACT_METHODS.filter((method) => specOf(method) === undefined).join(","));
-  check("网关上真的实现了这 20 个方法", CONTRACT_METHODS.every((method) => typeof studio[method] === "function"), CONTRACT_METHODS.filter((method) => typeof studio[method] !== "function").join(","));
+  check("wire 声明的地图方法恰好是契约里的 21 个（不多不少）", declared.length === 21 && CONTRACT_METHODS.every((method) => declared.includes(method)), declared.join(","));
+  check("契约 §8 的 21 个方法一个不少", CONTRACT_METHODS.every((method) => specOf(method) !== undefined), CONTRACT_METHODS.filter((method) => specOf(method) === undefined).join(","));
+  check("网关上真的实现了这 21 个方法", CONTRACT_METHODS.every((method) => typeof studio[method] === "function"), CONTRACT_METHODS.filter((method) => typeof studio[method] !== "function").join(","));
   const invocations = captured.manifest?.invocations ?? [];
   const invocationIds = new Set(invocations.map((entry) => entry.method));
-  check("typert manifest 里也有这 20 个方法", CONTRACT_METHODS.every((method) => invocationIds.has(method)));
+  check("typert manifest 里也有这 21 个方法", CONTRACT_METHODS.every((method) => invocationIds.has(method)));
   check(
     "每个地图方法都有 result codec（且能 create 出 schema）",
     invocations.filter((entry) => CONTRACT_METHODS.includes(entry.method)).every((entry) => typeof entry.result?.create === "function")
@@ -287,7 +289,11 @@ try {
   check("每个地图方法都归属 map 模块", CONTRACT_METHODS.every((method) => toolsurface.METHOD_MODULE[method] === "map"), CONTRACT_METHODS.filter((method) => toolsurface.METHOD_MODULE[method] !== "map").join(","));
   check("m 前缀认成 map，t 前缀仍是 tile，未知前缀返回 undefined", toolsurface.moduleForId("m1a2b3c") === "map" && toolsurface.moduleForId("t1a2b3c") === "tile" && toolsurface.moduleForId("zz12") === undefined);
   check("模块中文名不再带旧术语", !String(toolsurface.MODULE_LABELS.map).includes("等距") && !String(toolsurface.MODULE_LABELS.map).includes("地块"), toolsurface.MODULE_LABELS.map);
-  check("资源白名单只剩 tilesets / preview / export（maps 已删）", !mapgen.SERVABLE_MAP_DIRS.has("maps") && ["tilesets", "preview", "export"].every((dir) => mapgen.SERVABLE_MAP_DIRS.has(dir)), [...mapgen.SERVABLE_MAP_DIRS].join(","));
+  check(
+    "资源白名单只剩 tilesets / preview / export / ai（maps 已删）",
+    !mapgen.SERVABLE_MAP_DIRS.has("maps") && ["tilesets", "preview", "export", "ai"].every((dir) => mapgen.SERVABLE_MAP_DIRS.has(dir)),
+    [...mapgen.SERVABLE_MAP_DIRS].join(",")
+  );
   const callDescription = tool("game_material_call").description;
   check("对话面方法说明里有新方法（runMapGenerate / importSampleTileset）", callDescription.includes("runMapGenerate") && callDescription.includes("importSampleTileset"));
   check("对话面方法说明里没有旧方法与旧术语", !callDescription.includes("saveMapFamilies") && !callDescription.includes("blob47") && !callDescription.includes("地形族") && !callDescription.includes("Tiled"));
@@ -333,6 +339,128 @@ try {
   check("未知形态明确报错（不静默回落）", (await failed(() => gw("saveMapTileset", { projectId, tilesetId, shape: "hex" }))).includes("未知素材形态"));
   check("改不存在的素材报错", (await failed(() => gw("saveMapTileset", { projectId, tilesetId: "tsnope", name: "x" }))).includes("素材不存在"));
 
+  /**
+   * ★ 素材自己的播放速度：**payload schema 里漏一个字段就会被静默丢掉** ——
+   * 表现是「界面选了速度、宿主收到的还是 undefined」，而且不报任何错。
+   * 所以这两个方法都要真调一遍（import 带上、save 改一次、再清掉）。
+   */
+  const fpsImported = await gw("importMapTileset", { projectId, name: "快图", data: sheetPng(128, 128, 32).toString("base64"), fps: 6 });
+  check("importMapTileset.fps 真的到宿主并生效（6 帧/秒）", fpsImported.tilesets[0].fps === 6, String(fpsImported.tilesets[0].fps));
+  check("反向验证：不给 fps 时就是 undefined（跟全局）", imported.tilesets[0].fps === undefined, String(imported.tilesets[0].fps));
+  const fpsSaved = await gw("saveMapTileset", { projectId, tilesetId: fpsImported.tilesets[0].id, fps: 12 });
+  check("saveMapTileset.fps 生效（改成 12）", fpsSaved.tileset.fps === 12, String(fpsSaved.tileset.fps));
+  const fpsCleared = await gw("saveMapTileset", { projectId, tilesetId: fpsImported.tilesets[0].id, fps: null });
+  check("saveMapTileset.fps = null 清掉自己的速度（回到跟全局）", fpsCleared.tileset.fps === undefined, String(fpsCleared.tileset.fps));
+  check("越界速度明确报错（不静默夹到 30）", (await failed(() => gw("saveMapTileset", { projectId, tilesetId: fpsImported.tilesets[0].id, fps: 99 }))).includes("0.5"));
+
+  /**
+   * ★ 清晰度 / 倍数：**同一个 schema 陷阱**（字段不在 schema 里就被静默丢掉）。
+   *
+   * 这里真跑一遍「一张 4 倍分辨率的素材图按平滑缩到 32px」：进 schema 的是 `clarity`
+   * 与 `scale`，出来的是「素材图正好一格大小 + 素材上记着清晰度」。
+   */
+  const bigSheet = sheetPng(256, 256, 32); // 256×256 = 8×8 块 32px
+  const clarityImported = await gw("importMapTileset", {
+    projectId,
+    name: "清晰度图",
+    data: bigSheet.toString("base64"),
+    cell: { width: 32, height: 32 },
+    shape: "plain",
+    scale: 4,
+    clarity: "sharp"
+  });
+  const clarityTileset = clarityImported.tilesets[0];
+  check("importMapTileset.scale 真的到宿主并生效（256×256 的 4 倍图 → 缩成 64×64）", clarityTileset.imageWidth === 64 && clarityTileset.imageHeight === 64, `${clarityTileset.imageWidth}×${clarityTileset.imageHeight}`);
+  check("importMapTileset.clarity 也真的到宿主（素材上记着 sharp）", clarityTileset.clarity === "sharp", String(clarityTileset.clarity));
+  check(
+    "缩下来的图真的落到 tilesets/（资源路由能取回来，界面不会图裂）",
+    (await gw("getMapProject", { projectId })).tilesets.some((entry) => entry.id === clarityTileset.id && entry.imageWidth === 64)
+  );
+  check("未知清晰度明确报错（不静默回落）", (await failed(() => gw("importMapTileset", { projectId, name: "乱写", data: bigSheet.toString("base64"), cell: { width: 32, height: 32 }, clarity: "nope" }))).includes("清晰度"));
+
+  /** ★ 循环方式：同一个 schema 陷阱（字段不在 schema 里就被静默丢掉）。 */
+  const loopImported = await gw("importMapTileset", { projectId, name: "倒放图", data: sheetPng(128, 128, 32).toString("base64"), animRows: true, loop: "reverse" });
+  check("importMapTileset.loop 真的到宿主（素材上记着 reverse）", loopImported.tilesets[0].loop === "reverse", String(loopImported.tilesets[0].loop));
+  check("反向验证：不给 loop 时就是 forward", (await gw("importMapTileset", { projectId, name: "正放图", data: sheetPng(128, 128, 32).toString("base64"), animRows: true })).tilesets[0].loop === "forward");
+  const loopSaved = await gw("saveMapTileset", { projectId, tilesetId: loopImported.tilesets[0].id, loop: "pingpong" });
+  check("saveMapTileset.loop 生效（reverse → pingpong）", loopSaved.tileset.loop === "pingpong", String(loopSaved.tileset.loop));
+  check("未知循环方式明确报错", (await failed(() => gw("importMapTileset", { projectId, name: "乱写循环", data: bigSheet.toString("base64"), cell: { width: 32, height: 32 }, loop: "yoyo" }))).includes("循环方式"));
+
+  /**
+   * ★ 一格多大：`createMapProject` 的 `grid` 必须真的过网关（schema 里没有就被静默丢掉，
+   * 表现是「新建时选了 64，建出来还是 32」）。
+   */
+  const wideGrid = await gw("createMapProject", { name: "64 网格网关", cols: 8, rows: 8, grid: { tileWidth: 64, tileHeight: 64, wrap: true } });
+  check("createMapProject.grid 真的到宿主（网格 64×64）", wideGrid.grid.tileWidth === 64 && wideGrid.grid.tileHeight === 64, JSON.stringify(wideGrid.grid));
+  const wideSamples = await gw("importSampleTileset", { projectId: wideGrid.id });
+  check("64 网格的项目装内置素材：按项目网格放大（每格 64px）", wideSamples.tilesets.every((entry) => entry.cell.width === 64), wideSamples.tilesets.map((entry) => entry.cell.width).join(","));
+  await mapgen.deleteMapProject(wideGrid.id);
+  check("反向验证：不传 grid 时还是 32（老行为不变）", (await gw("createMapProject", { name: "默认网格", cols: 4, rows: 4 })).grid.tileWidth === 32);
+
+  // ── composeMapAsset：走网关把一批帧整理成一张待确认的素材图 ──────────────
+  // 这批帧真的写到盘上（网关那一层要验证的是「payload 有没有丢键 + 返回的
+  // file 能不能经资源路由取回来」，不是像素 —— 像素归 verify-map-pipeline）。
+  const frameDir = join(HOME, "gw-frames");
+  await mkdir(frameDir, { recursive: true });
+  const frameA = join(frameDir, "a.png");
+  const frameB = join(frameDir, "b.png");
+  await writeFile(frameA, sheetPng(16, 16));
+  await writeFile(frameB, sheetPng(16, 16));
+  const tilesetCountBefore = (await gw("getMapProject", { projectId })).tilesets.length;
+  const composed = await gw("composeMapAsset", { projectId, name: "网关AI素材", files: [frameA, frameB] });
+  check(
+    "composeMapAsset：files / name 原样到宿主，返回 file + shape + cell + frameCount + animRows",
+    composed.file === "ai/网关AI素材.png" &&
+      composed.frameCount === 2 &&
+      composed.animRows === true &&
+      composed.shape === "plain" &&
+      composed.cell.width === created.grid.tileWidth &&
+      composed.cell.height === created.grid.tileHeight,
+    JSON.stringify(composed)
+  );
+  check("composeMapAsset：cell 留空时用的是项目网格（不是写死 32）", composed.width === created.grid.tileWidth && composed.height === created.grid.tileHeight * 2, `${composed.width}×${composed.height}`);
+  /**
+   * `shape` 是**生图前定好的计划**：schema 里漏了它就会被静默丢掉，宿主动不动就按
+   * 普通处理 —— 拼块 / 整格的图导入后全碎，而且不报任何错。
+   */
+  const cornerComposed = await gw("composeMapAsset", { projectId, name: "网关整格", files: [frameA], shape: "corner16" });
+  check(
+    "composeMapAsset：shape=corner16 真的到宿主并生效（4 格 × 4 格）",
+    cornerComposed.shape === "corner16" &&
+      cornerComposed.width === created.grid.tileWidth * 4 &&
+      cornerComposed.height === created.grid.tileHeight * 4 &&
+      cornerComposed.animRows === false,
+    `${cornerComposed.width}×${cornerComposed.height} shape=${cornerComposed.shape}`
+  );
+  const a2Composed = await gw("composeMapAsset", { projectId, name: "网关拼块", files: [frameA, frameB], shape: "a2quad" });
+  check(
+    "composeMapAsset：shape=a2quad 真的到宿主并生效（N 列 × 5 行）",
+    a2Composed.shape === "a2quad" &&
+      a2Composed.variants === 2 &&
+      a2Composed.width === created.grid.tileWidth * 2 &&
+      a2Composed.height === created.grid.tileHeight * 5,
+    `${a2Composed.width}×${a2Composed.height} variants=${a2Composed.variants}`
+  );
+  check(
+    "composeMapAsset：整格给两张 = 形态判断错了，明确报错（要的是**一块**无缝墙砖）",
+    (await failed(() => gw("composeMapAsset", { projectId, name: "整格错", files: [frameA, frameB], shape: "corner16" }))).includes("一块")
+  );
+  const afterCompose = await gw("getMapProject", { projectId });
+  check(
+    "composeMapAsset：只整理、不导入（素材列表一条不加）",
+    afterCompose.tilesets.length === tilesetCountBefore && !afterCompose.tilesets.some((entry) => entry.name === "网关AI素材"),
+    `${tilesetCountBefore} → ${afterCompose.tilesets.length}`
+  );
+  check("composeMapAsset：文件真的落下去了", existsSync(mapgen.mapAssetPath(projectId, composed.file)));
+  check(
+    "composeMapAsset：空 files 明确报错",
+    (await failed(() => gw("composeMapAsset", { projectId, name: "空的", files: [] }))).includes("files")
+  );
+  check(
+    "composeMapAsset：读不到的文件明确报错",
+    (await failed(() => gw("composeMapAsset", { projectId, name: "缺的", files: [join(frameDir, "nope.png")] }))).includes("nope.png")
+  );
+
   // ══ 5. 编辑 / 计划 / 撤销（走网关，字段真的影响结果）════════════════════
   section("5) 编辑 / 计划 / 撤销（走网关，字段真的影响结果）");
   const base = 1; // 第一块
@@ -346,6 +474,7 @@ try {
   const gwView = await gw("getMapProject", { projectId });
   check("applyMapOps：标记 op 走网关真的落进文档（编号从 1 开始）", gwMark.changed === 1 && gwView.markers.some((marker) => marker.name === "网关标记" && marker.r === 6 && marker.c === 6 && marker.n === 1), JSON.stringify(gwView.markers));
   const gwPlan = await gw("mapPlan", { projectId, view: { x: 0, y: 0, width: 40 * 32, height: 40 * 32 } });
+  check("mapPlan 走网关也带 fpsMax（客户端据此推时钟）", gwPlan.fpsMax === 1 && gwPlan.fps === 1, `fps=${gwPlan.fps} fpsMax=${gwPlan.fpsMax}`);
   const gwPlanMark = (gwPlan.markers ?? [])[0];
   check("mapPlan：标记带圆心 / 半径 / 字号 / 数字（界面只 arc + fillText）", gwPlanMark !== undefined && gwPlanMark.x === 6 * 32 + 16 && gwPlanMark.y === 6 * 32 + 16 && gwPlanMark.radius > 0 && gwPlanMark.font > 0 && gwPlanMark.n === 1, JSON.stringify(gwPlanMark ?? null));
   const dropped = await gw("applyMapOps", { projectId, ops: [{ kind: "paint", layerId: layer0, cells: [{ r: 3, c: 3, tile: base }] }], have: ["0,0", "9,9"] });
@@ -473,6 +602,47 @@ try {
   check("game_material_call 调无参方法不接受 payload", (await failed(() => run("game_material_call", { method: "listMapProjects", payload: { x: 1 } }))).includes("不接受 payload"));
   check("game_material_call 调有参方法必须要 payload", (await failed(() => run("game_material_call", { method: "mapPlan" }))).includes("需要一个 payload"));
   check("game_material_call 不认旧方法（saveMapFamilies 不在枚举里）", (await failed(() => run("game_material_call", { method: "saveMapFamilies", payload: {} }))).includes("未知方法"));
+  /**
+   * 「AI 生成素材」的回链：`composeMapAsset` 的 openUrl 必须**带上产物路径与帧数**，
+   * 界面靠它把刚整理好的图预填进「新增素材」。少了 `dialog`/`asset`/`frames` 里任何一个，
+   * 用户点开只会落在一张空的地图编辑器上 —— 而且不报错。
+   */
+  const composedCall = await run("game_material_call", {
+    method: "composeMapAsset",
+    payload: { projectId, name: "工具面AI素材", files: [frameA, frameB] }
+  });
+  const composedUrl = new URL(String(composedCall.openUrl));
+  check(
+    "call(composeMapAsset)：openUrl 带 module=map / job=项目 / stage=assets",
+    composedUrl.searchParams.get("module") === "map" && composedUrl.searchParams.get("job") === projectId && composedUrl.searchParams.get("stage") === "assets",
+    String(composedCall.openUrl)
+  );
+  check(
+    "call(composeMapAsset)：openUrl 带 dialog=add / asset / frames / shape（界面据此预填）",
+    composedUrl.searchParams.get("dialog") === "add" &&
+      composedUrl.searchParams.get("asset") === "ai/工具面AI素材.png" &&
+      composedUrl.searchParams.get("frames") === "2" &&
+      composedUrl.searchParams.get("shape") === "plain",
+    String(composedCall.openUrl)
+  );
+  check("call(composeMapAsset)：解析回宿主侧意图后字段一个不丢", (() => {
+    const parsed = links.parseIntentQuery(composedUrl.search);
+    return parsed?.dialog === "add" && parsed?.asset === "ai/工具面AI素材.png" && parsed?.frames === 2 && parsed?.stage === "assets" && parsed?.shape === "plain";
+  })(), JSON.stringify(links.parseIntentQuery(composedUrl.search)));
+  const shapedCall = await run("game_material_call", {
+    method: "composeMapAsset",
+    payload: { projectId, name: "工具面拼块", files: [frameA, frameB, frameB], shape: "a2quad" }
+  });
+  check(
+    "call(composeMapAsset)：形态是拼块时链接里带的就是 a2quad（回链预填不会退回普通）",
+    new URL(String(shapedCall.openUrl)).searchParams.get("shape") === "a2quad" && shapedCall.value.variants === 3,
+    String(shapedCall.openUrl)
+  );
+  check(
+    "call(composeMapAsset)：openHint 说的是「新增素材已打开并预填好」",
+    String(composedCall.openHint).includes("新增素材") && String(composedCall.openHint).includes("预填"),
+    String(composedCall.openHint)
+  );
 
   const statusList = await run("game_material_status", { module: "map" });
   check("status 不带 id：列出地图项目", statusList.mapProjects.some((item) => item.id === projectId), JSON.stringify(statusList.mapProjects.map((p) => p.id)));
@@ -566,6 +736,13 @@ try {
   check("图集原图能取到（200，且不是空响应）", okTileset.status === 200 && okTileset.body.length > 0, `status=${okTileset.status} bytes=${okTileset.body.length}`);
   const okPreview = await request(`${assetBase}/preview/map.png`);
   check("预览图能取到（preview 在白名单里）", okPreview.status === 200, `status=${okPreview.status}`);
+  /**
+   * `ai/` 是「AI 生成素材」的回链落点：界面要 `fetch` 这张图把它填进「新增素材」。
+   * 它不在白名单里的话表现是「链接点开了、对话框也弹了，但图没选上」——
+   * 只有一个报错提示，很容易被当成「模型没生成成功」。
+   */
+  const okAiAsset = await request(`${assetBase}/${composed.file.split("/").map(encodeURIComponent).join("/")}`);
+  check("AI 素材暂存图能取到（ai/ 在白名单里）", okAiAsset.status === 200 && okAiAsset.body.length > 0, `status=${okAiAsset.status} bytes=${okAiAsset.body.length}`);
   const exportDir = (await gw("getMapProject", { projectId })).exportBase.replace(/^export\//, "").replace(/\/$/, "");
   const okExport = await request(`${assetBase}/export/${exportDir}/map.png`);
   check("导出产物能取到（export 在白名单里）", okExport.status === 200, `status=${okExport.status}`);

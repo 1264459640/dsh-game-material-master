@@ -45,7 +45,7 @@ import {
   type MapLayout
 } from "./mapgeom.js";
 import { a2QuadrantShapes, corner16Mask, nearestMask, type NeighborAt } from "./mapauto.js";
-import { flatTiles, type FlatTile, type MapRect, type MapTileset } from "./maptiles.js";
+import { applyLoop, flatTiles, type FlatTile, type MapRect, type MapTileset } from "./maptiles.js";
 
 /** 单张导出图的最大像素数（超过就明确拒绝，而不是把进程 OOM 掉）。 */
 export const MAX_RENDER_PIXELS = 64_000_000;
@@ -83,6 +83,13 @@ export interface PlanOp {
    * `PlanQueryResult`）不带 `cycles` 数组，客户端只能从 op 自己身上读帧序。
    */
   cyc?: number;
+  /**
+   * 这一格的**播放速度**（帧/秒，来自素材自己的 `fps`）。省略 = 跟 `RenderPlan.fps`。
+   *
+   * 客户端照它算这一格的帧号（`floor(经过秒数 * fps) % cycle.length`）—— 一片水与一排
+   * 霓虹灯因此可以各走各的速度。客户端要按 `fpsMax` 推时钟，否则慢速时钟会拖住快速素材。
+   */
+  fps?: number;
 }
 
 export interface PlanChunk {
@@ -135,6 +142,13 @@ export interface RenderPlan {
   /** 用到的图块序号 → 图集与源矩形。客户端画一次就够（`mapPlan` 全量给）。 */
   legend: PlanLegendEntry[];
   fps: number;
+  /**
+   * 计划里**最快**的那条播放速度（= `max(fps, 各 op 自己的 fps)`）。
+   *
+   * 客户端用它推动画时钟：只按全局 `fps` 推的话，一个 8 帧/秒的素材会被 1 帧/秒的时钟
+   * 拖住（画面每秒才重画一次），表现为「设了速度却还是慢」。
+   */
+  fpsMax: number;
   /** 所有 `cycle` 长度的最大值（没有多帧地块时 = 1）。 */
   frameCount: number;
   /** 计划里出现的循环（按内容去重，顺序 = 首次出现顺序）。 */
@@ -308,12 +322,16 @@ function wholeCellOps(
       if (index >= tileset.tiles.length) break;
       frames.push(base + index);
     }
-    if (frames.length > 1) cycle = frames;
+    // 「一遍」的帧序 → 实际循环（正放 / 倒放 / 来回）；只展开帧序，客户端不用改。
+    if (frames.length > 1) cycle = applyLoop(frames, tileset.loop ?? "forward");
   }
   const index = cycle === undefined ? base + position : cycle[0];
   const topLeft = cellTopLeft(env.layout, rr, cc, tileset.cell.width, tileset.cell.height);
   const op: PlanOp = { l: layerIndex, r: w.r, c: w.c, t: index, x: Math.round(topLeft.x), y: Math.round(topLeft.y), a: 1 };
-  if (cycle !== undefined) op.cycle = cycle;
+  if (cycle !== undefined) {
+    op.cycle = cycle;
+    if (tileset.fps !== undefined) op.fps = tileset.fps;
+  }
   return [op];
 }
 
@@ -368,7 +386,11 @@ function a2Ops(
       a: 1
     };
     // 变体差异就是动画：四个象限各带一条**等长**的 cycle，帧号因此是全局同一个。
-    if (cycle.length > 1) op.cycle = cycle;
+    if (cycle.length > 1) {
+      // 四个象限各带一条**等长**的展开后帧序 —— 同一条循环方式，帧号因此仍然是全局同一个。
+      op.cycle = applyLoop(cycle, tileset.loop ?? "forward");
+      if (tileset.fps !== undefined) op.fps = tileset.fps;
+    }
     ops.push(op);
   }
   return ops;
@@ -451,12 +473,15 @@ export function buildPlan(
     const pb = parseChunkKey(b[0]) ?? { cx: 0, cy: 0 };
     return pa.cy - pb.cy || pa.cx - pb.cx;
   });
+  let fpsMax = DEFAULT_FPS;
   for (const [key, list] of ordered) {
     list.sort((a, b) => a.rr - b.rr || a.cc - b.cc || a.op.l - b.op.l);
     for (const item of list) {
       const cycle = item.op.cycle;
       if (cycle === undefined) continue;
       if (cycle.length > frameCount) frameCount = cycle.length;
+      // 客户端照 fpsMax 推时钟，慢速的那个不会拖住快速的那个。
+      if (typeof item.op.fps === "number" && item.op.fps > fpsMax) fpsMax = item.op.fps;
       const id = cycle.join(",");
       if (seenCycles.has(id)) continue;
       seenCycles.add(id);
@@ -470,6 +495,7 @@ export function buildPlan(
     bounds: planBounds(context, doc),
     legend,
     fps: DEFAULT_FPS,
+    fpsMax,
     frameCount,
     cycles,
     markers: buildMarkers(context, doc, range),

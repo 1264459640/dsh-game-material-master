@@ -1196,8 +1196,6 @@
         "Leave empty to use the file name",
       "格子大小（留空就自动认）":
         "Cell size (leave empty to detect)",
-      "只影响会动的素材（水、翻页图这类）":
-        "Only affects images that animate (water, flip-books and the like)",
       "先选一张素材图。":
         "Choose an image file first.",
       "已新增素材 {n0}":
@@ -1531,7 +1529,140 @@
       "保存 Cookie": "Save cookie",
       "ComfyUI Cookie 已保存": "ComfyUI cookie saved",
       "已清除 ComfyUI Cookie": "ComfyUI cookie cleared",
-      "ComfyUI 本身不做鉴权；只有当它藏在需要登录的反向代理后面（Cloudflare Access、Basic Auth 之类）时才用得上——从浏览器开发者工具里把 Cookie 整段复制过来即可，所有请求（包括取回成品视频）都会带上它。": "ComfyUI does not authenticate on its own; a Cookie is only needed when it sits behind a login-protected reverse proxy (Cloudflare Access, Basic Auth, and the like). Copy the whole Cookie from your browser developer tools - every request, including fetching the finished video, carries it."
+      "ComfyUI 本身不做鉴权；只有当它藏在需要登录的反向代理后面（Cloudflare Access、Basic Auth 之类）时才用得上——从浏览器开发者工具里把 Cookie 整段复制过来即可，所有请求（包括取回成品视频）都会带上它。": "ComfyUI does not authenticate on its own; a Cookie is only needed when it sits behind a login-protected reverse proxy (Cloudflare Access, Basic Auth, and the like). Copy the whole Cookie from your browser developer tools - every request, including fetching the finished video, carries it.",
+
+      // AI 生成素材（地图编辑器素材窗口 → 新对话）
+      "AI 生成素材": "Generate with AI",
+      "当前环境不支持自动开新对话，请在对话里直接说明你要的素材。": "This environment cannot open a new chat automatically. Please describe the asset you want in the chat instead.",
+      "新对话打开了，但提示词没发出去。": "The new chat opened, but the prompt could not be sent.",
+      "AI 素材": "AI asset",
+      "先写一段提示词。": "Write a prompt first.",
+      "「图片生成」被隐藏了，去「设置 → 游戏素材大师 → 功能管理」打开再试。": "\"Image generation\" is hidden. Turn it on in \"Settings → Game Material Master → Features\" and try again.",
+      "「序列帧生成」被隐藏了，去「设置 → 游戏素材大师 → 功能管理」打开再试。": "\"Sequence frames\" is hidden. Turn it on in \"Settings → Game Material Master → Features\" and try again.",
+      "说明一句：它会开一个新对话，让对话里的 agent 按这段需求去生成；做完贴一条链接，点回来这张图就已经填在「新增素材」里了。": "One thing to know: this opens a new chat and lets the agent there generate the asset from your request. When it is done it posts a link; click it and the image is already filled in on \"Add asset\".",
+      "提示词": "Prompt",
+      "想要什么素材？例如「一片冰蓝色的水面，波纹缓慢起伏」": "What asset do you want? For example: \"a sheet of ice-blue water with slow ripples\"",
+      "素材名字": "Asset name",
+      "留空就用提示词开头几个字": "Leave empty to use the first few words of the prompt",
+      "动画帧数（1 = 静态）": "Animation frames (1 = static)",
+      "帧": "frames",
+      "动画生成方式": "How to generate the animation",
+      "用生图模型出图：帧数为 1 时出一张静态图；大于 1 时按同一个提示词出多张（动作连贯性不如视频模型）。": "Image model: one static image when the frame count is 1; with more frames it produces several images from the same prompt (less consistent motion than the video model).",
+      "先出一张静态首帧图，再让它动起来并按帧抽出来：动作连贯，但比生图模型多一次计费。": "Video model: generate one static first frame, animate it, then extract the frames. Smoother motion, but one more paid call than the image model.",
+      "帧数为 1 时只用生图模型：出一张静态素材。想要会动的，把帧数改成大于 1。": "With 1 frame only the image model is used: it produces one static asset. To get motion, raise the frame count above 1.",
+      "视频模型：先出一张静态首帧，再让它动起来并抽出这些帧。比生图模型多一次计费，但动作连贯。": "Video model: one static first frame, then animate it and extract those frames. One more paid call than the image model, but the motion is smooth.",
+      "生图模型：按同一个提示词出多张图。动作没有视频模型连贯，但更省。": "Image model: several images from the same prompt. Less smooth motion than the video model, but cheaper.",
+      "没取到刚生成的那张图（{n0}）。你可以自己选一张，或者回对话里再要一次。": "Could not fetch the image that was just generated ({n0}). Pick one yourself, or ask for it again in the chat.",
+      "【游戏素材大师 · AI 生成素材】": "[Game Material Master · Generate with AI]",
+      "这是「地图编辑器 → 素材 → AI 生成素材」自动发起的一次任务：参数已经全部确定，不要调用 game_material_intake 追问、不要停下来问用户，直接做完。": "This task was started automatically by \"Map editor → Assets → Generate with AI\". Every parameter is already decided: do not call game_material_intake to ask follow-up questions and do not stop to ask the user - just finish it.",
+      "目标地图项目：{n0}（projectId={n1}，地图网格 {n2} 像素，素材按这个格子输出）": "Target map project: {n0} (projectId={n1}, map grid {n2} px; the asset must be produced at this tile size)",
+      "素材名字：{n0}": "Asset name: {n0}",
+      "动画生成方式：{n0}": "Generation method: {n0}",
+      "素材主题（用户提示词）：": "Asset subject (the user's prompt):",
+      "② 再让它动起来并抽帧：createSequenceJob({name}) → game_material_upload({module:'sequence', id, kind:'firstFrame', path:<首帧绝对路径>})": "2) Then animate it and extract frames: createSequenceJob({name}) → game_material_upload({module:'sequence', id, kind:'firstFrame', path:<absolute path of the first frame>})",
+      "   → runSequenceVideo({jobId}) → game_material_wait → runSequenceFrames({jobId, count:{n0}}) → game_material_wait；": "   → runSequenceVideo({jobId}) → game_material_wait → runSequenceFrames({jobId, count:{n0}}) → game_material_wait;",
+      "   然后 getSequenceJob({jobId}) 取 dir 与 frames.files，按顺序取前 {n0} 帧的绝对路径 = dir + '/' + file。": "   then getSequenceJob({jobId}) and read dir and frames.files; take the absolute paths of the first {n0} frames in order as dir + '/' + file.",
+      "然后 getImageJob({jobId}) 取 dir 与 items[]，按顺序取前 {n0} 张的绝对路径 = dir + '/' + file。": "then getImageJob({jobId}) and read dir and items[]; take the absolute paths of the first {n0} images in order as dir + '/' + file.",
+      "审核模式按自动：你自己核对结果，有问题自己重跑，不要停下来等我确认。全程不要问任何问题。": "Review mode is auto: check the result yourself and re-run anything that looks wrong; do not stop for my confirmation. Do not ask any questions at all.",
+
+      // 「AI 生成素材」· 素材形态（普通 / 整格 / 拼块）的规划与规整
+      "动画帧数：{n0}": "Animation frames: {n0}",
+      "这块素材怎么用：{n0}（用户已经指定，不要改）": "How this asset is used: {n0} (already chosen by the user - do not change it)",
+      "这块素材怎么用：**你来判断**（下面第一步给了判据）": "How this asset is used: **you decide** (step 1 below gives the criteria)",
+      "第一步 · 定这块素材怎么用（三种里选一种，后面全按它做；用户已指定时跳过，按指定的做）：": "Step 1 - Decide how this asset is used (pick one of the three; everything below follows it. Skip if the user already chose one):",
+      "  · 拼块（a2quad）：成片铺开、边缘要自动接上 —— 草地 / 水面 / 沙地 / 岩浆 / 雪地 / 石地。": "  · Quadrant tiles (a2quad): spreads out in large patches and edges must connect - grass / water / sand / lava / snow / stone.",
+      "  · 整格（corner16）：要连成一条、拐角要对上 —— 墙 / 路 / 栅栏 / 篱笆 / 桥 / 管道。": "  · Whole-cell tiles (corner16): joins into strips and corners must line up - walls / roads / fences / hedges / bridges / pipes.",
+      "  · 普通（plain）：一块一块单独摆、不跟邻居接 —— 树 / 箱子 / 道具 / 装饰 / 单个图案。": "  · Plain tiles (plain): placed one by one without connecting - trees / chests / props / decorations / a single motif.",
+      "第二步 · 按用法规划这一张（或这几张）图怎么排：": "Step 2 - Plan the layout of this image (or these images) for that usage:",
+      "  【普通】每张图 = 一格内容：方形、正面视角、无透视、无文字、铺满整格；它会被裁成 {n0} 的方块。": "  [Plain] Each image = one cell of content: square, front-facing, no perspective, no text, filling the whole cell; it will be cropped to a {n0} square.",
+      "    帧数 1 = 一张；帧数 > 1 = {n0} 张（每帧一张），宿主会把它们竖排成一列翻页图。": "    1 frame = one image; more frames = {n0} images (one per frame), which the host stacks into a single flipbook column.",
+      "  【整格】只画**一块**正方形、**可以无缝平铺**的墙面（整张图就是这一块，**不要**分格、**不要**画 4 列 × 4 行）：": "  [Corner16] Draw **one** square wall surface that **tiles seamlessly** (the whole image is this single piece - do NOT split it into cells, do NOT draw a 4x4 grid):",
+      "    要求：左右边缘能接上自己、上下边缘也能接上自己 —— 把这张图横着竖着挨个排开，看上去应该是一整面墙，看不出接缝；": "    Requirements: its left and right edges must meet themselves, and so must its top and bottom edges - place copies side by side and it should read as one continuous wall with no visible seam;",
+      "    画面要均匀，不要有只出现一次的图案 / 光带 / 渐变（平铺出去会变成一眼可见的重复）；不要画边框、收口、阴影、网格线。": "    Keep it even: no one-off shapes, light strips or gradients (those turn into obvious repeats when tiled); no borders, no caps, no shadows, no grid lines.",
+      "    16 种接法（哪几边连、哪几边断）和断口的收口，由插件从这一块砖的像素自己拼出来，你只需要把墙面本身画好。": "    The 16 connection cases (which sides connect and which are cut) and the caps at those cuts are assembled by the plugin from this single tile's pixels - you only need to paint the wall surface itself.",
+      "    整格没有「帧」这一维：帧数一律按 1 处理（静态素材）。": "    Corner16 has no frame axis: treat the frame count as 1 (a static asset).",
+      "  【拼块】每个变体只画**一块**正方形、**可以无缝平铺**的材质（整张图就是这一块，**不要**分格、**不要**画 5 行）：": "  [A2quad] For each variant draw **one** square piece of material that **tiles seamlessly** (the whole image is this single piece - do NOT split it into cells, do NOT draw 5 rows):",
+      "    要求：四边都能与自己相接 —— 成片铺开（一大片草地 / 水面）时看不到接缝；画面均匀，不要有只出现一次的图案或强渐变；不要画边框、收口、阴影。": "    Requirements: all four edges must meet themselves, so a large patch (a field of grass, a body of water) shows no seam; keep it even, with no one-off shapes or strong gradients; no borders, caps or shadows.",
+      "    5 种接法（哪几边连、哪几边断）和边缘的收口，由插件从这一块砖的像素自己拼出来。": "    The 5 connection cases (which sides connect and which are cut) and the edge caps are assembled by the plugin from this single tile's pixels.",
+      "    帧数 = 变体数：一共 {n0} 张（每张一块砖），插件会拼成 {n0} 列；各张之间只让「该动的地方」不同，其余保持一致。": "    Frames = variants: {n0} images in total (one tile each), which the plugin joins into {n0} columns; keep everything except the moving part consistent between tiles.",
+      "  **shape 必须是你这次选定的那个**：宿主按它把这一块砖拼成地图编辑器要的几何（普通裁成方格竖排；整格用同一块砖拼出 16 种接法、断口由它加收口；拼块每个变体一块砖拼成 N 列 × 5 行）。": "  **shape must be the one you chose**: the host builds the map editor's geometry from that single tile (plain crops cells and stacks them; corner16 assembles all 16 connection cases from the same tile with code-drawn caps; a2quad assembles one tile per variant into N columns x 5 rows).",
+      "⚠️ 用户那边选了「{n0} / {n1} 帧」，但整格没有帧这一维（4×4 全是接法，动画行也是接法行）—— 这次按静态做。**请在回答里明确告诉他这一点**，并说明想要会动的自动连接素材可以改选「拼块」（拼块的帧数就是变体）。": "The user picked \"{n0} / {n1} frames\", but whole-cell tiles have no frame axis (the 4x4 grid is all connection cases, and the animation rows are connection rows too) - build this one as a static asset. **Say so explicitly in your answer** and mention that an animated self-connecting asset needs the \"quadrant\" usage instead (its frame count becomes variants).",
+      "⚠️ 用户要的是**会动的**素材（帧数 > 1 或选了视频模型）：如果你判断成「整格」，请**改用「拼块」**（拼块靠变体动画，同样能自动连接），并在回答里说清为什么没用整格。整格只有 16 种接法、做不出动画。": "The user wants an **animated** asset (more than one frame, or the video model): if you conclude \"whole-cell\", **switch to \"quadrant\"** instead (quadrant tiles animate by swapping variants and still auto-connect), and explain in your answer why whole-cell was not used. Whole-cell has only 16 connection cases and cannot animate.",
+      "整格没有动画，帧数固定 1、生成方式固定生图模型（设了也不会动，只是白多一次计费）。想要会动的自动连接素材，把「这块素材怎么用」改成「拼块」。": "Whole-cell tiles cannot animate: frames are fixed at 1 and the method is fixed to the image model (setting them would only cost you one extra paid call). For an animated self-connecting asset, switch \"how this asset is used\" to quadrant.",
+      "整格：只让模型画**一块**无缝墙砖（四边都能接上自己），插件用同一块砖拼出 16 种接法、断口由它加收口 —— 不要让它画 16 个各自独立的格子，那样拼到地图上全是缝。⚠️ 整格**没有动画**（它就是 16 种接法），所以帧数与生成方式锁在静态；想要「会动的自动连接」素材，把用法改成「拼块」——拼块的帧数就是变体，动画靠换变体。": "Whole-cell: have the model paint **one** seamless wall tile (all four edges meeting themselves) and the plugin assembles all 16 connection cases from it, drawing the caps at the cut edges - do not let it draw 16 independent panels, those leave a seam at every junction. Note that whole-cell tiles **cannot animate** (they are just 16 connection cases), so the frame count and method are locked to static; for an animated self-connecting asset switch to quadrant - there the frame count becomes variants and animation works by swapping them.",
+      "拼块：每个变体只让模型画**一块**无缝材质（四边都能接上自己），插件拼成 N 列 × 5 行（N = 帧数）。帧数大于 1 时地图上按变体循环播放 —— 这是三种用法里唯一「既自动连接、又会动」的。": "Quadrant: have the model paint **one** seamless piece of material per variant (all four edges meeting themselves) and the plugin assembles N columns x 5 rows (N = frame count). With more than one frame it loops through the variants on the map - the only one of the three usages that both auto-connects and animates.",
+      "普通：每张图 = 一格内容；帧数大于 1 时竖排成翻页图（地图上逐帧播放）。": "Plain: each image = one cell of content; with more than one frame they stack into a flipbook that plays frame by frame on the map.",
+      "  别自己先拼多格排布再传进来：模型画的多格是各自独立的，拼到地图上每一处交界都会有缝 —— 这次就是因为这个返工的。": "  Do not pre-assemble a multi-cell layout yourself: independently drawn cells never line up, so every junction on the map shows a seam - that is exactly what caused this rework.",
+      "画法要求：内容要铺满、不要留边；不要用绿幕背景、也不要做抠像 —— 地图素材要的是不透明的方块。": "Rendering requirements: fill the frame with no margins; no green-screen background and no chroma keying - a map asset is an opaque tile.",
+      "变体之间保持同构图、同色调、同光位，只让该动的部分变化。": "Keep variants identical in composition, tone and lighting; only the part that should move may change.",
+      "帧之间除该动的部分以外其余尽量保持一致（同构图、同色调、同光位）。": "Keep frames as consistent as possible except for the moving part (same composition, tone and lighting).",
+      "第三步 · 生成：": "Step 3 - Generate:",
+      "① 先出一张静态首帧图：createImageJob({name}) → saveImageJob({jobId, prompt:<上面的主题 + 画法要求 + 排布>}) → runImageJob({jobId, count:1}) → game_material_wait({id:jobId})；": "1) First make one static first frame: createImageJob({name}) -> saveImageJob({jobId, prompt:<subject + rendering requirements + layout above>}) -> runImageJob({jobId, count:1}) -> game_material_wait({id:jobId});",
+      "   然后 getImageJob({jobId}) 取 dir 与 items[0].file，首帧绝对路径 = dir + '/' + file。": "   then getImageJob({jobId}) and read dir and items[0].file; the absolute path of the first frame is dir + '/' + file.",
+      "用图片生成模块：createImageJob({name}) → saveImageJob({jobId, prompt:<上面的主题 + 画法要求 + 排布>}) → runImageJob({jobId, count:{n0}}) → game_material_wait({id:jobId})；": "Use the image module: createImageJob({name}) -> saveImageJob({jobId, prompt:<subject + rendering requirements + layout above>}) -> runImageJob({jobId, count:{n0}}) -> game_material_wait({id:jobId});",
+      "第四步 · 整理并回链：game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<上面那些绝对路径，按顺序>], shape:'<你选的形态：plain|corner16|a2quad>'}})": "Step 4 - Assemble and post the link: game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<those absolute paths, in order>], shape:'<the shape you chose: plain|corner16|a2quad>'}})",
+      "  把这次调用返回的 openUrl **原样**贴成 Markdown 链接（例如 [回到地图编辑器](…)）：点开就回到地图编辑器，素材窗口已展开、": "  Post the openUrl returned by that call **verbatim** as a Markdown link (for example [Back to the map editor](...)): it returns to the map editor, opens the assets window and",
+      "「新增素材」里这张图与「这块素材怎么用」都已经预选好，用户点「确定」才真的导入。": "\"Add asset\" already has this image and \"how it is used\" preselected; only when the user clicks \"OK\" is it actually imported.",
+      "⚠️ 如果 composeMapAsset 的 notes 里出现「这块砖自己接不上自己」，**不要**自动重跑（重跑要花真钱）：照常把链接贴出来，并在回答里把这句原样告诉用户，让他决定要不要重画一张更均匀的无缝材质。": "If composeMapAsset notes mention that the tile does not meet itself, do NOT re-run on your own (a re-run costs real money): post the link as usual and quote that line to the user so they can decide whether to repaint a more even seamless texture.",
+      "自动判断": "Decide automatically",
+      "跟设置里的动画速度": "Follow the speed in Settings",
+      "平滑": "Smooth",
+      "正放": "Forward",
+      "正放循环": "Forward loop",
+      "从头放到尾，再接回开头：0 → 1 → 2 → 3 → 0 …。最常见的循环。": "Plays from the first frame to the last and loops back: 0 -> 1 -> 2 -> 3 -> 0. The usual loop.",
+      "倒放": "Reverse",
+      "倒放循环": "Reverse loop",
+      "从尾放到头：3 → 2 → 1 → 0 → 3 …。看起来就是倒着播还一直循环。": "Plays from the last frame back to the first: 3 -> 2 -> 1 -> 0 -> 3. The animation runs backwards, forever.",
+      "来回": "Ping-pong",
+      "来回播放": "Ping-pong",
+      "正着放到尾再从尾倒回来：0 → 1 → 2 → 3 → 2 → 1 → 0 …。首尾接得最顺，像呼吸灯、旗帜、水面起伏。": "Runs to the last frame and comes back: 0 -> 1 -> 2 -> 3 -> 2 -> 1 -> 0. The seam never jumps - good for breathing lights, flags and swelling water.",
+      "循环方式": "Loop mode",
+      "一格多大": "Tile size",
+      "{n0}×{n0} 像素": "{n0}x{n0} px",
+      "这一下就定了、之后不能改。想让 AI 生成的素材更清楚就用 48 / 64（一格能留下更多细节），代价是同样屏幕上能放的地图格数变少。": "Set once here and cannot be changed later. Use 48 / 64 to keep more detail in AI-generated assets - the trade-off is fewer map cells on screen.",
+      "{n0}×{n1} 像素": "{n0}x{n1} px",
+      "新建项目时定的，之后不能改。AI 生成的素材会按这个尺寸出块；想让素材更清楚就新建一个 48 / 64 的项目。": "Fixed when the project was created. AI-generated assets are cut at this size; for sharper assets create a new 48 / 64 project.",
+      "平滑（面积平均）": "Smooth (area average)",
+      "把每个格子覆盖到的像素全部平均掉：细节保留、边缘柔和、没有锯齿。AI 画的那种金属 / 霓虹 / 渐变的图，选这个最清楚。": "Averages every source pixel a cell covers: detail survives, edges stay soft, no stair-stepping. Best for the metal / neon / gradient art AI produces.",
+      "锐利": "Sharp",
+      "锐利（最近邻）": "Sharp (nearest neighbour)",
+      "每个格子只取一个像素：边缘硬、像素风，但大图缩小时会丢细节、出锯齿。本来就画成像素画的图选这个。": "Takes a single source pixel per cell: hard edges, pixel-art look, but shrinking a large image loses detail and stair-steps. Pick this for art that is already pixel art.",
+      "清晰": "Crisp",
+      "清晰（平均 + 锐化）": "Crisp (average + sharpen)",
+      "先面积平均，再做一次轻锐化：轮廓更利落、细节更抓眼，适合细节特别密的图（电路、纹理、文字状花纹）。": "Area average followed by a light sharpen: cleaner outlines and punchier detail. Good for very busy art (circuitry, texture, lettering-like patterns).",
+      "清晰度": "Clarity",
+      "这张图每格 {n0}px（{n1} 倍分辨率），点「确定」时会按上面的方式缩到 {n2}px 一格 —— 选哪种缩法，出来的细节差挺多。": "This image is {n0}px per cell ({n1}x resolution). Clicking \"OK\" shrinks it to {n2}px per cell using the choice above - the resulting detail differs a lot.",
+      "跟全局速度走": "Use the global speed",
+      "用「设置」里的那条动画速度，慢 / 中 / 快都跟着变。拿不准就选它。": "Use the animation speed from Settings, so slow / medium / fast all apply. Pick this if you are unsure.",
+      "1 帧/秒": "1 fps",
+      "每秒 1 帧": "1 frame per second",
+      "一秒换一帧，很慢：适合呼吸灯、缓慢起伏的水面。": "One frame per second - very slow: good for a breathing light or gently swelling water.",
+      "2 帧/秒": "2 fps",
+      "每秒 2 帧": "2 frames per second",
+      "两秒走完一轮（按 2 帧算），适合水波、旗帜这类慢动作。": "A slow cycle (2 frames), good for ripples and flags.",
+      "4 帧/秒": "4 fps",
+      "每秒 4 帧": "4 frames per second",
+      "常见的动画速度：水面波光、篝火、流水。": "The usual speed: shimmering water, campfires, flowing streams.",
+      "6 帧/秒": "6 fps",
+      "每秒 6 帧": "6 frames per second",
+      "偏快：瀑布、闪烁的霓虹灯。": "On the fast side: waterfalls, flickering neon.",
+      "8 帧/秒": "8 fps",
+      "每秒 8 帧": "8 frames per second",
+      "很快：电流、喷泉、快速闪烁。": "Very fast: electric arcs, fountains, rapid flicker.",
+      "12 帧/秒": "12 fps",
+      "每秒 12 帧": "12 frames per second",
+      "最快的一档：要靠逐帧动画硬撑的连续动作。": "The fastest option: continuous motion that needs true frame-by-frame animation.",
+      "这块素材跟「设置」里的动画速度走（慢 / 中 / 快）。想让它自己一个速度，就在上面选一个 —— 同一张地图上不同的素材可以各走各的。": "This asset follows the animation speed in Settings (slow / medium / fast). Pick a number above to give it its own speed - different assets on one map can each run at their own rate.",
+      "这块素材自己按 {n0} 帧/秒 播放，不受「设置」里的动画速度影响。": "This asset plays at {n0} fps and ignores the animation speed in Settings.",
+      "会动 {n0} 帧 · {n1} 帧/秒": "Animated, {n0} frames at {n1} fps",
+      "只影响会动的素材（水、翻页图这类）。哪张素材在「新增素材」里单独设过速度，就按它自己的走，不跟着这里变。": "Only affects animated assets (water, flipbooks and the like). An asset given its own speed in \"Add asset\" keeps that speed and ignores this setting.",
+      "让对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通。": "Let the agent in the chat decide from the prompt: spreading patches (grass / water / lava) -> quadrant tiles; strips (walls / roads / fences) -> whole-cell tiles; standalone (trees / chests / props) -> plain tiles.",
+      "一块一块单独摆、不跟邻居接：树 / 箱子 / 道具 / 装饰。每张图 = 一格内容；帧数 > 1 时竖排成翻页图。": "Placed one by one without connecting: trees / chests / props / decorations. Each image = one cell of content; with more than one frame they stack into a flipbook.",
+      "要连成一条、拐角要对上：墙 / 路 / 栅栏 / 桥。生成一张 4×4 共 16 块的图，按「上1 右2 下4 左8」的位序画 16 种接法；没有动画（帧数按 1 处理）。": "Joins into strips with matching corners: walls / roads / fences / bridges. Generates one 4x4 image of 16 blocks in the up=1 / right=2 / down=4 / left=8 order; no animation (frames are treated as 1).",
+      "成片铺开、边缘自动接上：草地 / 水面 / 沙地 / 岩浆。每张图 = 一列 5 行（自上而下 5 种接法），帧数 = 变体数（拼块的动画就是换变体）。": "Spreads out with connecting edges: grass / water / sand / lava. Each image = one column of 5 rows (the 5 connection cases), and frames = variants (quadrant-tile animation works by swapping variants).",
+      "已在新对话里开始生成：素材「{n0}」（用哪种由对话判断）": "Generation started in a new chat: asset \"{n0}\" (the chat decides which type)",
+      "已在新对话里开始生成：素材「{n0}」（{n1}）": "Generation started in a new chat: asset \"{n0}\" ({n1})",
+      "由对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通。它会在生图前把排布规划好，生成后按这个规则切成地图能用的图。": "The agent in the chat decides from the prompt: spreading patches (grass / water / lava) -> quadrant tiles; strips (walls / roads / fences) -> whole-cell tiles; standalone (trees / chests / props) -> plain tiles. It plans the layout before generating and slices the result into a map-ready image afterwards.",
 
     };
 /* i18n-ignore-end */
@@ -1688,6 +1819,228 @@
       }
     }
 
+    // ── 新对话桥：把「AI 生成素材」的活派给一个不挂靠项目的新对话 ────────────
+    //
+    // 素材窗口那颗「AI 生成素材」不自己生成图：它开一个**新对话**，把拼好的需求作为
+    // 第一句话发进去，剩下的交给对话里的 agent（它有全套 game_material_* 工具）。
+    //
+    // `sessions` / `uiWorkspace` 是 DSH 核心的浏览器侧服务。它们是**可选依赖**：
+    // 写进 `inject` 数组会让整个插件卡在这两个服务上（缺一个就整块不挂载），
+    // 所以照 `attachI18n` 的写法懒接一次；没接上时点「生成」给一句可读的提示。
+    let sessionsService: any = null;
+    let uiWorkspaceService: any = null;
+
+    function attachSessionBridge(ctx: any): void {
+      const bind = (child: any) => {
+        try {
+          if (child === null || child === undefined || typeof child.get !== "function") return;
+          const sessions = child.get("sessions");
+          const workspace = child.get("uiWorkspace");
+          if (sessions !== undefined && sessions !== null) sessionsService = sessions;
+          if (workspace !== undefined && workspace !== null) uiWorkspaceService = workspace;
+        } catch {
+          // 取服务失败不影响插件其余功能。
+        }
+      };
+      bind(ctx);
+      if (sessionsService !== null && uiWorkspaceService !== null) return;
+      try {
+        ctx.inject(["sessions", "uiWorkspace"], bind);
+      } catch {
+        // 没有 ctx.inject 的宿主：点「生成」时会明确提示，界面其余部分照常。
+      }
+    }
+
+    /**
+     * 开一个新对话并把提示词发进去。
+     *
+     * `sessions.create({})` **不给 workspaceId、也不给 cwd** —— 这就是「不挂靠项目」：
+     * 会话落在侧栏的未分组里，不占任何项目 / 工作区。建好先 `openSession` 把主列切到
+     * 对话界面（`uiWorkspace.openSession` 内部会 `layout.selectPanel(null)`），
+     * 再用 `beginSubmission` + `prompt` 把那句话作为第一轮发出去。
+     */
+    async function openAssetChat(text: string): Promise<string> {
+      const sessions = sessionsService;
+      const workspace = uiWorkspaceService;
+      if (sessions === null || workspace === null) {
+        throw new Error(T("当前环境不支持自动开新对话，请在对话里直接说明你要的素材。"));
+      }
+      const sessionId = await sessions.create({});
+      workspace.openSession(sessionId);
+      const reference = sessions.retain(sessionId, { source: "gameStudioAssetRequest" });
+      try {
+        await reference.ready;
+        const session = reference.binding.session;
+        const submission = session.beginSubmission({ mode: "queue", text, attachments: [] });
+        const result = await session.prompt([{ type: "text", text }], "queue", undefined, submission.requestId);
+        if (result === null || result === undefined || result.ok !== true) {
+          submission.abandon();
+          const detail = result?.error;
+          throw new Error(detail === undefined ? T("新对话打开了，但提示词没发出去。") : `${detail.code ?? "ERROR"}: ${detail.message ?? ""}`);
+        }
+      } finally {
+        reference.release();
+      }
+      return sessionId;
+    }
+
+    /**
+     * 从提示词里取一个像样的素材名字。
+     *
+     * 只在用户没填名字时用：去掉换行与多余空白，取前 12 个字。名字最终由宿主
+     * 归一成文件名（`safeAssetStem`），这里只决定「默认叫什么」。
+     */
+    function deriveAssetName(prompt: string): string {
+      const flat = String(prompt ?? "").replace(/\s+/gu, " ").trim();
+      if (flat === "") return T("AI 素材");
+      return flat.slice(0, 12);
+    }
+
+    /** 动画帧数的上下限（界面与提示词共用同一份）。 */
+    const ASSET_FRAMES_MIN = 1;
+    const ASSET_FRAMES_MAX = 16;
+    /** 「这块素材怎么用」：`auto` = 让对话里的 agent 按判据判断（默认）。 */
+    const ASSET_SHAPES = ["auto", "plain", "corner16", "a2quad"];
+    /** 形态 key → 界面上的短名（提示词与对话框共用）。 */
+    function assetShapeLabel(shape) {
+      if (shape === "corner16") return T("整格");
+      if (shape === "a2quad") return T("拼块");
+      return T("普通");
+    }
+
+    /**
+     * 拼给新对话的提示词。
+     *
+     * 结构：身份说明 → 已定死的参数（含**这块素材怎么用**）→ 素材主题（用户原文）→
+     * 第一步定形态 → 第二步按形态规划排布 → 第三步生成 → 第四步整理并回链 → 审核模式。
+     *
+     * ⚠️ 这里**逐行**拼、每行各自套一层 `T()`：整段塞进一条 `T()` 的话，模板里的 JSON
+     * 花括号会被 i18n 的 `{word}` 插值规则当成占位符（`{projectId}` 恰好还是真的
+     * 参数名），插件一换语言就可能把示例替换成别的值。
+     */
+    function buildAssetRequestPrompt(input: {
+      projectId: string;
+      projectName: string;
+      cell: { width: number; height: number };
+      name: string;
+      prompt: string;
+      frames: number;
+      mode: "image" | "video";
+      /** `auto` = 由 agent 判断；其余三种是用户指定的。 */
+      shape: "auto" | "plain" | "corner16" | "a2quad";
+    }): string {
+      const shape = ASSET_SHAPES.includes(input.shape) ? input.shape : "auto";
+      const fixed = shape !== "auto";
+      /**
+       * ⚠️ 整格**没有帧这一维**（4×4 全是接法），所以用户指定整格时一律按静态派活 ——
+       * 真机踩过：用户选了「视频模型 + 8 帧」，提示词里同时写着「帧数 8」和「整格没有帧这一维」，
+       * agent 只好按静态做，出来的是一张不动的图，**而且没人告诉他**。
+       * 所以这里既要把参数归一，又要在下面把「用户其实想要动画」这件事说出来。
+       */
+      const staticShape = shape === "corner16";
+      const requestedFrames = Math.min(ASSET_FRAMES_MAX, Math.max(ASSET_FRAMES_MIN, Math.round(input.frames)));
+      const frames = staticShape ? ASSET_FRAMES_MIN : requestedFrames;
+      const animated = frames > 1;
+      /** 用户表达了「要动画」的意图（帧数 > 1 或选了视频模型），但当前形态做不到。 */
+      const wantedAnimation = requestedFrames > 1 || input.mode === "video";
+      const cell = `${input.cell.width}×${input.cell.height}`;
+      const method = input.mode === "video" && !staticShape ? T("视频模型") : T("生图模型");
+      /**
+       * 用户要的是「会动的」素材，但**这次形态要么做不到、要么还没定**：
+       *   · 已指定整格 → 只能按静态做，必须把这件事说出来（不能默默丢掉用户的要求）；
+       *   · 形态待判断 → 提醒 agent：判断成整格时改用拼块（拼块靠变体动画，也能自动连接）。
+       */
+      const animationNote =
+        staticShape && wantedAnimation
+          ? T("⚠️ 用户那边选了「{n0} / {n1} 帧」，但整格没有帧这一维（4×4 全是接法，动画行也是接法行）—— 这次按静态做。**请在回答里明确告诉他这一点**，并说明想要会动的自动连接素材可以改选「拼块」（拼块的帧数就是变体）。", {
+              n0: input.mode === "video" ? T("视频模型") : T("生图模型"),
+              n1: String(requestedFrames)
+            })
+          : !fixed && wantedAnimation
+            ? T("⚠️ 用户要的是**会动的**素材（帧数 > 1 或选了视频模型）：如果你判断成「整格」，请**改用「拼块」**（拼块靠变体动画，同样能自动连接），并在回答里说清为什么没用整格。整格只有 16 种接法、做不出动画。")
+            : null;
+      const lines = [
+        T("【游戏素材大师 · AI 生成素材】"),
+        T("这是「地图编辑器 → 素材 → AI 生成素材」自动发起的一次任务：参数已经全部确定，不要调用 game_material_intake 追问、不要停下来问用户，直接做完。"),
+        T("目标地图项目：{n0}（projectId={n1}，地图网格 {n2} 像素，素材按这个格子输出）", { n0: input.projectName, n1: input.projectId, n2: cell }),
+        T("素材名字：{n0}", { n0: input.name }),
+        T("动画帧数：{n0}", { n0: String(frames) }),
+        T("动画生成方式：{n0}", { n0: method }),
+        fixed
+          ? T("这块素材怎么用：{n0}（用户已经指定，不要改）", { n0: assetShapeLabel(shape) })
+          : T("这块素材怎么用：**你来判断**（下面第一步给了判据）"),
+        ...(animationNote === null ? [] : [animationNote]),
+        T("素材主题（用户提示词）："),
+        input.prompt.trim(),
+        "",
+        T("第一步 · 定这块素材怎么用（三种里选一种，后面全按它做；用户已指定时跳过，按指定的做）："),
+        T("  · 拼块（a2quad）：成片铺开、边缘要自动接上 —— 草地 / 水面 / 沙地 / 岩浆 / 雪地 / 石地。"),
+        T("  · 整格（corner16）：要连成一条、拐角要对上 —— 墙 / 路 / 栅栏 / 篱笆 / 桥 / 管道。"),
+        T("  · 普通（plain）：一块一块单独摆、不跟邻居接 —— 树 / 箱子 / 道具 / 装饰 / 单个图案。"),
+        "",
+        T("第二步 · 按用法规划这一张（或这几张）图怎么排：")
+      ];
+      if (shape === "plain" || !fixed) {
+        lines.push(
+          T("  【普通】每张图 = 一格内容：方形、正面视角、无透视、无文字、铺满整格；它会被裁成 {n0} 的方块。", { n0: cell }),
+          T("    帧数 1 = 一张；帧数 > 1 = {n0} 张（每帧一张），宿主会把它们竖排成一列翻页图。", { n0: String(frames) })
+        );
+      }
+      if (shape === "corner16" || !fixed) {
+        lines.push(
+          T("  【整格】只画**一块**正方形、**可以无缝平铺**的墙面（整张图就是这一块，**不要**分格、**不要**画 4 列 × 4 行）："),
+          T("    要求：左右边缘能接上自己、上下边缘也能接上自己 —— 把这张图横着竖着挨个排开，看上去应该是一整面墙，看不出接缝；"),
+          T("    画面要均匀，不要有只出现一次的图案 / 光带 / 渐变（平铺出去会变成一眼可见的重复）；不要画边框、收口、阴影、网格线。"),
+          T("    16 种接法（哪几边连、哪几边断）和断口的收口，由插件从这一块砖的像素自己拼出来，你只需要把墙面本身画好。"),
+          T("    整格没有「帧」这一维：帧数一律按 1 处理（静态素材）。")
+        );
+      }
+      if (shape === "a2quad" || !fixed) {
+        lines.push(
+          T("  【拼块】每个变体只画**一块**正方形、**可以无缝平铺**的材质（整张图就是这一块，**不要**分格、**不要**画 5 行）："),
+          T("    要求：四边都能与自己相接 —— 成片铺开（一大片草地 / 水面）时看不到接缝；画面均匀，不要有只出现一次的图案或强渐变；不要画边框、收口、阴影。"),
+          T("    5 种接法（哪几边连、哪几边断）和边缘的收口，由插件从这一块砖的像素自己拼出来。"),
+          T("    帧数 = 变体数：一共 {n0} 张（每张一块砖），插件会拼成 {n0} 列；各张之间只让「该动的地方」不同，其余保持一致。", { n0: String(frames) })
+        );
+      }
+      lines.push("", T("画法要求：内容要铺满、不要留边；不要用绿幕背景、也不要做抠像 —— 地图素材要的是不透明的方块。"));
+      if (shape === "a2quad" && animated) {
+        lines.push(T("变体之间保持同构图、同色调、同光位，只让该动的部分变化。"));
+      } else if (shape === "plain" && animated) {
+        lines.push(T("帧之间除该动的部分以外其余尽量保持一致（同构图、同色调、同光位）。"));
+      }
+      lines.push("", T("第三步 · 生成："));
+      if (input.mode === "video" && animated) {
+        lines.push(
+          T("① 先出一张静态首帧图：createImageJob({name}) → saveImageJob({jobId, prompt:<上面的主题 + 画法要求 + 排布>}) → runImageJob({jobId, count:1}) → game_material_wait({id:jobId})；"),
+          T("   然后 getImageJob({jobId}) 取 dir 与 items[0].file，首帧绝对路径 = dir + '/' + file。"),
+          T("② 再让它动起来并抽帧：createSequenceJob({name}) → game_material_upload({module:'sequence', id, kind:'firstFrame', path:<首帧绝对路径>})"),
+          T("   → runSequenceVideo({jobId}) → game_material_wait → runSequenceFrames({jobId, count:{n0}}) → game_material_wait；", { n0: String(frames) }),
+          T("   然后 getSequenceJob({jobId}) 取 dir 与 frames.files，按顺序取前 {n0} 帧的绝对路径 = dir + '/' + file。", { n0: String(frames) })
+        );
+      } else {
+        lines.push(
+          T("用图片生成模块：createImageJob({name}) → saveImageJob({jobId, prompt:<上面的主题 + 画法要求 + 排布>}) → runImageJob({jobId, count:{n0}}) → game_material_wait({id:jobId})；", { n0: String(frames) }),
+          T("然后 getImageJob({jobId}) 取 dir 与 items[]，按顺序取前 {n0} 张的绝对路径 = dir + '/' + file。", { n0: String(frames) })
+        );
+      }
+      lines.push(
+        "",
+        T("第四步 · 整理并回链：game_material_call({method:'composeMapAsset', payload:{projectId:'{n0}', name:'{n1}', files:[<上面那些绝对路径，按顺序>], shape:'<你选的形态：plain|corner16|a2quad>'}})", {
+          n0: input.projectId,
+          n1: input.name
+        }),
+        T("  **shape 必须是你这次选定的那个**：宿主按它把这一块砖拼成地图编辑器要的几何（普通裁成方格竖排；整格用同一块砖拼出 16 种接法、断口由它加收口；拼块每个变体一块砖拼成 N 列 × 5 行）。"),
+        T("  别自己先拼多格排布再传进来：模型画的多格是各自独立的，拼到地图上每一处交界都会有缝 —— 这次就是因为这个返工的。"),
+        T("  把这次调用返回的 openUrl **原样**贴成 Markdown 链接（例如 [回到地图编辑器](…)）：点开就回到地图编辑器，素材窗口已展开、"),
+        T("「新增素材」里这张图与「这块素材怎么用」都已经预选好，用户点「确定」才真的导入。"),
+        T("⚠️ 如果 composeMapAsset 的 notes 里出现「这块砖自己接不上自己」，**不要**自动重跑（重跑要花真钱）：照常把链接贴出来，并在回答里把这句原样告诉用户，让他决定要不要重画一张更均匀的无缝材质。"),
+        "",
+        T("审核模式按自动：你自己核对结果，有问题自己重跑，不要停下来等我确认。全程不要问任何问题。")
+      );
+      return lines.join("\n");
+    }
+
     // ── 远程贡献 ─────────────────────────────────────────────────────────
     // 与宿主 src/wire.ts 的 METHODS 必须一一对应；那份是唯一的真源。
     // 宿主校验在服务端；浏览器半区只声明同一套 strict codec。
@@ -1831,6 +2184,7 @@
       ["deleteMapProject", true],
       ["importMapTileset", true],
       ["importSampleTileset", true],
+      ["composeMapAsset", true],
       ["saveMapTileset", true],
       ["removeMapTileset", true],
       ["saveMapDoc", true],
@@ -2088,6 +2442,12 @@
     // 只按 `dsh-gmm` 参数识别自己的链接，其它链接（含站外的）一律放行。
     const OPEN_QUERY_KEY = "dsh-gmm";
     const OPEN_MODULES = new Set(["sprite", "image", "sequence", "rig", "tile", "map"]);
+    /** `dialog` 允许的取值（宿主 `links.ts` 的 `OPEN_DIALOGS`，改一处要同步）。 */
+    const OPEN_DIALOGS = new Set(["add"]);
+    /** `shape` 允许的取值（宿主 `links.ts` 的 `OPEN_SHAPES`，改一处要同步）。 */
+    const OPEN_SHAPES = new Set(["plain", "corner16", "a2quad"]);
+    /** 深链接里所有属于本插件的参数名：清理地址栏时一起摘掉。 */
+    const OPEN_PARAM_KEYS = [OPEN_QUERY_KEY, "module", "project", "job", "stage", "direction", "dialog", "asset", "frames", "shape", "scale"];
     /** 意图订阅者：各模块组件都挂着，谁在挂载谁就被通知。 */
     const intentListeners = new Set<any>();
     /** 最近一次意图。晚挂载的组件（切模块后才渲染）订阅时立刻拿到它。 */
@@ -2128,6 +2488,27 @@
       if (stage) intent.stage = stage;
       const direction = params.get("direction");
       if (direction) intent.direction = direction;
+      const dialog = params.get("dialog");
+      if (dialog !== null && OPEN_DIALOGS.has(dialog)) intent.dialog = dialog;
+      /**
+       * `asset` 只接受项目资源目录下的相对路径。绝对路径与 `..` 一律丢掉 ——
+       * 宿主资源路由另有拦截，但坏值不该进界面（它会被拼进 fetch 的 URL）。
+       */
+      const asset = params.get("asset");
+      if (asset !== null && asset.trim() !== "" && !asset.startsWith("/") && !asset.startsWith("\\") && !asset.includes("..") && !asset.includes("\\")) {
+        intent.asset = asset.trim();
+      }
+      const frames = Number(params.get("frames"));
+      if (params.get("frames") !== null && Number.isInteger(frames) && frames > 0) intent.frames = frames;
+      /** `shape` = 「这块素材怎么用」的预选值（宿主 `links.ts` 的 `OPEN_SHAPES`，改一处要同步）。 */
+      const shape = params.get("shape");
+      if (shape !== null && OPEN_SHAPES.has(shape)) intent.shape = shape;
+      /**
+       * `scale` = 这张素材图**每格几倍分辨率**（宿主 `links.ts` 的 1..8）。
+       * 少了它，「新增素材」会以为图就是格子大小，把 4 倍图切成 16 倍碎块。
+       */
+      const scale = Number(params.get("scale"));
+      if (params.get("scale") !== null && Number.isInteger(scale) && scale >= 1 && scale <= 8) intent.scale = scale;
       return intent;
     }
 
@@ -2204,7 +2585,9 @@
       try {
         const url = new URL(window.location.href);
         // 确认过 dsh-gmm 才走到这里，所以这几个键一定是本插件写的，一起清掉。
-        for (const key of [OPEN_QUERY_KEY, "module", "project", "job", "stage", "direction"]) {
+        // ⚠️ 这张表就是 `OPEN_PARAM_KEYS`：新增一个深链接参数忘了加进来，它就会
+        // 一直留在地址栏里（刷新一次又被解析一遍）。
+        for (const key of OPEN_PARAM_KEYS) {
           url.searchParams.delete(key);
         }
         window.history.replaceState(null, "", url.toString());
@@ -2484,6 +2867,7 @@
 .SPR_mapEdTsBadge[data-anim="true"]{background:#2f4a2f;color:#bfe6bf}
 .SPR_mapEdPair{display:flex;align-items:center;gap:6px}
 .SPR_mapEdTimes{color:#9a9a9a;font-size:12px}
+.SPR_mapEdValue{color:#e7dcc8;font-size:12px;font-variant-numeric:tabular-nums}
 .SPR_mapEdSeg{display:flex;gap:4px;flex-wrap:wrap}
 .SPR_mapEdSegBtn{font:inherit;font-size:12px;padding:4px 10px;border:1px solid #565656;border-radius:6px;background:#242424;color:#f2efe9;cursor:pointer}
 .SPR_mapEdSegBtn:hover{border-color:#d9a95f}
@@ -3064,7 +3448,7 @@
       );
     }
 
-    function NumField({ label, value, onChange, min, max, step, hint }) {
+    function NumField({ label, value, onChange, min, max, step, hint, disabled }) {
       const [text, setText] = React.useState(String(value ?? ""));
       const [focused, setFocused] = React.useState(false);
       // 外部值变了（宿主回包、切换项目）而用户没在输入时，同步过来。
@@ -3106,6 +3490,9 @@
           min,
           max,
           step: step === undefined ? 1 : step,
+          // 不能用的字段要**看得出来**：整格没有动画，帧数锁在 1（见 AI 对话框）。
+          disabled: disabled === true ? true : undefined,
+          "data-disabled": disabled === true ? "true" : undefined,
           "data-dirty": focused && text !== String(value ?? "") ? "true" : undefined,
           onChange: (event) => setText(event.target.value),
           onFocus: (event) => {
@@ -4195,7 +4582,7 @@
               : activeModule === "tile"
                 ? h(TileModule, { api })
                 : activeModule === "map"
-                  ? h(MapModule, { api })
+                  ? h(MapModule, { api, studioCtx: props.studioCtx })
                   : activeModule === "rig"
                     ? h(RigModule, { api })
                     : null
@@ -6744,7 +7131,7 @@
       const visibleRef = React.useRef([]);
       /** 自增一次＝「重新问一遍宿主缺哪些块」（补拉用）。 */
       const [planEpoch, setPlanEpoch] = React.useState(0);
-      const [planMeta, setPlanMeta] = React.useState({ fps: 1, frameCount: 1 });
+      const [planMeta, setPlanMeta] = React.useState({ fps: 1, fpsMax: 1, frameCount: 1 });
       /** 动画速度：null = 跟宿主的 `fps` 走；选了慢 / 中 / 快就是用户指定。 */
       /**
        * 「新增素材」对话框的草稿。
@@ -6755,6 +7142,17 @@
        */
       const [addDraft, setAddDraft] = React.useState(null);
       const addFileRef = React.useRef(null);
+      /**
+       * 「AI 生成素材」对话框的草稿（`null` = 没打开）。
+       *
+       * 与「新增素材」不同：这里**不导入任何东西**，只是收集需求（提示词 / 名字 /
+       * 帧数 / 方式），然后把活派给一个**新对话**——真正生成的是对话里的 agent。
+       */
+      const [aiDraft, setAiDraft] = React.useState(null);
+      /** 「AI 生成素材」正在建会话 / 发提示词（几百毫秒级，但按钮要立刻有反应）。 */
+      const [aiBusy, setAiBusy] = React.useState(false);
+      /** 功能管理里被隐藏的模块：被隐藏的必需模块（图片 / 序列帧）不能派活。 */
+      const hiddenModules = useHiddenModules(api);
       /**
        * 「素材说明」当前翻到第几页（`null` = 没打开）。
        *
@@ -6774,7 +7172,13 @@
       const previewKeys = React.useRef(new Set());
       const previewTimer = React.useRef(null);
       const [animFps, setAnimFps] = React.useState(null);
-      const [frame, setFrame] = React.useState(0);
+      /**
+       * 动画**时钟节拍**（`floor(经过秒数 × clockFps)`）—— 整份计划共用一个时间源。
+       *
+       * ⚠️ 不要再另外存一个「elapsed ref」：那样画面按 ref 算、`__mapDrawStats.frame` 按状态算，
+       * 两者会对不上（自检里就是「明明计划换了、画出来的还是上一帧」这种假失败）。
+       */
+      const [animTick, setAnimTick] = React.useState(0);
       const [truncated, setTruncated] = React.useState(false);
       const [planWarnings, setPlanWarnings] = React.useState([]);
       const [imagesReady, setImagesReady] = React.useState(0);
@@ -6948,6 +7352,16 @@
 
       const tilesetReason = tileset === null ? "" : tileset.reason || "";
       const activeFps = animFps === null ? (planMeta.fps > 0 ? planMeta.fps : 1) : animFps;
+      /**
+       * 动画时钟的频率：取「全局速度」与「计划里最快的那条素材速度」的较大者。
+       *
+       * ⚠️ 只按全局速度推时钟的话，一张 8 帧/秒的素材在 1 帧/秒的时钟下**每秒才重画一次**，
+       * 表现就是「设了速度却没变快」。时钟只决定**多久重画一次**，每一格画第几帧仍由它
+       * 自己的速度算（见 `draw` 里的 `opFps`）。
+       */
+      const clockFps = Math.max(activeFps, planMeta.fpsMax > 0 ? planMeta.fpsMax : 1);
+      /** 时钟节拍 → 经过秒数：每一格再 × 自己的速度算帧号（见 `draw`）。 */
+      const animElapsed = clockFps > 0 ? animTick / clockFps : 0;
 
       /** 当前缩放 / 平移的最新值：捏合与滚轮要在同一次事件里读到，不能靠 state。 */
       const zoomRef = React.useRef(zoom);
@@ -7034,18 +7448,93 @@
               clearPlan();
               setLayerIndex(0);
               setTsIndex(0);
-              setPlanMeta({ fps: 1, frameCount: 1 });
+              setPlanMeta({ fps: 1, fpsMax: 1, frameCount: 1 });
               setAnimFps(null);
               setTruncated(false);
               setPlanWarnings([]);
             }
             setView(next);
+            // 返回值给深链接用：`dialog=add` 要拿刚回来的这份视图的 `assetBase` / `grid`。
+            return next;
           } catch (error) {
             setNotice({ kind: "error", text: msg(error) });
+            return undefined;
           }
         },
         [api, clearPlan]
       );
+
+      /** Blob → 能交给「新增素材」的那份文件（老环境没有 `File` 时给它挂一个 `name`）。 */
+      function fileFromBlob(blob, name) {
+        const type = typeof blob.type === "string" && blob.type !== "" ? blob.type : "image/png";
+        if (typeof File === "function") return new File([blob], name, { type });
+        try {
+          return Object.assign(blob, { name });
+        } catch {
+          return blob;
+        }
+      }
+
+      /**
+       * 「AI 生成素材」回链的落点：打开「新增素材」并把刚生成的那张图预选好。
+       *
+       * 「这块素材怎么用」按回链里的 `shape` 预选（`composeMapAsset` 就是按它规整的
+       * 几何）—— **不能写死 plain**：拼块 / 整格的图被当成普通素材导入，画出来是一堆
+       * 碎块，而且不报错。「会动吗」只在普通形态下有意义（多张 = 翻页图）；拼块的动画
+       * 走变体、整格没有帧这一维。
+       *
+       * 图取不回来（项目删了 / 文件被清）也照样打开对话框 —— 那时它是一张**空**的
+       * 「新增素材」，用户自己选图即可；什么都不说的话用户只会觉得「链接没反应」。
+       */
+      const openAiAssetDraft = async (target, loaded) => {
+        const grid = (loaded !== null && loaded !== undefined && loaded.grid) || (view !== null && view.grid) || { tileWidth: 32, tileHeight: 32 };
+        const frames = typeof target.frames === "number" && Number.isFinite(target.frames) && target.frames > 0 ? Math.round(target.frames) : 1;
+        const relative = typeof target.asset === "string" ? target.asset : "";
+        const stem = relative === "" ? "" : String(relative).split("/").pop().replace(/\.[^.]+$/u, "");
+        const shape = typeof target.shape === "string" && OPEN_SHAPES.has(target.shape) ? target.shape : "plain";
+        const draft = {
+          file: null,
+          name: stem,
+          cellW: String(grid.tileWidth),
+          cellH: String(grid.tileHeight),
+          shape,
+          animRows: shape === "plain" && frames > 1,
+          // 速度留空 = 跟全局那条走（对话里没法知道该多快，交给用户在「确定」前自己挑）。
+          fps: "",
+          // 循环方式默认正放（AI 那条路不指定，用户在「确定」前自己挑）。
+          loop: "forward",
+          // 清晰度：宿主默认就是「平滑」，用户可以在「确定」前换。
+          clarity: "smooth",
+          // 这张 AI 素材图是几倍分辨率（回链里的 `scale`）：>1 时界面会显示「清晰度」与说明。
+          scale: typeof target.scale === "number" && Number.isInteger(target.scale) && target.scale > 1 ? target.scale : 1
+        };
+        setOpenCard("assets");
+        const base = (loaded !== null && loaded !== undefined && loaded.assetBase) || (view !== null && view.assetBase) || "";
+        if (relative === "" || base === "") {
+          setAddDraft(draft);
+          return;
+        }
+        try {
+          const response = await fetch(`${base}${relative}`);
+          if (response === undefined || response.ok !== true) throw new Error(String(response?.status ?? "fetch failed"));
+          const blob = await response.blob();
+          setAddDraft({ ...draft, file: fileFromBlob(blob, `${stem === "" ? "ai-asset" : stem}.png`) });
+        } catch (error) {
+          setAddDraft(draft);
+          setNotice({ kind: "error", text: T("没取到刚生成的那张图（{n0}）。你可以自己选一张，或者回对话里再要一次。", { n0: msg(error) }) });
+        }
+      };
+
+      /**
+       * 最近一次深链接意图（给挂载时那条「默认打开第一个项目」的 effect 用）。
+       *
+       * ⚠️ 两个 effect 都是异步的，**谁后发起谁赢**（`loadSeq` 是按发起顺序收口的）：
+       * 挂载那条要等 `listMapProjects` 回来才 `loadProject(list[0])`，天然晚于深链接
+       * 那条 —— 不管一下的话，带 `module=map&job=…` 的链接会先切到目标项目、再被
+       * 「第一个项目」顶掉（表现是链接看起来随机失效）。有 map 意图时就让位。
+       */
+      const intentRef = React.useRef(intent);
+      intentRef.current = intent;
 
       React.useEffect(() => {
         void (async () => {
@@ -7054,6 +7543,9 @@
             const result = await api.listMapProjects();
             const list = result.projects || [];
             setProjects(list);
+            const pending = intentRef.current;
+            const pendingId = pending !== null && pending !== undefined && pending.module === "map" ? (pending.jobId || pending.projectId) : undefined;
+            if (typeof pendingId === "string" && pendingId !== "") return;
             if (list.length > 0) await loadProject(list[0].id);
           } catch (error) {
             setNotice({ kind: "error", text: msg(error) });
@@ -7062,13 +7554,26 @@
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [api]);
 
-      // 深链接：`?dsh-gmm=1&module=map&job=<项目 id>&stage=assets|rules|paint|export`
+      /**
+       * 深链接：`?dsh-gmm=1&module=map&job=<项目 id>&stage=assets|rules|paint|export`
+       * 外加「AI 生成素材」的回链：`&dialog=add&asset=ai/<名字>.png&frames=<帧数>`。
+       *
+       * 带 `dialog=add` 时，把刚生成的那张图取回来、打开「新增素材」并**预填**：
+       * 名字 / 格子大小（= 地图网格）/ 用法（普通）/ 会动吗（帧数 > 1 才对）。
+       *
+       * 用法刻意写死 `plain` 而不是 `auto`：`32×(32×N)` 这种竖条在帧数正好是 5 的
+       * 倍数时会命中「高 = 5 × 格子」的判据，自动识别会把翻页图认成拼块 —— 那是个
+       * 不报错、只是画不对的错。
+       */
       React.useEffect(() => {
         if (intent === null || intent.module !== "map") return;
         const id = typeof intent.jobId === "string" && intent.jobId !== "" ? intent.jobId : intent.projectId;
-        if (typeof id === "string" && id !== "") void loadProject(id);
-        if (intent.stage === "assets") setOpenCard("assets");
-        else if (intent.stage === "export") setOpenCard("export");
+        void (async () => {
+          const loaded = typeof id === "string" && id !== "" ? await loadProject(id) : undefined;
+          if (intent.stage === "assets") setOpenCard("assets");
+          else if (intent.stage === "export") setOpenCard("export");
+          if (intent.dialog === "add") await openAiAssetDraft(intent, loaded);
+        })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [intent]);
 
@@ -7103,8 +7608,11 @@
         setVisibleKeys(keys);
         const fps = Number(result?.fps);
         const frames = Number(result?.frameCount);
+        const fpsMax = Number(result?.fpsMax);
         setPlanMeta({
           fps: Number.isFinite(fps) && fps > 0 ? fps : 1,
+          // 计划里最快的那条速度：动画时钟按它推，慢速的素材不会被拖慢、快速的也不会被拖住。
+          fpsMax: Number.isFinite(fpsMax) && fpsMax > 0 ? Math.max(Number.isFinite(fps) && fps > 0 ? fps : 1, fpsMax) : Number.isFinite(fps) && fps > 0 ? fps : 1,
           frameCount: Number.isFinite(frames) && frames > 1 ? Math.floor(frames) : 1
         });
         setTruncated(result?.truncated === true);
@@ -7112,10 +7620,19 @@
       }, []);
 
       /** 计划的「身份」：这张图变了（换项目 / 换层 / 换网格 / 换尺寸）就整份重来。 */
+      /**
+       * 素材的**动画属性**签名（速度 / 帧数 / 逐行动画开关）。
+       *
+       * ⚠️ 少了它，改一张素材的播放速度之后缓存里的 op 还带着旧 `fps`，画面上就是
+       * 「改了没反应」——块缓存只按视口和文档失效，认不出「素材本身变了」。
+       */
+      const tilesetSig = ((view === null || view === undefined ? [] : view.tilesets) ?? [])
+        .map((entry) => `${entry.id}:${entry.shape}:${entry.animRows === true ? "a" : "-"}:${entry.variants}:${entry.fps === undefined ? "-" : entry.fps}`)
+        .join(",");
       const planKey =
         viewId === null || layout === null
           ? null
-          : `${viewId}|${single === true ? safeLayerIndex : "all"}|${layout.wrap === true ? "w" : "n"}|${layout.stepX}x${layout.stepY}|${layout.cols}x${layout.rows}`;
+          : `${viewId}|${single === true ? safeLayerIndex : "all"}|${layout.wrap === true ? "w" : "n"}|${layout.stepX}x${layout.stepY}|${layout.cols}x${layout.rows}|${tilesetSig}`;
 
       // 身份变了 → 旧计划一律作废（不同层的块里条目本来就不同）
       const planKeyRef = React.useRef(null);
@@ -7255,7 +7772,14 @@
           if (ops === undefined) continue;
           if (stats !== null) stats.cached += ops.length;
           for (const op of ops) {
-            const index = op.cycle === undefined || op.cycle.length === 0 ? op.t : op.cycle[frame % op.cycle.length];
+            /**
+             * 每一格的帧号：**用这一格自己的速度**（op.fps = 素材自己设的），没设就跟着全局。
+             * 时钟（`animElapsed`）只决定多久重画一次，每格的帧号一律从同一个时间源算 ——
+             * 这样不同速度的素材各走各的，改速度也不会跳帧。
+             */
+            const opFps = typeof op.fps === "number" && op.fps > 0 ? op.fps : activeFps;
+            const opFrame = Math.floor(animElapsed * opFps);
+            const index = op.cycle === undefined || op.cycle.length === 0 ? op.t : op.cycle[opFrame % op.cycle.length];
             const entry = legendMap.get(index);
             if (entry === undefined) {
               if (stats !== null) stats.noLegend++;
@@ -7376,7 +7900,12 @@
           }
         }
         if (stats !== null && typeof window !== "undefined") {
-          stats.frame = frame;
+          /**
+           * 全局帧号（`frame`）与时钟秒数（`clock`）都暴露给调试 / 自检：和每格自己的帧号
+           * **同一个时间源**，只是按全局速度算 —— 分开存两份时间就会「计划换了、画面没换」。
+           */
+          stats.frame = Math.floor(animElapsed * activeFps) % planMeta.frameCount;
+          stats.clock = animElapsed;
           (window as any).__mapDrawStats = stats;
           /**
            * 顺手把**当前相机**暴露出来（同样只在 `__mapDebug` 打开时）。
@@ -7387,7 +7916,7 @@
            */
           (window as any).__mapCamera = { pan: { x: pan.x, y: pan.y }, zoom, viewport: { w: viewport.w, h: viewport.h } };
         }
-      }, [layout, viewport, zoom, pan, planOps, planMarkers, markerSel, legend, legendMap, single, showGrid, hover, frame]);
+      }, [layout, viewport, zoom, pan, planOps, planMarkers, markerSel, legend, legendMap, single, showGrid, hover, animElapsed, activeFps, planMeta.frameCount]);
 
       React.useEffect(() => {
         draw();
@@ -7402,7 +7931,7 @@
 
       React.useEffect(() => {
         if (stillFrame === true || planMeta.frameCount <= 1) {
-          setFrame(0);
+          setAnimTick(0);
           return undefined;
         }
         if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") return undefined;
@@ -7410,12 +7939,16 @@
         let handle = 0;
         const tick = () => {
           const elapsed = (Date.now() - started) / 1000;
-          setFrame(Math.floor(elapsed * activeFps) % planMeta.frameCount);
+          /**
+           * 节拍按**最快的那条速度**推进（速度慢的素材在这中间不动，因为它的帧号只在
+           * 整数个 1/fps 秒时才变）。这里推的是节拍不是帧号：帧号在 `draw` 里按各自的速度算。
+           */
+          setAnimTick(Math.round(elapsed * clockFps));
           handle = window.requestAnimationFrame(tick);
         };
         handle = window.requestAnimationFrame(tick);
         return () => window.cancelAnimationFrame(handle);
-      }, [stillFrame, planMeta.frameCount, activeFps]);
+      }, [stillFrame, planMeta.frameCount, clockFps]);
 
       // ── 编辑：op 批量提交 ────────────────────────────────────────────────
       const applyResult = React.useCallback((result) => {
@@ -7890,7 +8423,7 @@
       };
 
       /** 打开「新增素材」：草稿全空 = 一切都走自动识别。 */
-      const openAddTileset = () => setAddDraft({ file: null, name: "", cellW: "", cellH: "", shape: "auto", animRows: false });
+      const openAddTileset = () => setAddDraft({ file: null, name: "", cellW: "", cellH: "", shape: "auto", animRows: false, fps: "", loop: "forward", clarity: "smooth", scale: 1 });
 
       /**
        * 提交新增：把「图片 + 名字 + 属性」一次性交给宿主。
@@ -7916,7 +8449,17 @@
             data: base64,
             cell,
             shape: draft.shape === "auto" ? undefined : draft.shape,
-            animRows: draft.animRows === true
+            animRows: draft.animRows === true,
+            // 留空 = 不填这一项（跟全局速度走）；填了就是这块素材自己的帧率。
+            fps: draft.fps === undefined || draft.fps === "" ? undefined : Number(draft.fps),
+            /**
+             * 清晰度与倍数一起发：`scale > 1` 时宿主会先按 `clarity` 把图缩到格子大小，
+             * `scale = 1` 时这两个字段宿主都不理会（手动导格子大小的图，一个像素都不动）。
+             */
+            clarity: draft.clarity === undefined ? undefined : draft.clarity,
+            scale: draft.scale === undefined ? 1 : draft.scale,
+            // 循环方式：正放 / 倒放 / 来回（只影响帧序怎么展开）。
+            loop: draft.loop === undefined ? undefined : draft.loop
           });
           setAddDraft(null);
           setNotice({ kind: "info", text: T("已新增素材 {n0}", { n0: draft.name.trim() === "" ? draft.file.name : draft.name.trim() }) });
@@ -7982,9 +8525,51 @@
           )
         );
 
+      /**
+       * 「清晰度」：把大图缩到地图格子时用哪种重采样。
+       *
+       * 只在**图比格子大**的时候才有意义（AI 生成的那条路会带 `scale` 进来），
+       * 所以 `scale = 1` 时这整块不显示 —— 显示一个什么都不做的下拉框只会让人以为没生效。
+       * `[值, 短标签, 悬停标题, 解释]`，跟「这块素材怎么用」同一套形状。
+       */
+      const clarityOptions = [
+        ["smooth", T("平滑"), T("平滑（面积平均）"), T("把每个格子覆盖到的像素全部平均掉：细节保留、边缘柔和、没有锯齿。AI 画的那种金属 / 霓虹 / 渐变的图，选这个最清楚。")],
+        ["sharp", T("锐利"), T("锐利（最近邻）"), T("每个格子只取一个像素：边缘硬、像素风，但大图缩小时会丢细节、出锯齿。本来就画成像素画的图选这个。")],
+        ["crisp", T("清晰"), T("清晰（平均 + 锐化）"), T("先面积平均，再做一次轻锐化：轮廓更利落、细节更抓眼，适合细节特别密的图（电路、纹理、文字状花纹）。")]
+      ];
+
       const animOptions = [
         ["off", T("不动"), T("不动"), T("这些图块都是静止的，画上去不会动。")],
         ["rows", T("翻页图"), T("翻页图"), T("会动的图：同一列的几行从上往下依次显示，看起来就像手翻书。适合水面波光、火苗、瀑布。画的时候点哪一行都行，整片会一起动。")]
+      ];
+
+      /**
+       * 「循环方式」：会动的素材怎么循环。
+       *
+       * 三者都是**把帧序展开**（宿主做），客户端一行不用改：
+       * 正放 0→1→2→3→0…；倒放 3→2→1→0→3…；来回 0→1→2→3→2→1→0…（接缝处不跳，像呼吸灯）。
+       */
+      const loopOptions = [
+        ["forward", T("正放"), T("正放循环"), T("从头放到尾，再接回开头：0 → 1 → 2 → 3 → 0 …。最常见的循环。")],
+        ["reverse", T("倒放"), T("倒放循环"), T("从尾放到头：3 → 2 → 1 → 0 → 3 …。看起来就是倒着播还一直循环。")],
+        ["pingpong", T("来回"), T("来回播放"), T("正着放到尾再从尾倒回来：0 → 1 → 2 → 3 → 2 → 1 → 0 …。首尾接得最顺，像呼吸灯、旗帜、水面起伏。")]
+      ];
+
+      /**
+       * 这块素材**自己的动画播放速度**（帧/秒）。
+       *
+       * 默认「跟设置里的动画速度」—— 那是一条全局速度，慢 / 中 / 快三档；这里选了具体数字
+       * 就只影响这一张素材（一片水该慢、一排霓虹灯该快，同一个速度套不住两种）。
+       * `[值, 显示文字, 悬停说明]`，值 `""` = 跟全局。
+       */
+      const fpsOptions = [
+        ["", T("跟设置里的动画速度"), T("跟全局速度走"), T("用「设置」里的那条动画速度，慢 / 中 / 快都跟着变。拿不准就选它。")],
+        ["1", T("1 帧/秒"), T("每秒 1 帧"), T("一秒换一帧，很慢：适合呼吸灯、缓慢起伏的水面。")],
+        ["2", T("2 帧/秒"), T("每秒 2 帧"), T("两秒走完一轮（按 2 帧算），适合水波、旗帜这类慢动作。")],
+        ["4", T("4 帧/秒"), T("每秒 4 帧"), T("常见的动画速度：水面波光、篝火、流水。")],
+        ["6", T("6 帧/秒"), T("每秒 6 帧"), T("偏快：瀑布、闪烁的霓虹灯。")],
+        ["8", T("8 帧/秒"), T("每秒 8 帧"), T("很快：电流、喷泉、快速闪烁。")],
+        ["12", T("12 帧/秒"), T("每秒 12 帧"), T("最快的一档：要靠逐帧动画硬撑的连续动作。")]
       ];
 
       /**
@@ -8225,11 +8810,276 @@
                 segPicker("data-shape", shapeOptions, addDraft.shape, (value) => setAddDraft((current) => (current === null ? current : { ...current, shape: value }))),
                 h("div", { className: "SPR_mapEdDlgLabel" }, T("会动吗")),
                 segPicker("data-anim", animOptions, addDraft.animRows ? "rows" : "off", (value) => setAddDraft((current) => (current === null ? current : { ...current, animRows: value === "rows" }))),
+                /**
+                 * 「清晰度」：**只有图比格子大时才显示**（AI 生成的那条路会带 `scale` 进来）。
+                 *
+                 * 它在「确定」那一刻生效 —— 宿主按这里选的算法把图缩到地图格子。图本来就是
+                 * 格子大小（自己导的 32px 素材）时这块不出现，免得用户以为改了个没用的开关。
+                 */
+                /**
+                 * 「循环方式」：跟「动画速度」一样，**只有会动的素材才显示**。
+                 * 静态素材显示它只会让人以为自己设了动画。
+                 */
+                addDraft.animRows === true || addDraft.shape === "a2quad"
+                  ? h(
+                      "div",
+                      null,
+                      h("div", { className: "SPR_mapEdDlgLabel" }, T("循环方式")),
+                      segPicker("data-loop", loopOptions, addDraft.loop === undefined ? "forward" : addDraft.loop, (value) =>
+                        setAddDraft((current) => (current === null ? current : { ...current, loop: value }))
+                      )
+                    )
+                  : null,
+                (addDraft.scale === undefined ? 1 : addDraft.scale) > 1
+                  ? h(
+                      "div",
+                      null,
+                      h("div", { className: "SPR_mapEdDlgLabel" }, T("清晰度")),
+                      segPicker("data-clarity", clarityOptions, addDraft.clarity === undefined ? "smooth" : addDraft.clarity, (value) =>
+                        setAddDraft((current) => (current === null ? current : { ...current, clarity: value }))
+                      ),
+                      h(
+                        "p",
+                        { className: "SPR_mapEdHint" },
+                        T("这张图每格 {n0}px（{n1} 倍分辨率），点「确定」时会按上面的方式缩到 {n2}px 一格 —— 选哪种缩法，出来的细节差挺多。", {
+                          n0: String((addDraft.scale === undefined ? 1 : addDraft.scale) * (Number(addDraft.cellW) || 32)),
+                          n1: String(addDraft.scale === undefined ? 1 : addDraft.scale),
+                          n2: String(Number(addDraft.cellW) || 32)
+                        })
+                      )
+                    )
+                  : null,
+                /**
+                 * 「动画速度」：**会动的素材才显示**（拼块的变体就是帧，所以拼块也要显示；
+                 * 普通形态得勾了「翻页图」才算会动）。静态素材显示它只会让人以为没生效。
+                 */
+                addDraft.animRows === true || addDraft.shape === "a2quad"
+                  ? h(
+                      "div",
+                      null,
+                      h("div", { className: "SPR_mapEdDlgLabel" }, T("动画速度")),
+                      h(
+                        "select",
+                        {
+                          className: "SPR_mapEdSelect",
+                          "data-testid": "map-add-fps",
+                          value: addDraft.fps === undefined ? "" : addDraft.fps,
+                          onChange: (event) => setAddDraft((current) => (current === null ? current : { ...current, fps: event.target.value }))
+                        },
+                        fpsOptions.map(([value, label, , desc]) =>
+                          h("option", { key: value === "" ? "global" : value, value, title: desc }, label)
+                        )
+                      ),
+                      h(
+                        "p",
+                        { className: "SPR_mapEdHint" },
+                        addDraft.fps === undefined || addDraft.fps === ""
+                          ? T("这块素材跟「设置」里的动画速度走（慢 / 中 / 快）。想让它自己一个速度，就在上面选一个 —— 同一张地图上不同的素材可以各走各的。")
+                          : T("这块素材自己按 {n0} 帧/秒 播放，不受「设置」里的动画速度影响。", { n0: String(addDraft.fps) })
+                      )
+                    )
+                  : null,
                 h(
                   "div",
                   { className: "SPR_mapEdDlgRow" },
                   h(Btn, { "data-testid": "map-add-cancel", onClick: () => setAddDraft(null) }, T("取消")),
                   h(Btn, { "data-testid": "map-add-ok", primary: true, busy: busyKey === "upload", onClick: () => void submitAddTileset() }, T("确定"))
+                )
+              )
+            );
+
+      // ── 「AI 生成素材」：不自己生成，开一个新对话把活派出去 ──────────────────
+      //
+      // 用户填的只有五件事：提示词、名字、动画帧数、动画生成方式、这块素材怎么用。
+      // 点「生成」后：建一个**不挂靠项目**的新对话 → 切到对话界面 → 把拼好的需求发进去。
+      // 生成完成由对话里的 agent 负责，它会把 `composeMapAsset` 返回的 openUrl 贴出来；
+      // 用户点那条链接回来时，这里再把图与「这块素材怎么用」一起预填进「新增素材」。
+      const aiModeOptions = [
+        ["image", T("生图模型"), T("生图模型"), T("用生图模型出图：帧数为 1 时出一张静态图；大于 1 时按同一个提示词出多张（动作连贯性不如视频模型）。")],
+        ["video", T("视频模型"), T("视频模型"), T("先出一张静态首帧图，再让它动起来并按帧抽出来：动作连贯，但比生图模型多一次计费。")]
+      ];
+      /**
+       * 「这块素材怎么用」：默认**自动判断**（由对话里的 agent 按提示词里的判据定），
+       * 也可以在这里替它拍板 —— 形态决定「生图前怎么排布」和「生成后怎么规整」，
+       * 判错了那一版图就得重花钱，所以留一个能提前改的口子。
+       */
+      const aiShapeOptions = [
+        ["auto", T("自动判断"), T("自动判断"), T("让对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通。")],
+        ["plain", T("普通"), T("普通图块"), T("一块一块单独摆、不跟邻居接：树 / 箱子 / 道具 / 装饰。每张图 = 一格内容；帧数 > 1 时竖排成翻页图。")],
+        ["corner16", T("整格"), T("整格自动连接"), T("要连成一条、拐角要对上：墙 / 路 / 栅栏 / 桥。生成一张 4×4 共 16 块的图，按「上1 右2 下4 左8」的位序画 16 种接法；没有动画（帧数按 1 处理）。")],
+        ["a2quad", T("拼块"), T("拼块自动连接"), T("成片铺开、边缘自动接上：草地 / 水面 / 沙地 / 岩浆。每张图 = 一列 5 行（自上而下 5 种接法），帧数 = 变体数（拼块的动画就是换变体）。")]
+      ];
+
+      const openAiAsset = () =>
+        setAiDraft({
+          prompt: "",
+          name: "",
+          frames: 1,
+          mode: "image",
+          shape: "auto"
+        });
+
+      /** 把草稿交给 `openAssetChat`：建会话 + 发提示词。失败时对话框留着，用户能重试。 */
+      const submitAiAsset = async () => {
+        const draft = aiDraft;
+        if (draft === null || api === undefined) return;
+        const prompt = draft.prompt.trim();
+        if (prompt === "") {
+          setNotice({ kind: "error", text: T("先写一段提示词。") });
+          return;
+        }
+        // 帧数为 1 只用生图模型（视频模型那条路本来也要求帧数大于 1）；整格没有帧这一维。
+        const shape = ASSET_SHAPES.includes(draft.shape) ? draft.shape : "auto";
+        const frames = shape === "corner16" ? ASSET_FRAMES_MIN : Math.min(ASSET_FRAMES_MAX, Math.max(ASSET_FRAMES_MIN, Math.round(Number(draft.frames) || 1)));
+        const mode = frames <= 1 ? "image" : draft.mode === "video" ? "video" : "image";
+        // 派活要用到的模块被「功能管理」隐藏了就直说：对话里的工具面同样会拒绝，白跑一趟。
+        if (hiddenModules.includes("image")) {
+          setNotice({ kind: "error", text: T("「图片生成」被隐藏了，去「设置 → 游戏素材大师 → 功能管理」打开再试。") });
+          return;
+        }
+        if (mode === "video" && hiddenModules.includes("sequence")) {
+          setNotice({ kind: "error", text: T("「序列帧生成」被隐藏了，去「设置 → 游戏素材大师 → 功能管理」打开再试。") });
+          return;
+        }
+        setAiBusy(true);
+        try {
+          const projectId = await ensureProject();
+          if (projectId === null) return;
+          const loaded = await api.getMapProject({ projectId, lang: activeLang() });
+          const grid = (loaded !== null && loaded !== undefined && loaded.grid) || { tileWidth: 32, tileHeight: 32 };
+          const name = draft.name.trim() === "" ? deriveAssetName(prompt) : draft.name.trim();
+          const text = buildAssetRequestPrompt({
+            projectId,
+            projectName: (loaded !== null && loaded !== undefined && loaded.name) || "",
+            cell: { width: grid.tileWidth, height: grid.tileHeight },
+            name,
+            prompt,
+            frames,
+            mode,
+            shape
+          });
+          await openAssetChat(text);
+          setAiDraft(null);
+          setNotice({
+            kind: "info",
+            text:
+              shape === "auto"
+                ? T("已在新对话里开始生成：素材「{n0}」（用哪种由对话判断）", { n0: name })
+                : T("已在新对话里开始生成：素材「{n0}」（{n1}）", { n0: name, n1: assetShapeLabel(shape) })
+          });
+        } catch (error) {
+          setNotice({ kind: "error", text: msg(error) });
+        } finally {
+          setAiBusy(false);
+        }
+      };
+
+      const aiDialog =
+        aiDraft === null
+          ? null
+          : h(
+              "div",
+              { className: "SPR_mapEdDlgMask", "data-testid": "map-ai-mask", onClick: () => (aiBusy ? undefined : setAiDraft(null)) },
+              h(
+                "div",
+                {
+                  className: "SPR_mapEdDlg",
+                  role: "dialog",
+                  "aria-label": T("AI 生成素材"),
+                  "data-testid": "map-ai-dialog",
+                  onClick: (event) => {
+                    if (typeof event.stopPropagation === "function") event.stopPropagation();
+                  }
+                },
+                h("div", { className: "SPR_mapEdDlgHead" }, h("div", { className: "SPR_mapEdDlgTitle" }, T("AI 生成素材"))),
+                h(
+                  "p",
+                  { className: "SPR_mapEdHint" },
+                  T("说明一句：它会开一个新对话，让对话里的 agent 按这段需求去生成；做完贴一条链接，点回来这张图就已经填在「新增素材」里了。")
+                ),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("提示词")),
+                h("textarea", {
+                  className: "SPR_mapEdDlgInput",
+                  "data-testid": "map-ai-prompt",
+                  rows: 4,
+                  value: aiDraft.prompt,
+                  placeholder: T("想要什么素材？例如「一片冰蓝色的水面，波纹缓慢起伏」"),
+                  onChange: (event) => setAiDraft((current) => (current === null ? current : { ...current, prompt: event.target.value }))
+                }),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("素材名字")),
+                h("input", {
+                  className: "SPR_mapEdDlgInput",
+                  "data-testid": "map-ai-name",
+                  value: aiDraft.name,
+                  placeholder: T("留空就用提示词开头几个字"),
+                  onChange: (event) => setAiDraft((current) => (current === null ? current : { ...current, name: event.target.value }))
+                }),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("动画帧数（1 = 静态）")),
+                h(
+                  "div",
+                  { className: "SPR_mapEdPair" },
+                  h(NumField, {
+                    label: T("帧"),
+                    value: aiDraft.frames,
+                    min: ASSET_FRAMES_MIN,
+                    max: ASSET_FRAMES_MAX,
+                    // 整格没有帧这一维：字段直接灰掉，别让用户以为设了就会动。
+                    disabled: aiDraft.shape === "corner16",
+                    // 帧数掉回 1 时把方式也拉回生图模型：帧数为 1 只有生图模型这条路。
+                    onChange: (value) => setAiDraft((current) => (current === null ? current : { ...current, frames: value, mode: value <= 1 ? "image" : current.mode }))
+                  })
+                ),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("动画生成方式")),
+                segPicker("data-ai-mode", aiModeOptions, aiDraft.mode, (value) =>
+                  setAiDraft((current) => {
+                    if (current === null) return current;
+                    // 帧数为 1 时视频模型那格点不动（帧数为 1 只用生图模型）。
+                    if (value === "video" && current.frames <= 1) return current;
+                    // 整格没有动画：视频模型也点不动（出来还是一张静态图，白多一次计费）。
+                    if (value === "video" && current.shape === "corner16") return current;
+                    return { ...current, mode: value };
+                  })
+                ),
+                h(
+                  "p",
+                  { className: "SPR_mapEdHint" },
+                  aiDraft.shape === "corner16"
+                    ? T("整格没有动画，帧数固定 1、生成方式固定生图模型（设了也不会动，只是白多一次计费）。想要会动的自动连接素材，把「这块素材怎么用」改成「拼块」。")
+                    : aiDraft.frames <= 1
+                      ? T("帧数为 1 时只用生图模型：出一张静态素材。想要会动的，把帧数改成大于 1。")
+                      : aiDraft.mode === "video"
+                        ? T("视频模型：先出一张静态首帧，再让它动起来并抽出这些帧。比生图模型多一次计费，但动作连贯。")
+                        : T("生图模型：按同一个提示词出多张图。动作没有视频模型连贯，但更省。")
+                ),
+                h("div", { className: "SPR_mapEdDlgLabel" }, T("这块素材怎么用")),
+                segPicker("data-ai-shape", aiShapeOptions, aiDraft.shape, (value) =>
+                  setAiDraft((current) => {
+                    if (current === null) return current;
+                    /**
+                     * 整格没有「帧」这一维（4×4 全是接法，动画行也是接法行）：
+                     * 一选整格就把帧数与生成方式拉回静态，别让用户配出一个**做不到**的组合
+                     * —— 真机踩过：选了视频模型 + 8 帧，结果出来的还是静态图，而且没人告诉他。
+                     */
+                    if (value === "corner16") return { ...current, shape: value, frames: ASSET_FRAMES_MIN, mode: "image" };
+                    return { ...current, shape: value };
+                  })
+                ),
+                h(
+                  "p",
+                  { className: "SPR_mapEdHint" },
+                  aiDraft.shape === "auto"
+                    ? T("由对话里的 agent 看提示词自己定：成片铺开（草地 / 水面 / 岩浆）→ 拼块；连成一条（墙 / 路 / 栅栏）→ 整格；单独摆（树 / 箱子 / 道具）→ 普通。它会在生图前把排布规划好，生成后按这个规则切成地图能用的图。")
+                    : aiDraft.shape === "corner16"
+                      ? T("整格：只让模型画**一块**无缝墙砖（四边都能接上自己），插件用同一块砖拼出 16 种接法、断口由它加收口 —— 不要让它画 16 个各自独立的格子，那样拼到地图上全是缝。⚠️ 整格**没有动画**（它就是 16 种接法），所以帧数与生成方式锁在静态；想要「会动的自动连接」素材，把用法改成「拼块」——拼块的帧数就是变体，动画靠换变体。")
+                      : aiDraft.shape === "a2quad"
+                        ? T("拼块：每个变体只让模型画**一块**无缝材质（四边都能接上自己），插件拼成 N 列 × 5 行（N = 帧数）。帧数大于 1 时地图上按变体循环播放 —— 这是三种用法里唯一「既自动连接、又会动」的。")
+                        : T("普通：每张图 = 一格内容；帧数大于 1 时竖排成翻页图（地图上逐帧播放）。")
+                ),
+                h(
+                  "div",
+                  { className: "SPR_mapEdDlgRow" },
+                  h(Btn, { "data-testid": "map-ai-cancel", onClick: () => (aiBusy ? undefined : setAiDraft(null)) }, T("取消")),
+                  h(Btn, { "data-testid": "map-ai-ok", primary: true, busy: aiBusy, onClick: () => void submitAiAsset() }, T("生成"))
                 )
               )
             );
@@ -8272,6 +9122,13 @@
        * 所以这里改成本地渲染的对话框：输入框 + 取消 / 确定，回车确认、Esc 取消。
        */
       const [nameAsk, setNameAsk] = React.useState(null);
+      /**
+       * 新建项目时的「一格多大」：**这一下就定了**，之后不能改（改了整个项目的素材都要重切）。
+       *
+       * 为什么要它：AI 生成的图是 2K 的，32px 一格时细节必然被压扁；48 / 64 一格能留下更多细节，
+       * 代价是同样屏幕大小里能放的地图格数变少。默认 32（和以前一致）。
+       */
+      const [newGridCell, setNewGridCell] = React.useState(32);
       const askProjectName = (mode) =>
         setNameAsk({
           mode,
@@ -8290,7 +9147,7 @@
           return;
         }
         setNameAsk(null);
-        if (ask.mode === "create") await createProject(trimmed === "" ? T("我的地图") : trimmed);
+        if (ask.mode === "create") await createProject(trimmed === "" ? T("我的地图") : trimmed, newGridCell);
         else await renameProject(trimmed);
       };
 
@@ -8330,6 +9187,32 @@
                     }
                   }
                 }),
+                /**
+                 * 「一格多大」只对**新建**有意义：格子是项目级的，建完就不能改（改了整个项目的
+                 * 素材都要重切）。所以重命名那条路不显示它。
+                 */
+                nameAsk.mode === "create"
+                  ? h(
+                      "div",
+                      null,
+                      h("label", { className: "SPR_mapEdDlgLabel" }, T("一格多大")),
+                      h(
+                        "select",
+                        {
+                          className: "SPR_mapEdSelect",
+                          "data-testid": "map-create-grid",
+                          value: String(newGridCell),
+                          onChange: (event) => setNewGridCell(Number(event.target.value) || 32)
+                        },
+                        [16, 32, 48, 64].map((size) => h("option", { key: size, value: String(size) }, T("{n0}×{n0} 像素", { n0: String(size) })))
+                      ),
+                      h(
+                        "p",
+                        { className: "SPR_mapEdHint" },
+                        T("这一下就定了、之后不能改。想让 AI 生成的素材更清楚就用 48 / 64（一格能留下更多细节），代价是同样屏幕上能放的地图格数变少。")
+                      )
+                    )
+                  : null,
                 h(
                   "div",
                   { className: "SPR_mapEdDlgRow" },
@@ -8352,9 +9235,10 @@
        * 新建项目。**建完就把内置素材装进列表**（用户要求：内置素材默认在素材列表里）——
        * 装的是本机现算的那套，零成本；同名已存在会跳过。
        */
-      const createProject = async (name) => {
+      const createProject = async (name, gridCell = 32) => {
         if (api === undefined) return;
-        const created = await withApi(() => api.createMapProject({ name, cols: 32, rows: 32 }));
+        const cell = Math.max(8, Math.min(128, Math.round(Number(gridCell) || 32)));
+        const created = await withApi(() => api.createMapProject({ name, cols: 32, rows: 32, grid: { tileWidth: cell, tileHeight: cell, wrap: true } }));
         if (created === undefined) return;
         await ensureTwoLayers(created.id);
         const result = await api.listMapProjects();
@@ -8661,6 +9545,9 @@
           fileInput,
           addFileInput,
           addDialog,
+          // 「AI 生成素材」与「新增素材」是**兄弟**：两者不会同时开（点 AI 这颗时
+          // 用户是在找素材、不是在填表），同一层就够了。
+          aiDialog,
           // 说明窗口是「新增素材」的**兄弟**而不是子节点：遮罩不叠在一起，
           // 点外面关掉的只有说明窗口自己（看完接着填那张表）。
           guideDialog
@@ -9033,7 +9920,9 @@
         h(
           "div",
           { className: "SPR_mapEdCardRow" },
-          h(Btn, { primary: true, onClick: openAddTileset }, T("新增素材")),
+          h(Btn, { "data-testid": "map-add-open", primary: true, onClick: openAddTileset }, T("新增素材")),
+          // 「AI 生成素材」：不在这里生成，开一个新对话把需求发过去（见 aiDialog）。
+          h(Btn, { "data-testid": "map-ai-open", onClick: openAiAsset }, T("AI 生成素材")),
           h(Btn, { onClick: () => void restoreSamples(), busy: busyKey === "sample" }, T("恢复默认素材"))
         ),
         tilesets.length === 0
@@ -9060,7 +9949,13 @@
                       T("{n0}×{n1} · {n2} 块", { n0: String(entry.cell.width), n1: String(entry.cell.height), n2: String(entry.tileCount) })
                     ),
                     frameCountOf(entry) > 0
-                      ? h("span", { className: "SPR_mapEdTsBadge", "data-anim": "true" }, T("会动 {n0} 帧", { n0: String(frameCountOf(entry)) }))
+                      ? h(
+                          "span",
+                          { className: "SPR_mapEdTsBadge", "data-anim": "true" },
+                          entry.fps === undefined
+                            ? T("会动 {n0} 帧", { n0: String(frameCountOf(entry)) })
+                            : T("会动 {n0} 帧 · {n1} 帧/秒", { n0: String(frameCountOf(entry)), n1: String(entry.fps) })
+                        )
                       : null,
                     entry.builtin === true ? h("span", { className: "SPR_mapEdTsBadge" }, T("自带")) : null
                   ),
@@ -9344,6 +10239,11 @@
           T("单位是格。改大只是多出空地；改小会丢掉范围外的格子（可撤销）")
         ),
         row(
+          T("一格多大"),
+          h("span", { className: "SPR_mapEdValue", "data-testid": "map-grid-cell" }, T("{n0}×{n1} 像素", { n0: String(view.grid.tileWidth), n1: String(view.grid.tileHeight) })),
+          T("新建项目时定的，之后不能改。AI 生成的素材会按这个尺寸出块；想让素材更清楚就新建一个 48 / 64 的项目。")
+        ),
+        row(
           T("动画速度"),
           h(
             "select",
@@ -9355,7 +10255,7 @@
             },
             speedOptions.map(([value, label]) => h("option", { key: value, value }, `${label} · ${value} 帧/秒`))
           ),
-          T("只影响会动的素材（水、翻页图这类）")
+          T("只影响会动的素材（水、翻页图这类）。哪张素材在「新增素材」里单独设过速度，就按它自己的走，不跟着这里变。")
         ),
         h(
           "label",
@@ -16931,6 +17831,8 @@
     function apply(ctx) {
       // 界面文案跟随 DSH 的语言设置；服务不可用时安静地退回中文原文。
       attachI18n(ctx);
+      // 新对话桥：拿浏览器的 sessions / uiWorkspace（可选依赖，缺了只影响「AI 生成素材」）。
+      attachSessionBridge(ctx);
 
       // 样式随 fiber 生命周期注入/移除。
       ctx.effect(() => {
@@ -17096,6 +17998,9 @@
         deleteMapProject: (payload) => call("deleteMapProject", payload),
         importMapTileset: (payload) => call("importMapTileset", payload),
         importSampleTileset: (payload) => call("importSampleTileset", payload),
+        // 界面不发起这一步（它是对话里 agent 的活），但方法清单必须与宿主一致，
+        // 所以照样挂一条 —— 少一条 verify-tools 的「客户端清单覆盖全部方法」就红。
+        composeMapAsset: (payload) => call("composeMapAsset", payload),
         saveMapTileset: (payload) => call("saveMapTileset", payload),
         removeMapTileset: (payload) => call("removeMapTileset", payload),
         saveMapDoc: (payload) => call("saveMapDoc", payload),
@@ -17150,7 +18055,9 @@
           {
             name: "main",
             key: GAME_STUDIO_PANEL_ID,
-            inject: () => ({ api })
+            // `studioCtx` 一并注入：地图编辑器的「AI 生成素材」要借它开新对话
+            // （侧栏那一份已经这么注入了）。
+            inject: () => ({ api, studioCtx: ctx })
           },
           StudioPanel
         )
@@ -17182,7 +18089,7 @@
      * `mapgeom` / `mapdoc` 的真实现做黄金对照逐点比对 —— 界面复刻的那部分几何
      * 必须有守门的，否则「预览与导出错位」会以静默的方式回来。
      */
-    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, RigSemanticsPanel, MapModule, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection };
+    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, RigSemanticsPanel, MapModule, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection, attachSessionBridge, openAssetChat, buildAssetRequestPrompt, deriveAssetName, ASSET_FRAMES_MIN, ASSET_FRAMES_MAX };
     return bundleModule.exports;
   }
 });

@@ -19,7 +19,7 @@
  *
  * 用法：node scripts/verify-map-pipeline.mjs
  */
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { inflateRawSync } from "node:zlib";
 import * as geom from "../lib/mapgeom.js";
 import { existsSync } from "node:fs";
@@ -52,7 +52,7 @@ const AUTO = await import("../lib/mapauto.js");
 const TILES = await import("../lib/maptiles.js");
 const RENDER = await import("../lib/maprender.js");
 const EXPORT = await import("../lib/mapexport.js");
-const { decodeFile } = await import("../lib/bitmap.js");
+const { decodeFile, encodeBitmap } = await import("../lib/bitmap.js");
 const { encodePng } = await import("../lib/png.js");
 
 // ── 夹具 ──────────────────────────────────────────────────────────────────
@@ -360,7 +360,11 @@ try {
   check("删素材：别的素材的格子继续平移（18 → 2），仍指向同一块", doc2b.data.l0[4 * 8 + 4] === 2, `实际 ${doc2b.data.l0[4 * 8 + 4]}`);
   check("删素材：原图从盘上删掉", !existsSync(G.mapAssetPath(p2.id, big.file)));
   check("删不存在的素材明确报错", (await throwsAsync(() => G.removeMapTileset(p2.id, "tsnope"))).includes("素材不存在"));
-  check("资源白名单里已经没有 maps，只剩 tilesets/preview/export", !G.SERVABLE_MAP_DIRS.has("maps") && ["tilesets", "preview", "export"].every((dir) => G.SERVABLE_MAP_DIRS.has(dir)), [...G.SERVABLE_MAP_DIRS].join(","));
+  check(
+    "资源白名单里已经没有 maps，tilesets / preview / export / ai 都在",
+    !G.SERVABLE_MAP_DIRS.has("maps") && ["tilesets", "preview", "export", "ai"].every((dir) => G.SERVABLE_MAP_DIRS.has(dir)),
+    [...G.SERVABLE_MAP_DIRS].join(",")
+  );
 
   // ══ 5. 文档模型与图层结构 ════════════════════════════════════════════════
   section("5) 文档模型与图层结构");
@@ -1116,8 +1120,625 @@ try {
   check("导出：map.json 顶层带 markers（编号 + 名字 + 格坐标）", ownMark.markers.length === 1 && ownMark.markers[0].n === 1 && ownMark.markers[0].name === "出口" && ownMark.markers[0].r === 3 && ownMark.markers[0].c === 3, JSON.stringify(ownMark.markers));
   check("导出：标记不占图层数据（同一格在图层里还是空的）", ownMark.layers[0].data[3 * 8 + 3] === 0 && ownMark.layers[0].data[0] === 1, `marker格=${ownMark.layers[0].data[3 * 8 + 3]} 画的格=${ownMark.layers[0].data[0]}`);
 
-  // ══ 17. 删除 ════════════════════════════════════════════════════════════
-  section("17) 删除项目");
+  // ══ 17. AI 素材：把一批帧整理成一张待确认的素材图 ══════════════════════
+  section("17) AI 素材（composeMapAsset：按形态规整 —— 普通竖排 / 整格 4×4 / 拼块 N 列，只整理不导入）");
+  {
+    const project = await G.createMapProject("AI 素材自检", { grid: { tileWidth: 16, tileHeight: 16, wrap: true }, cols: 8, rows: 8 });
+    created.push(project.id);
+    const frameDir = join(HOME, "ai-frames");
+    await mkdir(frameDir, { recursive: true });
+    /** 一帧纯色 PNG（`encodePng` 现编，不依赖 ffmpeg 之外的任何东西）。 */
+    const writeFrame = async (name, width, height, color) => {
+      const rgba = Buffer.alloc(width * height * 4);
+      for (let index = 0; index < width * height; index++) {
+        rgba[index * 4] = color[0];
+        rgba[index * 4 + 1] = color[1];
+        rgba[index * 4 + 2] = color[2];
+        rgba[index * 4 + 3] = 255;
+      }
+      const file = join(frameDir, name);
+      await writeFile(file, encodePng(rgba, width, height));
+      return file;
+    };
+    const red = await writeFrame("f0.png", 64, 64, [255, 0, 0]);
+    const green = await writeFrame("f1.png", 64, 64, [0, 255, 0]);
+
+    const before = await G.readMapProject(project.id);
+    const composed = await G.composeMapAsset({ projectId: project.id, name: "岩浆", files: [red, green] });
+    check(
+      "整理：格子 = 项目网格（16×16，不用调用方给）",
+      composed.cell.width === 16 && composed.cell.height === 16,
+      `${composed.cell.width}×${composed.cell.height}`
+    );
+    /**
+     * ★ **这一步不再缩到格子**：AI 那条路会先留 `scale` 倍分辨率（上限 4），
+     * 把「怎么缩」留给用户在「新增素材」里选（清晰度）。源图 64px 一格、格子 16px
+     * → 4 倍 → 每块 64px。
+     */
+    check("整理：保留 4 倍分辨率（源图每块 64px、格子 16px → scale=4）", composed.scale === 4, String(composed.scale));
+    check(
+      "整理：2 帧竖排成一列两行，尺寸 = 格子 × 倍数",
+      composed.width === composed.cell.width * composed.scale && composed.height === composed.cell.height * composed.scale * 2,
+      `${composed.width}×${composed.height}`
+    );
+    check("整理：animRows 默认跟着帧数走（2 帧 → true）", composed.animRows === true && composed.frameCount === 2);
+    check("整理：落在项目的 ai/ 下（文件名由名字归一而来）", composed.file === "ai/岩浆.png", composed.file);
+    check(
+      "整理：**不进素材列表**（导入前 project.tilesets 一条不加）",
+      (await G.readMapProject(project.id)).tilesets.length === before.tilesets.length,
+      `${before.tilesets.length} → ${(await G.readMapProject(project.id)).tilesets.length}`
+    );
+    const composedBytes = await readFile(G.mapAssetPath(project.id, composed.file));
+    check("整理：真的落盘了（且能当 PNG 解出来）", composedBytes.length > 0 && composedBytes.subarray(1, 4).toString("ascii") === "PNG");
+    const decoded = await decodeFile(G.mapAssetPath(project.id, composed.file));
+    const pixelAt = (bitmap, x, y) => {
+      const offset = (y * bitmap.width + x) * 4;
+      return [bitmap.rgba[offset], bitmap.rgba[offset + 1], bitmap.rgba[offset + 2]];
+    };
+    const blockPx = composed.cell.height * composed.scale;
+    check(
+      "整理：第 0 帧在第 0 行、第 1 帧在第 1 行（顺序就是 files 的顺序）",
+      JSON.stringify(pixelAt(decoded, Math.floor(blockPx / 2), Math.floor(blockPx / 2))) === JSON.stringify([255, 0, 0]) &&
+        JSON.stringify(pixelAt(decoded, Math.floor(blockPx / 2), blockPx + Math.floor(blockPx / 2))) === JSON.stringify([0, 255, 0]),
+      `${JSON.stringify(pixelAt(decoded, 8, 8))} / ${JSON.stringify(pixelAt(decoded, 8, 24))}`
+    );
+    const fresh = await G.readMapProject(project.id);
+    check(
+      "整理：项目日志里留了一条「整理 AI 素材」（用户能查到做过什么）",
+      fresh.logs.some((entry) => entry.message.includes("整理 AI 素材") && entry.message.includes("岩浆")),
+      fresh.logs.at(-1)?.message ?? ""
+    );
+
+    // 一帧 = 静态素材（animRows 关）。
+    const single = await G.composeMapAsset({ projectId: project.id, name: "草地", files: [red] });
+    check(
+      "单帧：animRows = false、高度就是一块（格子 × 倍数）",
+      single.animRows === false && single.height === single.cell.height * single.scale && single.frameCount === 1,
+      `${single.width}×${single.height} animRows=${single.animRows}`
+    );
+    check("单帧：与多帧落在同一个 ai/ 目录（互不覆盖）", single.file === "ai/草地.png" && single.file !== composed.file);
+    check(
+      "普通形态：shape / variants / notes 三个新字段都给出来了（界面与回链要用）",
+      composed.shape === "plain" && composed.variants === 1 && Array.isArray(composed.notes),
+      JSON.stringify({ shape: composed.shape, variants: composed.variants, notes: composed.notes })
+    );
+
+    // ── 整格（corner16）：**一块无缝墙砖** → 拼出 4 格 × 4 格（16 种接法）────────
+    const cornerSource = await writeFrame("corner.png", 64, 64, [70, 140, 90]);
+    const corner = await G.composeMapAsset({ projectId: project.id, name: "石墙", files: [cornerSource], shape: "corner16" });
+    check(
+      "整格：4 格 × 4 格（16 块，边长 = 格子 × 倍数）",
+      corner.shape === "corner16" &&
+        corner.width === corner.cell.width * corner.scale * 4 &&
+        corner.height === corner.cell.height * corner.scale * 4 &&
+        corner.frameCount === 1 &&
+        corner.animRows === false,
+      `${corner.width}×${corner.height} shape=${corner.shape} scale=${corner.scale}`
+    );
+    check("整格：没给动画（整格没有帧这一维）", corner.animRows === false);
+    {
+      const bytes = await readFile(G.mapAssetPath(project.id, corner.file));
+      const imported = await G.importMapTileset(project.id, "石墙导入", bytes.toString("base64"), { shape: "corner16", cell: { width: 16, height: 16 }, scale: corner.scale, clarity: "smooth" });
+      const tileset = imported.tilesets[0];
+      check(
+        "整格：真导入后 shape=corner16、16 块、掩码刚好是 0..15（位置即语义）",
+        tileset.shape === "corner16" && tileset.tiles.length === 16 && tileset.tiles.map((tile) => tile.mask).join(",") === [...Array(16).keys()].join(","),
+        `${tileset.tiles.length} 块 / 掩码 ${tileset.tiles.map((tile) => tile.mask).join(",")}`
+      );
+      check("整格：导入后没有「块数不对」的告警", !imported.warnings.some((text) => text.includes("整格")), imported.warnings.join(" | "));
+    }
+
+    // ── 拼块（a2quad）：每个变体一块无缝砖 → 拼成 N 列 × 5 行 ────────────────
+    const a2Source = await writeFrame("a2.png", 64, 64, [40, 90, 200]);
+    const a2One = await G.composeMapAsset({ projectId: project.id, name: "水面", files: [a2Source], shape: "a2quad" });
+    check(
+      "拼块：1 张 → 1 列 × 5 行（边长 = 格子 × 倍数）",
+      a2One.shape === "a2quad" &&
+        a2One.width === a2One.cell.width * a2One.scale &&
+        a2One.height === a2One.cell.height * a2One.scale * 5 &&
+        a2One.variants === 1,
+      `${a2One.width}×${a2One.height} variants=${a2One.variants}`
+    );
+    check("拼块：不是翻页图（动画走变体）", a2One.animRows === false);
+    const a2Three = await G.composeMapAsset({ projectId: project.id, name: "水面三帧", files: [a2Source, a2Source, a2Source], shape: "a2quad" });
+    check(
+      "拼块：3 张 → 3 列 × 5 行（变体数 = 张数）",
+      a2Three.width === a2Three.cell.width * a2Three.scale * 3 &&
+        a2Three.height === a2Three.cell.height * a2Three.scale * 5 &&
+        a2Three.variants === 3 &&
+        a2Three.frameCount === 3,
+      `${a2Three.width}×${a2Three.height} variants=${a2Three.variants}`
+    );
+    {
+      const bytes = await readFile(G.mapAssetPath(project.id, a2Three.file));
+      const imported = await G.importMapTileset(project.id, "水面导入", bytes.toString("base64"), { shape: "a2quad", cell: { width: 16, height: 16 }, scale: a2Three.scale, clarity: "crisp" });
+      const tileset = imported.tilesets[0];
+      check(
+        "拼块：真导入后 shape=a2quad、3 个变体、块数 = 4 象限 × 5 形状 × 3 变体",
+        tileset.shape === "a2quad" && tileset.variants === 3 && tileset.tiles.length === 60,
+        `variants=${tileset.variants} 块=${tileset.tiles.length}`
+      );
+      check("拼块：高度正好是 5 × 格子高（否则自动连接会取错块）", tileset.imageHeight === tileset.cell.height * 5 && !imported.warnings.some((text) => text.includes("5×格子高")), `${tileset.imageHeight}`);
+    }
+
+    // ── 清晰度：同一张图，不同的缩法出来的像素真的不一样 ────────────────────
+    {
+      /** 1px 棋盘格（红 / 绿）：面积平均之后**不可能**还是纯色，最近邻则只可能是纯色。 */
+      const checkerFile = join(frameDir, "checker.png");
+      {
+        const bitmap = { width: 64, height: 64, rgba: Buffer.alloc(64 * 64 * 4) };
+        for (let y = 0; y < 64; y++) {
+          for (let x = 0; x < 64; x++) {
+            const offset = (y * 64 + x) * 4;
+            const red = (x + y) % 2 === 0;
+            bitmap.rgba[offset] = red ? 255 : 0;
+            bitmap.rgba[offset + 1] = red ? 0 : 255;
+            bitmap.rgba[offset + 2] = 0;
+            bitmap.rgba[offset + 3] = 255;
+          }
+        }
+        await writeFile(checkerFile, encodeBitmap(bitmap));
+      }
+      const checker = await G.composeMapAsset({ projectId: project.id, name: "棋盘", files: [checkerFile] });
+      check("棋盘：合成保留 4 倍分辨率（64px 一块，格子 16）", checker.scale === 4 && checker.width === 64 && checker.height === 64, `${checker.width}×${checker.height} scale=${checker.scale}`);
+      const checkerBytes = await readFile(G.mapAssetPath(project.id, checker.file));
+
+      const fittedOf = async (label, clarity) => {
+        const imported = await G.importMapTileset(project.id, label, checkerBytes.toString("base64"), {
+          cell: { width: 16, height: 16 },
+          shape: "plain",
+          scale: checker.scale,
+          clarity
+        });
+        const tileset = imported.tilesets[0];
+        const fitted = await decodeFile(G.mapAssetPath(project.id, tileset.file));
+        return { tileset, fitted, warnings: imported.warnings };
+      };
+      /** 当前这张图里有多少「混色」像素（既不是纯红也不是纯绿）。 */
+      const mixedCount = (bitmap) => {
+        let mixed = 0;
+        for (let offset = 0; offset < bitmap.rgba.length; offset += 4) {
+          const red = bitmap.rgba[offset];
+          const green = bitmap.rgba[offset + 1];
+          if (!((red === 255 && green === 0) || (red === 0 && green === 255))) mixed++;
+        }
+        return mixed;
+      };
+
+      const sharpFitted = await fittedOf("棋盘-锐利", "sharp");
+      const smoothFitted = await fittedOf("棋盘-平滑", "smooth");
+      check(
+        "★ 清晰度：导入后素材图正好是**格子大小**（不是 4 倍的 64px）",
+        sharpFitted.tileset.imageWidth === 16 && sharpFitted.tileset.imageHeight === 16 && smoothFitted.tileset.imageWidth === 16,
+        `${sharpFitted.tileset.imageWidth} / ${smoothFitted.tileset.imageWidth}`
+      );
+      check("清晰度：选了什么会被记在素材上（列表 / 排查用）", sharpFitted.tileset.clarity === "sharp" && smoothFitted.tileset.clarity === "smooth", `${String(sharpFitted.tileset.clarity)} / ${String(smoothFitted.tileset.clarity)}`);
+      check(
+        "★ 锐利（最近邻）：1px 棋盘格缩完还是纯红 / 纯绿（0 个混色像素）",
+        mixedCount(sharpFitted.fitted) === 0,
+        `${mixedCount(sharpFitted.fitted)} 个混色`
+      );
+      check(
+        "★ 平滑（面积平均）：同一张图缩完**每个像素都是混色**（细节被平均进去了）",
+        mixedCount(smoothFitted.fitted) === 16 * 16,
+        `${mixedCount(smoothFitted.fitted)} 个混色`
+      );
+
+      /** 正弦条纹：面积平均会保留波形，锐化会把振幅拉大 —— 用它区分「平滑 / 清晰」。 */
+      const waveFile = join(frameDir, "wave.png");
+      {
+        const bitmap = { width: 64, height: 64, rgba: Buffer.alloc(64 * 64 * 4) };
+        for (let x = 0; x < 64; x++) {
+          const value = Math.max(0, Math.min(255, Math.round(128 + 100 * Math.sin((2 * Math.PI * x) / 16))));
+          for (let y = 0; y < 64; y++) {
+            const offset = (y * 64 + x) * 4;
+            bitmap.rgba[offset] = value;
+            bitmap.rgba[offset + 1] = value;
+            bitmap.rgba[offset + 2] = value;
+            bitmap.rgba[offset + 3] = 255;
+          }
+        }
+        await writeFile(waveFile, encodeBitmap(bitmap));
+      }
+      const wave = await G.composeMapAsset({ projectId: project.id, name: "波纹", files: [waveFile] });
+      const waveBytes = await readFile(G.mapAssetPath(project.id, wave.file));
+      const waveFitted = async (clarity) => {
+        const imported = await G.importMapTileset(project.id, `波纹-${clarity}`, waveBytes.toString("base64"), { cell: { width: 16, height: 16 }, shape: "plain", scale: wave.scale, clarity });
+        return decodeFile(G.mapAssetPath(project.id, imported.tilesets[0].file));
+      };
+      /** 相邻像素的平均差：越大 = 局部对比越强（= 看起来更「清晰」）。 */
+      const contrastOf = (bitmap) => {
+        let sum = 0;
+        let count = 0;
+        for (let y = 0; y < bitmap.height; y++) {
+          for (let x = 1; x < bitmap.width; x++) {
+            sum += Math.abs(bitmap.rgba[(y * bitmap.width + x) * 4] - bitmap.rgba[(y * bitmap.width + x - 1) * 4]);
+            count++;
+          }
+        }
+        return count === 0 ? 0 : sum / count;
+      };
+      const smoothWave = await waveFitted("smooth");
+      const crispWave = await waveFitted("crisp");
+      check(
+        "★ 清晰（平均 + 锐化）：同一张图比「平滑」的局部对比更强（轮廓更突出）",
+        contrastOf(crispWave) > contrastOf(smoothWave),
+        `平滑 ${contrastOf(smoothWave).toFixed(1)} < 清晰 ${contrastOf(crispWave).toFixed(1)}`
+      );
+
+      // 反向验证：`scale = 1`（自己导一张格子大小的图）时一个像素都不动。
+      const plainFile = join(frameDir, "plain16.png");
+      {
+        const bitmap = { width: 16, height: 16, rgba: Buffer.alloc(16 * 16 * 4) };
+        for (let offset = 0; offset < bitmap.rgba.length; offset += 4) {
+          bitmap.rgba[offset] = 12;
+          bitmap.rgba[offset + 1] = 34;
+          bitmap.rgba[offset + 2] = 56;
+          bitmap.rgba[offset + 3] = 255;
+        }
+        await writeFile(plainFile, encodeBitmap(bitmap));
+      }
+      const untouched = await G.importMapTileset(project.id, "原样导入", (await readFile(plainFile)).toString("base64"), { cell: { width: 16, height: 16 } });
+      check(
+        "反向验证：scale=1（默认）时素材图**逐字节原样**存下来（手动导入这条路完全没变）",
+        (await readFile(G.mapAssetPath(project.id, untouched.tilesets[0].file))).equals(await readFile(plainFile))
+      );
+      check("反向验证：不给 clarity 时记成默认的「平滑」", untouched.tilesets[0].clarity === "smooth", String(untouched.tilesets[0].clarity));
+
+      // 越界：清晰度 / 倍数都不许乱传，明确报错。
+      let clarityError = "";
+      try {
+        await G.importMapTileset(project.id, "乱写", checkerBytes.toString("base64"), { cell: { width: 16, height: 16 }, clarity: "nope" });
+      } catch (error) {
+        clarityError = String(error?.message ?? error);
+      }
+      check("未知清晰度明确报错（不静默回落）", clarityError.includes("清晰度"), clarityError);
+      let scaleError = "";
+      try {
+        await G.importMapTileset(project.id, "倍数乱写", checkerBytes.toString("base64"), { cell: { width: 16, height: 16 }, scale: 0 });
+      } catch (error) {
+        scaleError = String(error?.message ?? error);
+      }
+      check("倍数越界明确报错（1~8 的整数）", scaleError.includes("倍数"), scaleError);
+    }
+
+    // 整格多给几张 = 调用方把形态判断错了：明确拒绝，别默默用第一张。
+    let cornerManyError = "";
+    try {
+      await G.composeMapAsset({ projectId: project.id, name: "石墙错", files: [cornerSource, cornerSource], shape: "corner16" });
+    } catch (error) {
+      cornerManyError = String(error?.message ?? error);
+    }
+    check(
+      "整格给 2 张：明确抛错，并说清「整格没有动画 / 要会动请用拼块」（真机踩过：用户选了视频 + 8 帧，结果静默变成静态）",
+      cornerManyError.includes("一块") && cornerManyError.includes("无缝") && cornerManyError.includes("没有动画") && cornerManyError.includes("拼块"),
+      cornerManyError
+    );
+
+    // 非方砖：整格 / 拼块要的是**一块方砖**，长宽比差得多会被拉伸 —— 要提醒。
+    const wideTile = await writeFrame("wide.png", 64, 32, [10, 10, 10]);
+    const squashed = await G.composeMapAsset({ projectId: project.id, name: "压扁的", files: [wideTile, wideTile], shape: "a2quad" });
+    check(
+      "比例提醒：2:1 的源图配 1:1 的方砖目标 → notes 里说清「已拉伸、内容会变形」",
+      squashed.notes.some((text) => text.includes("拉伸") && text.includes("比例")),
+      squashed.notes.join(" | ")
+    );
+    check("反向验证：方砖不会被乱提醒", corner.notes.length === 0, corner.notes.join(" | "));
+
+    /**
+     * ★「接缝」的正向守门：砖自己接不上自己的时候，宿主必须**报出来**。
+     *
+     * 这次返工就是这一类：模型画的多格拼不到一起。现在整格 / 拼块都由一块砖拼出来，
+     * 唯一残留的缝就是砖自身的环绕缝 —— 所以它必须量得出来、说得清，用户才知道该重画。
+     */
+    const brokenTile = await writeFrame("broken.png", 64, 64, [0, 0, 0]);
+    {
+      // 把最左一列涂成白色（右列还是黑的）：这块砖左右接不上自己。
+      const bitmap = await decodeFile(brokenTile);
+      for (let y = 0; y < bitmap.height; y++) {
+        const offset = (y * bitmap.width) * 4;
+        bitmap.rgba[offset] = 255;
+        bitmap.rgba[offset + 1] = 255;
+        bitmap.rgba[offset + 2] = 255;
+      }
+      await writeFile(brokenTile, encodeBitmap(bitmap));
+    }
+    const broken = await G.composeMapAsset({ projectId: project.id, name: "接不上的砖", files: [brokenTile], shape: "corner16" });
+    check(
+      "★ 砖自己接不上自己 → notes 里说清「平铺会每隔一格有一道缝」并给出重画建议",
+      broken.notes.some((text) => text.includes("接不上自己") && text.includes("重画")),
+      broken.notes.join(" | ")
+    );
+    check("反向验证：纯色砖（左右上下都接得上）不会报接缝", corner.notes.every((text) => !text.includes("接不上自己")), corner.notes.join(" | "));
+
+    // 名字留空 → 兜底名；显式 cell → 覆盖项目网格。
+    const unnamed = await G.composeMapAsset({ projectId: project.id, files: [red] });
+    check("名字留空：兜底成「AI 素材」", unnamed.name === "AI 素材" && unnamed.file === "ai/AI 素材.png", unnamed.file);
+    const custom = await G.composeMapAsset({ projectId: project.id, name: "小格", files: [red, green], cell: { width: 8, height: 8 }, animRows: false });
+    check(
+      "显式 cell：按 8×8 出图（覆盖项目网格），animRows 也能显式关掉",
+      custom.cell.width === 8 && custom.width === custom.cell.width * custom.scale && custom.height === custom.cell.height * custom.scale * 2 && custom.animRows === false,
+      `${custom.width}×${custom.height} animRows=${custom.animRows} scale=${custom.scale}`
+    );
+    check("反向验证：不同 cell 出来的块就是不同的（不是永远用项目网格）", custom.cell.width !== composed.cell.width, `${custom.cell.width} vs ${composed.cell.width}`);
+
+    // ── 自动裁边：模型留的白框进不了素材图 ─────────────────────────────────
+    {
+      const framed = { width: 128, height: 128, rgba: Buffer.alloc(128 * 128 * 4) };
+      for (let y = 0; y < 128; y++) {
+        for (let x = 0; x < 128; x++) {
+          const offset = (y * 128 + x) * 4;
+          const border = x < 6 || y < 6 || x >= 122 || y >= 122;
+          framed.rgba[offset] = border ? 250 : 30 + ((x * 5) % 40);
+          framed.rgba[offset + 1] = border ? 250 : 80;
+          framed.rgba[offset + 2] = border ? 248 : 140;
+          framed.rgba[offset + 3] = 255;
+        }
+      }
+      const framedFile = join(frameDir, "framed.png");
+      await writeFile(framedFile, encodeBitmap(framed));
+      const withFrame = await G.composeMapAsset({ projectId: project.id, name: "带白框的砖", files: [framedFile], shape: "corner16" });
+      check(
+        "★ 自动裁边：白框被裁掉，notes 里说清了裁了多少",
+        withFrame.notes.some((text) => text.includes("自动裁掉") && text.includes("白框")),
+        withFrame.notes.join(" | ")
+      );
+      const decodedFrame = await decodeFile(G.mapAssetPath(project.id, withFrame.file));
+      // 满格那一块（右下）的四角：裁过的话不该是纯白。
+      const cellPx = withFrame.width / 4;
+      const corner = [decodedFrame.rgba[((3 * cellPx) * decodedFrame.width + 3 * cellPx) * 4], decodedFrame.rgba[((3 * cellPx) * decodedFrame.width + 3 * cellPx) * 4 + 1]];
+      check("裁完之后素材图的角上不再是白边", !(corner[0] > 240 && corner[1] > 240), JSON.stringify(corner));
+      const plainBrick = await G.composeMapAsset({ projectId: project.id, name: "没白框的砖", files: [cornerSource], shape: "corner16" });
+      check("反向验证：没有白框的砖不会被裁（notes 里不提裁边）", plainBrick.notes.every((text) => !text.includes("自动裁掉")), plainBrick.notes.join(" | "));
+    }
+
+    // 失败路径：空数组 / 读不到的文件 / 超过一列上限，都要明确抛错。
+    let emptyError = "";
+    try {
+      await G.composeMapAsset({ projectId: project.id, name: "空的", files: [] });
+    } catch (error) {
+      emptyError = String(error?.message ?? error);
+    }
+    check("空 files：明确抛错（不产出一张空图）", emptyError.includes("files"), emptyError);
+    let missingError = "";
+    try {
+      await G.composeMapAsset({ projectId: project.id, name: "缺的", files: [join(frameDir, "nope.png")] });
+    } catch (error) {
+      missingError = String(error?.message ?? error);
+    }
+    check("文件不存在：明确说读不到哪一张", missingError.includes("nope.png"), missingError);
+    let manyError = "";
+    try {
+      await G.composeMapAsset({ projectId: project.id, name: "太多", files: Array.from({ length: 65 }, () => red) });
+    } catch (error) {
+      manyError = String(error?.message ?? error);
+    }
+    check("超过一列上限（64）：在读盘之前就拒绝", manyError.includes("64"), manyError);
+    let projectError = "";
+    try {
+      await G.composeMapAsset({ projectId: "m-not-a-project", name: "无主", files: [red] });
+    } catch (error) {
+      projectError = String(error?.message ?? error);
+    }
+    check("项目不存在：明确抛错", projectError.length > 0, projectError);
+  }
+
+  // ══ 18. 删除 ════════════════════════════════════════════════════════════
+  section("18) 素材自己的动画播放速度（新增时定，可随时改）");
+  {
+    const project = await G.createMapProject("播放速度自检", { grid: { tileWidth: 16, tileHeight: 16, wrap: true }, cols: 8, rows: 8 });
+    created.push(project.id);
+    /**
+     * ★ 「新增素材时能设置动画播放速度」。
+     *
+     * 三件事必须成立：① 导入时就带上、并且**真的进计划**（`op.fps` / `fpsMax`）；
+     * ② 没设的素材不受影响（`op.fps` 不出现，`fpsMax` = 默认）；
+     * ③ 越界值明确报错，不静默夹到边界。
+     */
+    const fastDir = join(HOME, "ai-fast-frames");
+    await mkdir(fastDir, { recursive: true });
+    const fastFrames = [];
+    for (let index = 0; index < 3; index++) {
+      const rgba = Buffer.alloc(32 * 32 * 4);
+      for (let p = 0; p < 32 * 32; p++) { rgba[p * 4] = 30 + index * 80; rgba[p * 4 + 1] = 120; rgba[p * 4 + 2] = 200; rgba[p * 4 + 3] = 255; }
+      const file = join(fastDir, `fast${index}.png`);
+      await writeFile(file, encodeBitmap({ width: 32, height: 32, rgba }));
+      fastFrames.push(file);
+    }
+    const fastSheet = await G.composeMapAsset({ projectId: project.id, name: "快水", files: fastFrames, shape: "a2quad" });
+    const fastBytes = await readFile(G.mapAssetPath(project.id, fastSheet.file));
+    const importedFast = await G.importMapTileset(project.id, "快水", fastBytes.toString("base64"), {
+      shape: "a2quad",
+      cell: { width: 16, height: 16 },
+      fps: 8
+    });
+    check("新增素材时能带上播放速度（8 帧/秒）", importedFast.tilesets[0].fps === 8, JSON.stringify(importedFast.tilesets[0].fps));
+
+    // 第二张同样的水，但**不设**速度（跟全局走）—— 用来做反向验证。
+    const slowImported = await G.importMapTileset(project.id, "慢水", fastBytes.toString("base64"), { shape: "a2quad", cell: { width: 16, height: 16 } });
+    check("反向验证：没设速度的素材就没有 fps 字段（= 跟设置里的全局速度走）", slowImported.tilesets[0].fps === undefined, String(slowImported.tilesets[0].fps));
+
+    const view = await G.mapView(await G.readMapProject(project.id));
+    const fastEntry = view.tilesets.find((entry) => entry.name === "快水");
+    const slowEntry = view.tilesets.find((entry) => entry.name === "慢水");
+    check("素材快照把速度交给界面（列表上要显示）", fastEntry?.fps === 8 && slowEntry?.fps === undefined, `${String(fastEntry?.fps)} / ${String(slowEntry?.fps)}`);
+
+    // 各画一格，再看宿主真的把速度下发到各自的 op 上。
+    const layerId = view.layers[0].id;
+    await G.applyMapOps(project.id, [
+      { kind: "paint", layerId, cells: [{ r: 3, c: 3, tile: fastEntry.palette[0].index }] },
+      { kind: "paint", layerId, cells: [{ r: 5, c: 5, tile: slowEntry.palette[0].index }] }
+    ]);
+    const plan = await G.mapPlan(project.id, { view: { x: 0, y: 0, width: 8 * 16, height: 8 * 16 }, have: [] });
+    const opsAt = (result, r, c) => result.chunks.flatMap((chunk) => chunk.ops).filter((op) => op.r === r && op.c === c);
+    const fastOps = opsAt(plan, 3, 3);
+    const slowOps = opsAt(plan, 5, 5);
+    check("带速度的素材：每一条 op 都带上自己的 fps（客户端据它算帧号）", fastOps.length > 0 && fastOps.every((op) => op.fps === 8), JSON.stringify(fastOps.map((op) => op.fps)));
+    check("反向验证：没设速度的素材 op 上没有 fps（跟着全局走）", slowOps.length > 0 && slowOps.every((op) => op.fps === undefined), JSON.stringify(slowOps.map((op) => op.fps)));
+    check("★ 计划的 fpsMax = 最快的那条速度（客户端据此推时钟，否则快速素材会被慢时钟拖住）", plan.fpsMax === 8 && plan.fps === 1, `fps=${plan.fps} fpsMax=${plan.fpsMax}`);
+
+    // 改速度（表现层属性，不动几何 / 不动序号，随时能改）。
+    const changed = await G.saveMapTileset(project.id, fastEntry.id, { fps: 2 });
+    check("改播放速度：只换个数，不重切、不重映射（图块数不变）", changed.tileset.fps === 2 && changed.tileset.tiles.length === fastEntry.tileCount, `${changed.tileset.fps} / ${changed.tileset.tiles.length}`);
+    check("改播放速度会记一条项目日志（用户查得到做过什么）", (await G.readMapProject(project.id)).logs.some((entry) => String(entry.message).includes("改素材播放速度")));
+    const cleared = await G.saveMapTileset(project.id, fastEntry.id, { fps: null });
+    check("速度也能清掉（null = 回到跟全局）", cleared.tileset.fps === undefined, String(cleared.tileset.fps));
+    check("清掉之后计划里就没有 fps 了，fpsMax 回落", (await G.mapPlan(project.id, { view: { x: 0, y: 0, width: 8 * 16, height: 8 * 16 }, have: [] })).fpsMax === 1);
+
+    // 越界 / 乱码：明确报错。
+    let fpsError = "";
+    try {
+      await G.importMapTileset(project.id, "太快了", fastBytes.toString("base64"), { shape: "a2quad", fps: 60 });
+    } catch (error) {
+      fpsError = String(error?.message ?? error);
+    }
+    check("新增时给越界速度：明确报错并说清范围（不静默夹到 30）", fpsError.includes("0.5") && fpsError.includes("30"), fpsError);
+    let saveFpsError = "";
+    try {
+      await G.saveMapTileset(project.id, fastEntry.id, { fps: 0 });
+    } catch (error) {
+      saveFpsError = String(error?.message ?? error);
+    }
+    check("改速度时给越界值：同样明确报错", saveFpsError.includes("0.5"), saveFpsError);
+
+    // 内置素材仍然不许改（包括速度）。
+    const sampled = await G.importSampleTileset(project.id);
+    let builtinError = "";
+    try {
+      await G.saveMapTileset(project.id, sampled.tilesets.find((entry) => entry.builtin === true).id, { fps: 4 });
+    } catch (error) {
+      builtinError = String(error?.message ?? error);
+    }
+    check("内置素材的速度也不能改（与其它属性一致：删掉重来 / 恢复默认）", builtinError.includes("内置素材"), builtinError);
+  }
+
+  section("19) 循环方式（正放 / 倒放 / 来回：只换帧序展开）");
+  {
+    const project = await G.createMapProject("循环方式自检", { grid: { tileWidth: 16, tileHeight: 16, wrap: true }, cols: 8, rows: 8 });
+    created.push(project.id);
+    const dir = join(HOME, "loop-frames");
+    await mkdir(dir, { recursive: true });
+    /** 4 帧水（帧号写在像素里，方便从 legend 认出「第几帧」）。 */
+    const files = [];
+    for (let frame = 0; frame < 4; frame++) {
+      const rgba = Buffer.alloc(16 * 16 * 4);
+      for (let pixel = 0; pixel < 16 * 16; pixel++) {
+        rgba[pixel * 4] = 20 + frame * 60;
+        rgba[pixel * 4 + 1] = 120;
+        rgba[pixel * 4 + 2] = 200;
+        rgba[pixel * 4 + 3] = 255;
+      }
+      const file = join(dir, `f${frame}.png`);
+      await writeFile(file, encodePng(rgba, 16, 16));
+      files.push(file);
+    }
+    const sheet = await G.composeMapAsset({ projectId: project.id, name: "水", files, shape: "plain" });
+    const bytes = await readFile(G.mapAssetPath(project.id, sheet.file));
+
+    /** 导入 → 画一格 → 取那一格的 cycle（帧序按图块序号排的）。 */
+    const cycleOf = async (label, loop) => {
+      const imported = await G.importMapTileset(project.id, label, bytes.toString("base64"), {
+        cell: { width: 16, height: 16 },
+        shape: "plain",
+        animRows: true,
+        scale: sheet.scale,
+        loop
+      });
+      const tilesetId = imported.tilesets[0].id;
+      const view = await G.mapView(await G.readMapProject(project.id));
+      const layer = view.layers[0].id;
+      const brush = view.tilesets.find((entry) => entry.id === tilesetId).palette[0].index;
+      await G.applyMapOps(project.id, [{ kind: "paint", layerId: layer, cells: [{ r: 1, c: 1, tile: brush }] }]);
+      const plan = await G.mapPlan(project.id, { view: { x: 0, y: 0, width: 8 * 16, height: 8 * 16 }, have: [] });
+      const op = plan.chunks.flatMap((chunk) => chunk.ops).find((entry) => entry.r === 1 && entry.c === 1) ?? {};
+      // 帧序里存的是全局图块序号，翻回「第几帧」再比（序号本身随导入顺序变）。
+      const rects = new Map((plan.legend ?? []).map((entry) => [entry.index, entry.rect.y]));
+      const rows = (op.cycle ?? []).map((index) => Math.round((rects.get(index) ?? 0) / 16));
+      return { rows, tileset: imported.tilesets[0], frameCount: plan.frameCount };
+    };
+
+    const forward = await cycleOf("水-正放", "forward");
+    check("正放：帧序是 0,1,2,3", JSON.stringify(forward.rows) === JSON.stringify([0, 1, 2, 3]), JSON.stringify(forward.rows));
+    const reverse = await cycleOf("水-倒放", "reverse");
+    check("★ 倒放：帧序是 3,2,1,0（真的反过来了）", JSON.stringify(reverse.rows) === JSON.stringify([3, 2, 1, 0]), JSON.stringify(reverse.rows));
+    const pingpong = await cycleOf("水-来回", "pingpong");
+    check("★ 来回：帧序是 0,1,2,3,2,1（首尾各留一次，接缝不跳）", JSON.stringify(pingpong.rows) === JSON.stringify([0, 1, 2, 3, 2, 1]), JSON.stringify(pingpong.rows));
+    check("帧数跟着展开后的帧序走（来回 4 帧 → frameCount 6）", pingpong.frameCount === 6 && forward.frameCount === 4, `${forward.frameCount} / ${pingpong.frameCount}`);
+    check("素材快照把循环方式交给界面", forward.tileset.loop === "forward" && reverse.tileset.loop === "reverse" && pingpong.tileset.loop === "pingpong");
+
+    // 改循环方式：表现层属性，随时能改、立刻生效。
+    const changed = await G.saveMapTileset(project.id, pingpong.tileset.id, { loop: "reverse" });
+    check("改循环方式生效（来回 → 倒放），图块数不变（不重切）", changed.tileset.loop === "reverse" && changed.tileset.tiles.length === pingpong.tileset.tiles.length, `${String(changed.tileset.loop)} / ${changed.tileset.tiles.length}`);
+    const afterChange = await G.mapPlan(project.id, { view: { x: 0, y: 0, width: 8 * 16, height: 8 * 16 }, have: [] });
+    const ops = afterChange.chunks.flatMap((chunk) => chunk.ops).filter((op) => op.r === 1 && op.c === 1);
+    const rects = new Map((afterChange.legend ?? []).map((entry) => [entry.index, entry.rect.y]));
+    check("改完下一份计划就是新的帧序（不用重切素材）", JSON.stringify((ops[0]?.cycle ?? []).map((index) => Math.round((rects.get(index) ?? 0) / 16))) === JSON.stringify([3, 2, 1, 0]));
+    check("改循环方式会记一条项目日志", (await G.readMapProject(project.id)).logs.some((entry) => String(entry.message).includes("改素材循环方式")));
+
+    // 越界 / 乱码明确报错。
+    let loopError = "";
+    try {
+      await G.importMapTileset(project.id, "乱写", bytes.toString("base64"), { cell: { width: 16, height: 16 }, loop: "yoyo" });
+    } catch (error) {
+      loopError = String(error?.message ?? error);
+    }
+    check("未知循环方式明确报错（不静默回落成正放）", loopError.includes("循环方式"), loopError);
+  }
+
+  section("20) 一格多大可配（16 / 32 / 48 / 64：新建项目时定）");
+  {
+    const wide = await G.createMapProject("64 网格自检", { grid: { tileWidth: 64, tileHeight: 64, wrap: true }, cols: 8, rows: 8 });
+    created.push(wide.id);
+    const view = await G.mapView(await G.readMapProject(wide.id));
+    check("新建项目能指定网格（64×64）", view.grid.tileWidth === 64 && view.grid.tileHeight === 64, `${view.grid.tileWidth}×${view.grid.tileHeight}`);
+
+    // AI 素材：composeMapAsset 默认按项目网格出块（64 → 4 倍 = 256px 一块）
+    const frameDir = join(HOME, "grid-frames");
+    await mkdir(frameDir, { recursive: true });
+    const rgba = Buffer.alloc(256 * 256 * 4);
+    for (let pixel = 0; pixel < 256 * 256; pixel++) {
+      rgba[pixel * 4] = 40;
+      rgba[pixel * 4 + 1] = 90 + (pixel % 60);
+      rgba[pixel * 4 + 2] = 160;
+      rgba[pixel * 4 + 3] = 255;
+    }
+    const source = join(frameDir, "tile.png");
+    await writeFile(source, encodePng(rgba, 256, 256));
+    const composed = await G.composeMapAsset({ projectId: wide.id, name: "大格砖", files: [source], shape: "corner16" });
+    check("AI 素材按项目网格出块（64 格 × 4 倍 = 256px 一块）", composed.cell.width === 64 && composed.scale === 4 && composed.width === 64 * 4 * 4, `${composed.cell.width} / ${composed.scale} / ${composed.width}`);
+    const bytes = await readFile(G.mapAssetPath(wide.id, composed.file));
+    // 界面那条路（「新增素材」预填的 cell 就是地图网格）：
+    const imported = await G.importMapTileset(wide.id, "大格砖", bytes.toString("base64"), {
+      shape: "corner16",
+      cell: { width: 64, height: 64 },
+      scale: composed.scale,
+      clarity: "smooth"
+    });
+    check("导入后素材的格子就是项目网格（64×64，图块按 64px 画不会压边）", imported.tilesets[0].cell.width === 64 && imported.tilesets[0].imageWidth === 64 * 4, `${imported.tilesets[0].cell.width} / ${imported.tilesets[0].imageWidth}`);
+    check("格子 = 地图网格时没有「尺寸不匹配」的告警", !imported.warnings.some((text) => text.includes("地图格子")), imported.warnings.join(" | "));
+    /**
+     * ★ 对话面容易忘传 `cell`：那时宿主要**说出来**（否则图块只占格子一角，看着像缩小了）。
+     */
+    const forgotCell = await G.importMapTileset(wide.id, "忘了填格子", bytes.toString("base64"), { shape: "corner16", scale: composed.scale });
+    check(
+      "忘了填 cell（自动认出 32）时明确告警：说清素材格子与地图网格不一致",
+      forgotCell.warnings.some((text) => text.includes("地图格子") && text.includes("64×64")),
+      forgotCell.warnings.join(" | ")
+    );
+
+    // 内置素材：按 32 画的，塞进 64 网格要按比例放大（否则图块只有半格）
+    const sampled = await G.importSampleTileset(wide.id);
+    check("内置素材按项目网格缩放（64 网格 → 每格 64px、图也放大一倍）", sampled.tilesets.every((entry) => entry.cell.width === 64) && sampled.tilesets[0].imageWidth === 128, `${sampled.tilesets.map((entry) => `${entry.cell.width}/${entry.imageWidth}`).join(" ")}`);
+    check("反向验证：缩放后仍认得出形态（A2 还是 A2）", sampled.tilesets.filter((entry) => entry.shape === "a2quad").length === 4, sampled.tilesets.map((entry) => entry.shape).join(","));
+
+    // 16 网格：缩小也要成立（用面积平均）
+    const small = await G.createMapProject("16 网格自检", { grid: { tileWidth: 16, tileHeight: 16, wrap: true }, cols: 8, rows: 8 });
+    created.push(small.id);
+    const smallSampled = await G.importSampleTileset(small.id);
+    check("16 网格的内置素材同样按比例缩下来（每格 16px）", smallSampled.tilesets.every((entry) => entry.cell.width === 16) && smallSampled.tilesets[0].imageWidth === 32, `${smallSampled.tilesets[0].cell.width} / ${smallSampled.tilesets[0].imageWidth}`);
+  }
+
+  section("21) 删除项目");
   for (const id of created.slice()) {
     const existed = existsSync(G.mapProjectDir(id));
     await G.deleteMapProject(id);

@@ -619,6 +619,53 @@ async function main() {
   check("上报后 origin 生效", links.rememberClientOrigin("http://127.0.0.1:43120") && links.originForLinks() === "http://127.0.0.1:43120");
   check("非法 origin 被拒绝", links.rememberClientOrigin("file:///x") === false && links.originForLinks() === "http://127.0.0.1:43120");
 
+  /**
+   * ── 「AI 生成素材」回链的四个参数（dialog / asset / frames / shape）────────
+   *
+   * 这条链接是**对话 → 界面**的唯一通道：对话里 agent 贴出来的 URL 必须让地图编辑器
+   * 展开素材窗口 + 打开「新增素材」+ 预选好那张图与「这块素材怎么用」。参数少一个，
+   * 用户点开只会落在一张空的地图编辑器上（或者把拼块当成普通素材导入），而且不报错
+   * —— 所以这里把「拼出去」与「解回来」逐字段钉住，并配反向验证（坏值必须被丢掉）。
+   */
+  const assetLink = links.buildOpenLink(
+    { module: "map", jobId: "m1a2b3c4", stage: "assets", dialog: "add", asset: "ai/岩浆.png", frames: 4, shape: "a2quad", scale: 4 },
+    "http://127.0.0.1:43120"
+  );
+  check(
+    "回链形态正确（module / job / stage / dialog / asset / frames / shape / scale 一个不少）",
+    assetLink === `http://127.0.0.1:43120/?dsh-gmm=1&module=map&job=m1a2b3c4&stage=assets&dialog=add&asset=ai%2F%E5%B2%A9%E6%B5%86.png&frames=4&shape=a2quad&scale=4`,
+    assetLink
+  );
+  check("回链解析回来完全一致", (() => {
+    const parsed = links.parseIntentQuery(assetLink.split("?")[1]);
+    return parsed?.module === "map" && parsed?.jobId === "m1a2b3c4" && parsed?.stage === "assets" && parsed?.dialog === "add" && parsed?.asset === "ai/岩浆.png" && parsed?.frames === 4 && parsed?.shape === "a2quad" && parsed?.scale === 4;
+  })(), JSON.stringify(links.parseIntentQuery(assetLink.split("?")[1])));
+  check("反向验证：dialog 只认 add（别的值丢掉）", links.parseIntentQuery("dsh-gmm=1&dialog=nope")?.dialog === undefined);
+  check(
+    "反向验证：scale 只认 1~8 的整数（0 / 9 / 小数全部丢掉）",
+    links.parseIntentQuery("dsh-gmm=1&scale=4")?.scale === 4 &&
+      links.parseIntentQuery("dsh-gmm=1&scale=0")?.scale === undefined &&
+      links.parseIntentQuery("dsh-gmm=1&scale=9")?.scale === undefined &&
+      links.parseIntentQuery("dsh-gmm=1&scale=2.5")?.scale === undefined
+  );
+  check(
+    "反向验证：shape 只认 plain / corner16 / a2quad（别的值丢掉，别把链接当任意指令用）",
+    ["plain", "corner16", "a2quad"].every((shape) => links.parseIntentQuery(`dsh-gmm=1&shape=${shape}`)?.shape === shape) &&
+      links.parseIntentQuery("dsh-gmm=1&shape=hex")?.shape === undefined &&
+      links.parseIntentQuery("dsh-gmm=1&shape=")?.shape === undefined
+  );
+  check(
+    "反向验证：asset 只认项目内的相对路径（绝对路径 / .. / 反斜杠全部丢掉）",
+    links.parseIntentQuery("dsh-gmm=1&asset=/etc/passwd")?.asset === undefined &&
+      links.parseIntentQuery("dsh-gmm=1&asset=../../x.png")?.asset === undefined &&
+      links.parseIntentQuery("dsh-gmm=1&asset=a%5Cb.png")?.asset === undefined
+  );
+  check("反向验证：frames 只认正整数（0 / 小数 / 乱码都丢掉）", links.parseIntentQuery("dsh-gmm=1&frames=0")?.frames === undefined && links.parseIntentQuery("dsh-gmm=1&frames=2.5")?.frames === undefined && links.parseIntentQuery("dsh-gmm=1&frames=abc")?.frames === undefined);
+  check("反向验证：只给 dialog 不给 asset 也合法（界面退化成「打开新增素材」）", (() => {
+    const parsed = links.parseIntentQuery("dsh-gmm=1&module=map&job=m1&stage=assets&dialog=add");
+    return parsed?.dialog === "add" && parsed?.asset === undefined;
+  })());
+
   // 浏览器半区是经典脚本（不能 import），只能靠文本契约保证两边同源。
   const clientSource = readFileSync(fileURLToPath(new URL("../src/client.ts", import.meta.url)), "utf8");
   const clientBundle = readFileSync(fileURLToPath(new URL("../lib/client.js", import.meta.url)), "utf8");
@@ -632,6 +679,11 @@ async function main() {
     check(`${label}：注册了捕获阶段的链接拦截`, text.includes('addEventListener("click"') && text.includes("true)"), "捕获阶段");
     check(`${label}：会上报 origin`, text.includes("reportClientOrigin"), "");
     check(`${label}：读取地址栏里的深链接`, text.includes("consumeUrlIntent"), "");
+    // 新参数只按文本契约钉：浏览器半区不能 import（links.ts 的那份是拷贝）。
+    check(`${label}：含 OPEN_DIALOGS（只放行 add）`, text.includes('OPEN_DIALOGS = new Set(["add"])'), "");
+    check(`${label}：含 OPEN_SHAPES（只放行 plain / corner16 / a2quad）`, text.includes('OPEN_SHAPES = new Set(["plain", "corner16", "a2quad"])'), "");
+    check(`${label}：清地址栏时把 dialog / asset / frames / shape / scale 一起摘掉`, text.includes('"dialog", "asset", "frames", "shape", "scale"'), "");
+    check(`${label}：解析 asset 会挡绝对路径与 ..`, text.includes('!asset.startsWith("/")') && text.includes("!asset.includes(\"..\")"), "");
   }
   check("client.ts 里没有任何 import（必须是经典脚本）", !/^\s*import\s/m.test(clientSource), "");
 

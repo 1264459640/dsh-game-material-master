@@ -512,7 +512,334 @@ section("10) 标记点几何（圆心 / 半径 / 字号 / 编号都由宿主算�
   check("一格最多一个标记（同格重复时只出一条，不会叠两个圈）", stackedPlan.length === 1 && stackedPlan[0].id === "m2", `${stackedPlan.length} 条`);
 }
 
-section("11) 客户端静态约束（文本检查）");
+section("11) AI 素材的帧整理（fitFrameToCell / stackFrames / safeAssetStem）");
+{
+  /** 造一张左下角有记号的位图：`paint(x, y)` 决定颜色，便于逐像素核对。 */
+  const makeFrame = (width, height, paint) => {
+    const rgba = Buffer.alloc(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const [r, g, b, a] = paint(x, y);
+        const offset = (y * width + x) * 4;
+        rgba[offset] = r;
+        rgba[offset + 1] = g;
+        rgba[offset + 2] = b;
+        rgba[offset + 3] = a;
+      }
+    }
+    return { width, height, rgba };
+  };
+  const pixel = (bitmap, x, y) => {
+    const offset = (y * bitmap.width + x) * 4;
+    return [bitmap.rgba[offset], bitmap.rgba[offset + 1], bitmap.rgba[offset + 2], bitmap.rgba[offset + 3]];
+  };
+
+  // ① 等比缩到正好一格：最近邻，左上角那块必须原样搬过去（不插值、不糊边）。
+  const solid = makeFrame(64, 64, (x, y) => [x * 4, y * 4, 0, 255]);
+  const fitted = tiles.fitFrameToCell(solid, { width: 32, height: 32 });
+  check("fitFrameToCell：尺寸正好是目标格子", fitted.width === 32 && fitted.height === 32, `${fitted.width}×${fitted.height}`);
+  check("fitFrameToCell：最近邻 —— 源图 (0,0) 原样落在目标 (0,0)", JSON.stringify(pixel(fitted, 0, 0)) === JSON.stringify([0, 0, 0, 255]), JSON.stringify(pixel(fitted, 0, 0)));
+  check("fitFrameToCell：目标最后一格取源图对应位置（x=31 → 源 62）", JSON.stringify(pixel(fitted, 31, 0)) === JSON.stringify([248, 0, 0, 255]), JSON.stringify(pixel(fitted, 31, 0)));
+
+  // ② 非正方形源图：**先按目标比例取中心那一块**，不拉伸变形。
+  const wide = makeFrame(64, 16, () => [10, 20, 30, 255]);
+  const squared = tiles.fitFrameToCell(wide, { width: 32, height: 32 });
+  check("fitFrameToCell：宽图先裁中心再缩，尺寸仍是目标尺寸（不拉伸）", squared.width === 32 && squared.height === 32, `${squared.width}×${squared.height}`);
+
+  // ③ 反向验证：换成长宽比对调的格子（16×32），输出尺寸必须跟着格子走。
+  const tall = tiles.fitFrameToCell(wide, { width: 16, height: 32 });
+  check("反向验证：格子换成 16×32 后输出就是 16×32（尺寸来自参数，不是写死的）", tall.width === 16 && tall.height === 32, `${tall.width}×${tall.height}`);
+
+  // ④ 一列 N 行：总高 = 格子高 × 帧数；第 k 帧落在第 k 行，且顺序不乱。
+  const frameRed = makeFrame(8, 8, () => [255, 0, 0, 255]);
+  const frameGreen = makeFrame(8, 8, () => [0, 255, 0, 255]);
+  const stacked = tiles.stackFrames([frameRed, frameGreen], { width: 8, height: 8 });
+  check("stackFrames：2 帧竖排成 8×16（一列两行）", stacked.width === 8 && stacked.height === 16, `${stacked.width}×${stacked.height}`);
+  check("stackFrames：第 0 帧在第 0 行、第 1 帧在第 1 行（顺序就是传入顺序）", JSON.stringify(pixel(stacked, 0, 0)) === JSON.stringify([255, 0, 0, 255]) && JSON.stringify(pixel(stacked, 0, 8)) === JSON.stringify([0, 255, 0, 255]), `${JSON.stringify(pixel(stacked, 0, 0))} / ${JSON.stringify(pixel(stacked, 0, 8))}`);
+  check("反向验证：把顺序换过来，第 0 行跟着换（不是写死红在上）", JSON.stringify(pixel(tiles.stackFrames([frameGreen, frameRed], { width: 8, height: 8 }), 0, 0)) === JSON.stringify([0, 255, 0, 255]));
+  check("stackFrames：空数组明确抛错（不静默产出一张空图）", throws(() => tiles.stackFrames([], { width: 8, height: 8 })));
+
+  // ⑤ 文件名归一：路径分隔 / 控制字符 / 结尾的点 / 超长都要收拾干净。
+  check("safeAssetStem：去掉路径分隔符", tiles.safeAssetStem("a/b\\c") === "a b c", tiles.safeAssetStem("a/b\\c"));
+  check("safeAssetStem：中文名原样保留（不转拼音、不丢字）", tiles.safeAssetStem("岩浆 纹理") === "岩浆 纹理", tiles.safeAssetStem("岩浆 纹理"));
+  check("safeAssetStem：截到 40 字", tiles.safeAssetStem("字".repeat(80)).length === 40, String(tiles.safeAssetStem("字".repeat(80)).length));
+  check("safeAssetStem：结尾的点去掉（Windows 上非法）", tiles.safeAssetStem("abc...") === "abc", tiles.safeAssetStem("abc..."));
+  check("safeAssetStem：空名退回 ai-asset", tiles.safeAssetStem("   ") === "ai-asset" && tiles.safeAssetStem("") === "ai-asset");
+
+  // ⑥ 「这块素材怎么用」三种形态的目标几何：普通 1×N、整格 4×4、拼块 N×5。
+  check(
+    "sheetPlanOf：普通 = 1 列 × 帧数（帧就是翻页图的行）",
+    (() => { const p = tiles.sheetPlanOf("plain", { width: 32, height: 32 }, 4); return p.cols === 1 && p.rows === 4; })()
+  );
+  check(
+    "sheetPlanOf：整格固定 4×4（帧数被忽略，且至少算 1 块）",
+    (() => { const p = tiles.sheetPlanOf("corner16", { width: 32, height: 32 }, 3); return p.cols === 4 && p.rows === 4; })()
+  );
+  check(
+    "sheetPlanOf：拼块 = 变体数列 × 5 行形状",
+    (() => { const p = tiles.sheetPlanOf("a2quad", { width: 32, height: 32 }, 3); return p.cols === 3 && p.rows === 5; })()
+  );
+  check(
+    "反向验证：帧数喂 0 也不会算出 0 列（夹到 1）",
+    tiles.sheetPlanOf("plain", { width: 8, height: 8 }, 0).rows === 1 && tiles.sheetPlanOf("a2quad", { width: 8, height: 8 }, 0).cols === 1
+  );
+
+  // ⑦ stretchToSize：**非等比**缩放（砖 → 一格，保住砖自身的环绕缝）。
+  const wide2 = makeFrame(8, 4, (x) => [x * 30, 0, 0, 255]);
+  const stretched = tiles.stretchToSize(wide2, 4, 8);
+  check("stretchToSize：尺寸就是目标尺寸（宽高各自独立，不像 fitFrameToCell 那样保比例）", stretched.width === 4 && stretched.height === 8, `${stretched.width}×${stretched.height}`);
+  check("stretchToSize：起点与各列都按比例映射（8 列 → 4 列取下标 0/2/4/6，与 fitFrameToCell 同一条取整口径，不做中心裁切）", JSON.stringify(pixel(stretched, 0, 0)) === JSON.stringify([0, 0, 0, 255]) && JSON.stringify(pixel(stretched, 3, 0)) === JSON.stringify([180, 0, 0, 255]), `${JSON.stringify(pixel(stretched, 0, 0))} / ${JSON.stringify(pixel(stretched, 3, 0))}`);
+  check("反向验证：同一张图交给 fitFrameToCell 会先裁成方形（两者的区别就在这里）", tiles.fitFrameToCell(wide2, { width: 4, height: 4 }).height === 4);
+
+  // ⑧ 收口：整格 / 拼块的「断」边由代码压暗，越靠外越深。
+  {
+    const flat = makeFrame(16, 16, () => [200, 200, 200, 255]);
+    check("capThicknessFor：32 的一格 → 4px；16 的小格 → 2px（跟尺寸走，不是写死）", tiles.capThicknessFor(32) === 4 && tiles.capThicknessFor(16) === 2 && tiles.capThicknessFor(64) === 6, `${tiles.capThicknessFor(32)} / ${tiles.capThicknessFor(16)}`);
+    const capped = makeFrame(16, 16, () => [200, 200, 200, 255]);
+    tiles.shadeSide(capped, "W", 4);
+    check("shadeSide：最外一圈最暗（≈0.35 倍），往内线性回到原色（第 4 列已经不受影响）", pixel(capped, 0, 8)[0] === 70 && pixel(capped, 1, 8)[0] > 70 && pixel(capped, 1, 8)[0] < 200 && pixel(capped, 4, 8)[0] === 200, `${pixel(capped, 0, 8)[0]} / ${pixel(capped, 1, 8)[0]} / ${pixel(capped, 4, 8)[0]}`);
+    check("shadeSide：只动被指定的那条边（其它三边原样）", pixel(capped, 15, 8)[0] === 200 && pixel(capped, 8, 0)[0] === 200 && pixel(capped, 8, 15)[0] === 200);
+    const cornerShaded = makeFrame(16, 16, () => [200, 200, 200, 255]);
+    tiles.shadeCorner(cornerShaded, "NW", 3);
+    check("shadeCorner：外角最深、往里两行两列恢复（形状 3 的凹角用）", pixel(cornerShaded, 0, 0)[0] === 70 && pixel(cornerShaded, 2, 2)[0] < 200 && pixel(cornerShaded, 3, 3)[0] === 200 && pixel(cornerShaded, 15, 15)[0] === 200);
+    void flat;
+  }
+
+  // ⑨ 整格：由**一块砖**拼出 4×4 —— 所有「连」的边都是砖自己的像素（这就是没有接缝的原因）。
+  {
+    const tile = makeFrame(32, 32, (x, y) => [x * 8, y * 8, 40, 255]);
+    const cell = { width: 16, height: 16 };
+    const sheet = tiles.corner16SheetFromTile(tile, cell);
+    const base = tiles.stretchToSize(tile, cell.width, cell.height);
+    const blockAt = (mask) => ({ x: (mask % 4) * cell.width, y: Math.floor(mask / 4) * cell.height });
+    check("corner16SheetFromTile：4 格 × 4 格（16 种接法）", sheet.width === 64 && sheet.height === 64, `${sheet.width}×${sheet.height}`);
+    check(
+      "corner16SheetFromTile：满格（掩码 15）**一点收口都不加**，和砖本身逐像素相同",
+      (() => {
+        const at = blockAt(15);
+        for (let y = 0; y < cell.height; y++) for (let x = 0; x < cell.width; x++) {
+          if (JSON.stringify(pixel(sheet, at.x + x, at.y + y)) !== JSON.stringify(pixel(base, x, y))) return false;
+        }
+        return true;
+      })()
+    );
+    check(
+      "corner16SheetFromTile：孤块（掩码 0）四边都压了收口（外圈明显比砖暗）",
+      (() => {
+        const at = blockAt(0);
+        const outer = [pixel(sheet, at.x, at.y)[0], pixel(sheet, at.x + cell.width - 1, at.y)[0], pixel(sheet, at.x, at.y + cell.height - 1)[0], pixel(sheet, at.x + cell.width - 1, at.y + cell.height - 1)[0]];
+        const inner = pixel(sheet, at.x + 8, at.y + 8);
+        return outer.every((value, index) => value < (index === 0 ? inner[0] : inner[0])) && inner[0] > 40;
+      })()
+    );
+    /**
+     * ★ 这条就是这次返工的**守门断言**：一排墙在地图上用到的是掩码 2 / 10 / 8 三块，
+     * 它们「连」的那条边必须**逐像素等于砖自己的边**（接缝只可能来自砖自身的环绕缝）。
+     */
+    /**
+     * 取某一块的某条边的像素。⚠️ **只取中段**：两端 `t` 像素会被**相邻那条边的收口**
+     * 盖到（拐角本来就是两条收口相交的地方），拿它比会误判成「有接缝」。
+     */
+    const cap = tiles.capThicknessFor(Math.min(cell.width, cell.height));
+    const edgeColumnOf = (mask, side) => {
+      const at = blockAt(mask);
+      const column = side === "E" ? cell.width - 1 : 0;
+      const out = [];
+      for (let y = cap; y < cell.height - cap; y++) out.push(pixel(sheet, at.x + column, at.y + y));
+      return out;
+    };
+    const adjacentGap = (left, right) => left.reduce((sum, value, index) => sum + Math.abs(value[0] - right[index][0]) + Math.abs(value[1] - right[index][1]) + Math.abs(value[2] - right[index][2]), 0) / left.length;
+    const tileWrapGap = (() => {
+      let sum = 0;
+      for (let y = 0; y < cell.height; y++) sum += Math.abs(pixel(base, cell.width - 1, y)[0] - pixel(base, 0, y)[0]);
+      return sum / cell.height;
+    })();
+    const runGaps = [adjacentGap(edgeColumnOf(2, "E"), edgeColumnOf(10, "W")), adjacentGap(edgeColumnOf(10, "E"), edgeColumnOf(8, "W"))];
+    check(
+      "★ 一排墙（掩码 2 → 10 → 8）的拼接处差值 == 砖自身的环绕缝（不再出现「每块各画各的」那种接缝）",
+      runGaps.every((gap) => Math.abs(gap - tileWrapGap) < 0.5),
+      `拼接处 ${runGaps.map((gap) => gap.toFixed(1)).join(" / ")} vs 砖环绕缝 ${tileWrapGap.toFixed(1)}`
+    );
+    check("反向验证：孤块被收口的那条边确实与砖不同（收口真的画上去了，不是空操作）", adjacentGap(edgeColumnOf(0, "E"), edgeColumnOf(15, "E")) > 1);
+    check("corner16SheetFromTile：给 2 张明确抛错（多给一定是形态判断错了）", throws(() => tiles.composeAssetSheet([tile, tile], tiles.sheetPlanOf("corner16", cell, 1))));
+  }
+
+  // ⑩ 拼块：由每个变体一块砖拼出 N 列 × 5 行，小格按自己那一侧加收口。
+  {
+    const redTile = makeFrame(16, 16, () => [255, 0, 0, 255]);
+    const greenTile = makeFrame(16, 16, () => [0, 255, 0, 255]);
+    const cell = { width: 16, height: 16 };
+    const sheet = tiles.composeAssetSheet([redTile, greenTile], tiles.sheetPlanOf("a2quad", cell, 2));
+    check("composeAssetSheet（拼块）：2 块砖 → 2 列 × 5 行 = 32×80", sheet.width === 32 && sheet.height === 80, `${sheet.width}×${sheet.height}`);
+    check(
+      "拼块：满格行（形状 4）没有收口 —— 那是调色板缩略图用的那一行，必须就是砖本身",
+      JSON.stringify(pixel(sheet, 3, 4 * cell.height + 3)) === JSON.stringify([255, 0, 0, 255]) && JSON.stringify(pixel(sheet, cell.width + 3, 4 * cell.height + 3)) === JSON.stringify([0, 255, 0, 255])
+    );
+    check(
+      "拼块：形状 0（两边都不接）的左上小格，上边与左边都被压暗（≤ 一半亮度）",
+      pixel(sheet, 0, 0)[0] <= 130 && pixel(sheet, 8, 0)[0] <= 130 && pixel(sheet, 4, 4)[0] === 255
+    );
+    check(
+      "拼块：形状 2（横向接、纵向不接）只压上下两边，左右两边保持原色（横向一排草地不会有缝）",
+      // 左边界取**中段**：两端会被上下那两条收口盖住，那是拐角该有的样子。
+      pixel(sheet, 0, 2 * cell.height + 8)[0] === 255 &&
+        pixel(sheet, cell.width - 1, 2 * cell.height + 8)[0] === 255 &&
+        pixel(sheet, 3, 2 * cell.height + 4)[0] === 255
+    );
+    check(
+      "拼块：形状 1（纵向接、横向不接）只压左右两边（上下两边在中段保持原色）",
+      pixel(sheet, 0, 1 * cell.height + 8)[0] < 255 && pixel(sheet, 4, 1 * cell.height + 8)[0] === 255
+    );
+    check(
+      "拼块：形状 3 在象限外角多一块凹角收口（否则形状 3 和满格完全一样）",
+      (() => {
+        const rowTop = 3 * cell.height;
+        // 左上小格的外角（0,0）应被压暗；同一小格靠内的像素不受影响
+        return pixel(sheet, 0, rowTop)[0] <= 130 && pixel(sheet, 4, rowTop + 4)[0] === 255;
+      })()
+    );
+    check("拼块：同一条横向接边的两侧像素一致（相邻两格之间不会有缝）", (() => {
+      // 形状 2 与形状 4 在「横边」上都不收口：取两者的小格右边界比对
+      const a = pixel(sheet, 7, 2 * cell.height + 8);
+      const b = pixel(sheet, 7, 4 * cell.height + 8);
+      return JSON.stringify(a) === JSON.stringify(b);
+    })());
+    check("反向验证：拼块给 1 张就是 1 列（不是 5 列）", tiles.composeAssetSheet([redTile], tiles.sheetPlanOf("a2quad", cell, 1)).width === 16);
+  }
+
+  // ⑪ 砖自身的环绕缝：量得出来才能提醒用户 / agent 重画。
+  {
+    const seamless = makeFrame(16, 16, (x) => [x < 8 ? 100 : 100, 100, 100, 255]);
+    const ratios = tiles.tileSeamRatios(seamless);
+    check("tileSeamRatios：纯色砖的环绕缝 ≈ 1（无缝）", ratios.horizontal < 1.2 && ratios.vertical < 1.2, `横 ${ratios.horizontal.toFixed(2)} / 纵 ${ratios.vertical.toFixed(2)}`);
+    const broken = makeFrame(16, 16, (x) => (x === 0 ? [255, 255, 255, 255] : [0, 0, 0, 255]));
+    const bad = tiles.tileSeamRatios(broken);
+    check("tileSeamRatios：左白右黑那种接不上自己的砖，比值远大于 1（能报出来）", bad.horizontal > 5, `横 ${bad.horizontal.toFixed(2)}`);
+    check("反向验证：把最左一列改成与最右一列同色，比值立刻掉下来", tiles.tileSeamRatios(makeFrame(16, 16, () => [0, 0, 0, 255])).horizontal < 1.2);
+  }
+
+  // ⑫ 素材自己的播放速度：归一化（越界 / 乱码一律抛错，不静默夹到边界）。
+  {
+    check("parseAssetFps：留空 / null / 空串 = 跟全局（返回 undefined）", tiles.parseAssetFps(undefined) === undefined && tiles.parseAssetFps(null) === undefined && tiles.parseAssetFps("") === undefined);
+    check("parseAssetFps：数字原样（0.5 / 1 / 4 / 30 都在范围内）", tiles.parseAssetFps(0.5) === 0.5 && tiles.parseAssetFps(1) === 1 && tiles.parseAssetFps(4) === 4 && tiles.parseAssetFps(30) === 30);
+    check("parseAssetFps：字符串数字也收（对话面传过来的可能是字符串）", tiles.parseAssetFps("6") === 6);
+    check("反向验证：越界抛错（不是夹到 0.5 / 30）", throws(() => tiles.parseAssetFps(0)) && throws(() => tiles.parseAssetFps(31)) && throws(() => tiles.parseAssetFps(-1)));
+    check("反向验证：乱码抛错", throws(() => tiles.parseAssetFps("快")) && throws(() => tiles.parseAssetFps(Number.NaN)));
+    check("parseAssetFps：小数保留两位（2.345 → 2.35）", tiles.parseAssetFps(2.345) === 2.35, String(tiles.parseAssetFps(2.345)));
+  }
+
+  // ⑪c 自动裁边：模型爱在四周留一圈白边，裁的时候不能把内容裁坏
+  {
+    /** 白边框 + 深色内容（真实素材就是这种）。 */
+    const framed = makeFrame(200, 180, (x, y) => ((x < 8 || y < 8 || x >= 192 || y >= 172) ? [248, 248, 246, 255] : [20 + ((x * 7 + y * 3) % 40), 30 + ((x * 5) % 40), 60, 255]));
+    const trimmed = tiles.trimUniformBorder(framed);
+    // 8px 白边 + 1% 的安全内缩（200×180 → 2px）→ 每边 10px。
+    check("trimUniformBorder：白边框被裁掉（200×180 → 180×160，四边各 8px + 1% 内缩）", trimmed.bitmap.width === 180 && trimmed.bitmap.height === 160 && trimmed.left === 10 && trimmed.top === 10 && trimmed.right === 10 && trimmed.bottom === 10, `${trimmed.bitmap.width}×${trimmed.bitmap.height} / ${trimmed.left},${trimmed.top},${trimmed.right},${trimmed.bottom}`);
+    check("裁完左上角就是原来的内容（不是白边）", JSON.stringify(pixel(trimmed.bitmap, 0, 0)) !== JSON.stringify([248, 248, 246, 255]), JSON.stringify(pixel(trimmed.bitmap, 0, 0)));
+    const solid = tiles.trimUniformBorder(makeFrame(64, 64, () => [120, 60, 30, 255]));
+    check("反向验证：整张纯色不裁（里面没有「内容」，裁了就成洞）", solid.left + solid.top + solid.right + solid.bottom === 0 && solid.bitmap.width === 64);
+    const darkBackground = tiles.trimUniformBorder(makeFrame(128, 128, (x, y) => ((x < 10 || y < 10 || x >= 118 || y >= 118) ? [18, 18, 22, 255] : [200, 120, 40, 255])));
+    check("反向验证：深色平底不裁（那是道具自己的背景，属于内容）", darkBackground.left + darkBackground.top + darkBackground.right + darkBackground.bottom === 0);
+    const edgeToEdge = tiles.trimUniformBorder(makeFrame(96, 96, (x, y) => [((x * 13 + y * 7) % 200) + 20, 90, 140, 255]));
+    check("反向验证：铺满纹理的图不裁（一条纯色带都没有）", edgeToEdge.bitmap.width === 96 && edgeToEdge.left === 0);
+    const thinFrame = tiles.trimUniformBorder(makeFrame(100, 100, (x, y) => ((x < 3 || y < 3 || x >= 97 || y >= 97) ? [255, 255, 255, 255] : [40, 80, 120, 255])));
+    // 3px 白边 + 1px 内缩 = 4px（100 → 92）。
+    check("薄边框（3px，加 1% 内缩共 4px）也能裁掉", thinFrame.left === 4 && thinFrame.top === 4 && thinFrame.bitmap.width === 92, `${thinFrame.left} / ${thinFrame.bitmap.width}`);
+    const wide = tiles.trimUniformBorder(makeFrame(100, 100, (x, y) => ((x < 20 || y < 20 || x >= 80 || y >= 80) ? [250, 250, 250, 255] : [30, 60, 90, 255])));
+    check("反向验证：白边超过 6% 就不当边框（那是背景，不是画布边）", wide.left === 0 && wide.bitmap.width === 100, `${wide.left} / ${wide.bitmap.width}`);
+  }
+
+  // ⑫a 循环方式：正放 / 倒放 / 来回（只是把帧序展开，客户端不用改）
+  {
+    check("parseAssetLoop：留空 = 正放（默认），三种值都收", tiles.parseAssetLoop(undefined) === "forward" && tiles.parseAssetLoop("") === "forward" && tiles.parseAssetLoop("reverse") === "reverse" && tiles.parseAssetLoop("pingpong") === "pingpong");
+    check("反向验证：未知循环方式抛错（不静默回落成正放）", throws(() => tiles.parseAssetLoop("yoyo")));
+
+    const frames = [10, 20, 30, 40];
+    check("applyLoop：正放原样", JSON.stringify(tiles.applyLoop(frames, "forward")) === JSON.stringify([10, 20, 30, 40]));
+    check("applyLoop：倒放就是反过来", JSON.stringify(tiles.applyLoop(frames, "reverse")) === JSON.stringify([40, 30, 20, 10]));
+    check(
+      "applyLoop：来回 = 正放 + 去掉首尾的倒放（0→1→2→3→2→1）",
+      JSON.stringify(tiles.applyLoop(frames, "pingpong")) === JSON.stringify([10, 20, 30, 40, 30, 20]),
+      JSON.stringify(tiles.applyLoop(frames, "pingpong"))
+    );
+    check("applyLoop：两帧时来回 == 正放（不会多出一帧重复）", JSON.stringify(tiles.applyLoop([1, 2], "pingpong")) === JSON.stringify([1, 2]));
+    check("applyLoop：单帧不动、空数组也不炸", JSON.stringify(tiles.applyLoop([7], "pingpong")) === JSON.stringify([7]) && JSON.stringify(tiles.applyLoop([], "reverse")) === JSON.stringify([]));
+    check("反向验证：来回的长度 = 2n-2（4 帧 → 6 条）", tiles.applyLoop(frames, "pingpong").length === 6);
+  }
+
+  // ⑫b 清晰度：把大图缩到格子时用哪种重采样（真机反馈「出来的图不清晰」）
+  {
+    check("parseClarity：留空 = 平滑（默认），三种值都收", tiles.parseClarity(undefined) === "smooth" && tiles.parseClarity("") === "smooth" && tiles.parseClarity("sharp") === "sharp" && tiles.parseClarity("crisp") === "crisp");
+    check("反向验证：未知清晰度抛错（不静默回落成默认）", throws(() => tiles.parseClarity("blur")));
+    check("parseAssetScale：留空 = 1，1~8 的整数都收", tiles.parseAssetScale(undefined) === 1 && tiles.parseAssetScale("4") === 4 && tiles.parseAssetScale(8) === 8);
+    check("反向验证：倍数越界 / 小数 / 乱码抛错", throws(() => tiles.parseAssetScale(0)) && throws(() => tiles.parseAssetScale(9)) && throws(() => tiles.parseAssetScale(2.5)) && throws(() => tiles.parseAssetScale("x")));
+
+    /** 1px 棋盘格（红 / 绿）64×64：缩到 16×16 时三种算法的结果必须明显不同。 */
+    const checker = makeFrame(64, 64, (x, y) => ((x + y) % 2 === 0 ? [255, 0, 0, 255] : [0, 255, 0, 255]));
+    const isPure = (value) => (value[0] === 255 && value[1] === 0) || (value[0] === 0 && value[1] === 255);
+    const countPure = (bitmap) => {
+      let pure = 0;
+      for (let y = 0; y < bitmap.height; y++) for (let x = 0; x < bitmap.width; x++) if (isPure(pixel(bitmap, x, y))) pure++;
+      return pure;
+    };
+    const nearest = tiles.resampleToSize(checker, 16, 16, "sharp");
+    const boxed = tiles.resampleToSize(checker, 16, 16, "smooth");
+    check("resampleToSize：三种方式都产出目标尺寸", nearest.width === 16 && boxed.width === 16 && tiles.resampleToSize(checker, 16, 16, "crisp").width === 16);
+    check("★ 锐利（最近邻）：64→16 只取每 4 个像素里的 1 个，缩完还是纯色", countPure(nearest) === 16 * 16, `${countPure(nearest)}/256 纯色`);
+    check("★ 平滑（面积平均）：每个目标像素 = 4×4 块的平均 → 纯色一个不剩", countPure(boxed) === 0, `${countPure(boxed)}/256 纯色`);
+    check("平滑出来的值就是「一半红一半绿」（128,128,0 —— 8 红 8 绿取平均）", JSON.stringify(pixel(boxed, 8, 8)) === JSON.stringify([128, 128, 0, 255]), JSON.stringify(pixel(boxed, 8, 8)));
+    check("反向验证：锐利与平滑在同一处取到的值确实不同", JSON.stringify(pixel(nearest, 8, 8)) !== JSON.stringify(pixel(boxed, 8, 8)));
+
+    /** 波纹：面积平均保留波形，锐化把振幅拉大。 */
+    const wave = makeFrame(64, 64, (x) => {
+      const value = Math.max(0, Math.min(255, Math.round(128 + 100 * Math.sin((2 * Math.PI * x) / 16))));
+      return [value, value, value, 255];
+    });
+    const contrastOf = (bitmap) => {
+      let sum = 0;
+      let count = 0;
+      for (let y = 0; y < bitmap.height; y++) {
+        for (let x = 1; x < bitmap.width; x++) {
+          sum += Math.abs(pixel(bitmap, x, y)[0] - pixel(bitmap, x - 1, y)[0]);
+          count++;
+        }
+      }
+      return count === 0 ? 0 : sum / count;
+    };
+    const smoothWave = tiles.resampleToSize(wave, 16, 16, "smooth");
+    const crispWave = tiles.resampleToSize(wave, 16, 16, "crisp");
+    check("★ 清晰（平均 + 锐化）比平滑的局部对比更强", contrastOf(crispWave) > contrastOf(smoothWave), `平滑 ${contrastOf(smoothWave).toFixed(1)} < 清晰 ${contrastOf(crispWave).toFixed(1)}`);
+
+    // 不缩小（或已经一样大）时：三种方式都一样，且不复制出错。
+    const same = tiles.resampleToSize(checker, 64, 64, "smooth");
+    check("尺寸一样时原样返回（不缩放、不糊）", same.width === 64 && JSON.stringify(pixel(same, 3, 3)) === JSON.stringify(pixel(checker, 3, 3)));
+    const upscaled = tiles.resampleToSize(makeFrame(4, 4, (x, y) => [x * 60, y * 60, 0, 255]), 16, 16, "smooth");
+    check("放大时退回最近邻（插值放大只会更糊）", JSON.stringify(pixel(upscaled, 15, 15)) === JSON.stringify(pixel(upscaled, 12, 12)));
+
+    /**
+     * 抠过像的素材：alpha 必须**预乘**再平均。
+     *
+     * 夹具：3 列不透明白 + 1 列「透明黑」，8→2 时左边那个目标像素覆盖到这三白一黑。
+     * 预乘再平均 → 红色仍是 255（只是 alpha 变 191）；不预乘 → 红色被拉成 191（一圈发黑）。
+     */
+    const withAlpha = makeFrame(8, 8, (x) => (x < 3 ? [255, 255, 255, 255] : [0, 0, 0, 0]));
+    const alphaFitted = tiles.resampleToSize(withAlpha, 2, 2, "smooth");
+    check(
+      "平滑：透明边缘预乘 alpha 再平均（颜色不会被透明像素的黑色拖暗）",
+      pixel(alphaFitted, 0, 0)[0] > 240 && pixel(alphaFitted, 0, 0)[3] > 180 && pixel(alphaFitted, 1, 0)[3] === 0,
+      JSON.stringify(pixel(alphaFitted, 0, 0))
+    );
+  }
+
+  // ⑬ composeAssetSheet：三种形态的最终几何与排布。
+  const redFrame = makeFrame(8, 8, () => [255, 0, 0, 255]);
+  const greenFrame = makeFrame(8, 8, () => [0, 255, 0, 255]);
+  const plainSheet = tiles.composeAssetSheet([redFrame, greenFrame], tiles.sheetPlanOf("plain", { width: 8, height: 8 }, 2));
+  check("composeAssetSheet（普通）：2 张 → 8×16 一列两行，顺序不乱", plainSheet.width === 8 && plainSheet.height === 16 && JSON.stringify(pixel(plainSheet, 0, 0)) === JSON.stringify([255, 0, 0, 255]) && JSON.stringify(pixel(plainSheet, 0, 8)) === JSON.stringify([0, 255, 0, 255]));
+  check("composeAssetSheet：空数组明确抛错", throws(() => tiles.composeAssetSheet([], tiles.sheetPlanOf("plain", { width: 8, height: 8 }, 1))));
+}
+
+section("12) 客户端静态约束（文本检查）");
 {
   const clientText = readFileSync(new URL("../src/client.ts", import.meta.url), "utf8");
   check(

@@ -68,6 +68,53 @@ export interface OpenIntent {
   stage?: string;
   /** 需要刻意高亮的方位（八方向图）。 */
   direction?: string;
+  /**
+   * 打开哪一层对话框（目前只有地图编辑器的 `add` = 「新增素材」）。
+   *
+   * 用途：素材窗口的「AI 生成素材」把活派给一个新对话，对话做完后用
+   * `composeMapAsset` 回一条带这个参数的链接 —— 点开就落在地图编辑器、
+   * 素材窗口展开、**「新增素材」已经打开并预填好**，用户点「确定」才真的导入。
+   */
+  dialog?: string;
+  /** `dialog` 要预填的项目资源（相对项目资源目录的路径，例如 `ai/岩浆.png`）。 */
+  asset?: string;
+  /** 这批素材有几帧（普通形态 > 1 = 动画素材，界面据此预选「会动吗 = 翻页图」）。 */
+  frames?: number;
+  /**
+   * 这块素材怎么用（`plain` / `corner16` / `a2quad`）—— 「AI 生成素材」在**生图前**
+   * 定好的计划，宿主按它规整了几何；回链带上它，「新增素材」就不会把拼块/整格
+   * 预选成「普通」（那会让导入出来的块全是碎的，而且不报错）。
+   */
+  shape?: string;
+  /**
+   * 这张素材图是**每格几倍分辨率**（AI 生成的那条路用的是 4）。
+   *
+   * 「新增素材」据此知道「图每格 128px、导入时要缩到 32px」—— 少了它，界面会以为图就是
+   * 格子大小，于是把一张 4 倍图切成 16 倍的碎块（而且不报错）。留空 = 1。
+   */
+  scale?: number;
+}
+
+/** 深链接里 `scale` 允许的取值范围（与 `maptiles.parseAssetScale` 同一套）。 */
+export const OPEN_SCALE_MIN = 1;
+export const OPEN_SCALE_MAX = 8;
+
+/** 深链接里 `dialog` 允许的取值（别的值一律丢掉，别把链接当任意指令用）。 */
+export const OPEN_DIALOGS = ["add"] as const;
+
+/** 深链接里 `shape` 允许的取值（与 `maptiles.TilesetShape` 同一套）。 */
+export const OPEN_SHAPES = ["plain", "corner16", "a2quad"] as const;
+
+/**
+ * `asset` 必须是**项目资源目录下的相对路径**：不接受绝对路径、不接受 `..`
+ * （资源路由另有目录穿越拦截，这里先把脏值挡在意图之外，免得把坏链接带进界面）。
+ */
+export function isSafeAssetPath(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.startsWith("/") || trimmed.startsWith("\\")) return false;
+  if (trimmed.includes("..") || trimmed.includes("\\")) return false;
+  return true;
 }
 
 let clientOrigin = "";
@@ -112,6 +159,11 @@ export function normalizeIntent(intent: OpenIntent | undefined): OpenIntent {
   if (typeof intent.jobId === "string" && intent.jobId !== "") out.jobId = intent.jobId;
   if (typeof intent.stage === "string" && intent.stage !== "") out.stage = intent.stage;
   if (typeof intent.direction === "string" && intent.direction !== "") out.direction = intent.direction;
+  if (typeof intent.dialog === "string" && (OPEN_DIALOGS as readonly string[]).includes(intent.dialog)) out.dialog = intent.dialog;
+  if (isSafeAssetPath(intent.asset)) out.asset = intent.asset.trim();
+  if (typeof intent.frames === "number" && Number.isInteger(intent.frames) && intent.frames > 0) out.frames = intent.frames;
+  if (typeof intent.shape === "string" && (OPEN_SHAPES as readonly string[]).includes(intent.shape)) out.shape = intent.shape;
+  if (typeof intent.scale === "number" && Number.isInteger(intent.scale) && intent.scale >= OPEN_SCALE_MIN && intent.scale <= OPEN_SCALE_MAX) out.scale = intent.scale;
   return out;
 }
 
@@ -120,8 +172,21 @@ export function intentQuery(intent: OpenIntent | undefined): string {
   const normalized = normalizeIntent(intent);
   const params = new URLSearchParams();
   params.set(OPEN_QUERY_KEY, "1");
-  for (const key of ["module", "project", "job", "stage", "direction"] as const) {
-    const value = key === "project" ? normalized.projectId : key === "job" ? normalized.jobId : normalized[key];
+  for (const key of ["module", "project", "job", "stage", "direction", "dialog", "asset", "frames", "shape", "scale"] as const) {
+    const value =
+      key === "project"
+        ? normalized.projectId
+        : key === "job"
+          ? normalized.jobId
+          : key === "frames"
+            ? normalized.frames === undefined
+              ? undefined
+              : String(normalized.frames)
+            : key === "scale"
+              ? normalized.scale === undefined
+                ? undefined
+                : String(normalized.scale)
+              : normalized[key];
     if (value !== undefined) params.set(key, value);
   }
   return params.toString();
@@ -151,5 +216,15 @@ export function parseIntentQuery(query: string): OpenIntent | undefined {
   if (stage !== null) intent.stage = stage;
   const direction = params.get("direction");
   if (direction !== null) intent.direction = direction;
+  const dialog = params.get("dialog");
+  if (dialog !== null) intent.dialog = dialog;
+  const asset = params.get("asset");
+  if (asset !== null) intent.asset = asset;
+  const frames = Number(params.get("frames"));
+  if (params.get("frames") !== null && Number.isFinite(frames)) intent.frames = frames;
+  const shape = params.get("shape");
+  if (shape !== null) intent.shape = shape;
+  const scale = Number(params.get("scale"));
+  if (params.get("scale") !== null && Number.isFinite(scale)) intent.scale = scale;
   return normalizeIntent(intent);
 }

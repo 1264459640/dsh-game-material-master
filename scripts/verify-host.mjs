@@ -119,8 +119,9 @@ async function main() {
   // 模块六重做时删了 4 个（族 / 多地图）加了 2 个（一键生成 / 内置素材），132 → 130。
   // 八方向图加「本地自选视频」与「中间图片打包」两个方法，130 → 132。
   // 生图后端加「自定义后端连接测试」（testCustomImage），132 → 133；
-  // 本地 ComfyUI 视频后端新增 testComfy，133 → 134。
-  check("manifest 方法数为 134（新增远程方法时同步改这个数）", invocations.length === 134, `实际 ${invocations.length}`);
+  // 本地 ComfyUI 视频后端新增 testComfy，133 → 134；
+  // 「AI 生成素材」新增 composeMapAsset（整理一批帧 → 一张待确认的素材图），134 → 135。
+  check("manifest 方法数为 135（新增远程方法时同步改这个数）", invocations.length === 135, `实际 ${invocations.length}`);
   const ids = new Set(invocations.map((i) => i.id));
   check("方法 id 唯一", ids.size === invocations.length);
   check("所有方法都声明在 gameStudio 服务下", invocations.every((i) => i.service === "gameStudio" && i.namespace === "gameStudio"));
