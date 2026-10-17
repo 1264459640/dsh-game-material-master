@@ -82,15 +82,18 @@ import * as seqgen from "./seqgen.js";
 import * as riggen from "./riggen.js";
 import * as tilegen from "./tilegen.js";
 import * as mapgen from "./mapgen.js";
+import * as musicgen from "./musicgen.js";
+import { musicGuidePayload } from "./musicguide.js";
+import { musicBlocker, musicEngineSummary, testMusicConnection } from "./musicapi.js";
 import { MANIFEST, METHODS, SERVICE_NAME } from "./wire.js";
-import { rememberClientOrigin } from "./links.js";
+import { originForLinks, rememberClientOrigin } from "./links.js";
 import { registerStudioTools } from "./tools.js";
 /**
  * 游戏素材大师 —— 宿主半区。
  *
- * 一个 Typert 远程服务（"gameStudio"）承载五个功能模块的控制面：
+ * 一个 Typert 远程服务（"gameStudio"）承载七个功能模块的控制面：
  *   ① 八方向图生成  ② 图片生成  ③ 序列帧生成  ④ 骨骼动画生成  ⑤ 地图地块生成
- * 五者共用同一套配置（API Key / 模型 / 抠像默认值），但各自独立存项目。
+ * 七者共用同一套配置（各平台的 API Key / 模型 / 抠像默认值），但各自独立存项目 / 任务。
  *
  * 另外用 `ctx.webServer` 注册一条 prefix 路由，把各模块的产物直接发给浏览器。
  */
@@ -221,6 +224,20 @@ const MIME_TYPES = {
   ".bmp": "image/bmp",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
+  // 音乐模块（模块七）：音频 / 工具产物。少了这些，浏览器会把音频当 octet-stream，
+  // <audio> 的拖动进度与时长都可能异常。
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".ogg": "audio/ogg",
+  ".mid": "audio/midi",
+  ".midi": "audio/midi",
+  ".pdf": "application/pdf",
+  ".xml": "application/xml; charset=utf-8",
+  ".musicxml": "application/vnd.recordare.musicxml+xml; charset=utf-8",
+  ".lrc": "text/plain; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   // 模块六的导出包：`.zip` 少了这一条会掉进 octet-stream —— 浏览器照样存得下来，
   // 但少了这个类型，某些浏览器/壳会把「另存为」的默认扩展名写错。
@@ -325,6 +342,11 @@ export class GameStudioGateway extends TypertRemoteService {
       // 分辨率档位与时长区间都跟着模型走，界面据此渲染控件；优云智算版更宽。
       minimaxCapabilities: capabilityOf(config.minimaxModel),
       minimaxCapabilitiesByModel: Object.fromEntries(MINIMAX_MODEL_PRESETS.map((preset) => [preset.id, capabilityOf(preset.id)])),
+      /** 音乐生成编辑（模块七）：引擎/模型预设、Key 阻塞原因、文档地址。 */
+      musicEngines: musicEngineSummary(),
+      musicBlocker: musicBlocker(config) ?? null,
+      musicDocsUrl: "https://api.yourmusic.fun/docs",
+      musicConsoleUrl: "https://api.yourmusic.fun/dashboard",
       directions: DIRECTION_KEYS.map((key) => {
         const direction = directionOf(key);
         return { key, label: direction?.label ?? key, refs: direction?.refs ?? [] };
@@ -380,6 +402,12 @@ export class GameStudioGateway extends TypertRemoteService {
       "comfySeconds",
       "comfySeed",
       "comfyTimeoutMs",
+      // 音乐生成编辑（模块七）。Key 不进这里（见下面单独处理）。
+      "musicProvider",
+      "musicBaseUrl",
+      "musicModel",
+      "musicTimeoutMs",
+      "musicPollTimeoutMs",
       "cellWidth",
       "cellHeight",
       "frameCount",
@@ -411,12 +439,17 @@ export class GameStudioGateway extends TypertRemoteService {
       patch.minimaxApiKey = input.minimaxApiKey.trim();
     if (typeof input.customApiKey === "string")
       patch.customApiKey = input.customApiKey.trim();
+    // 音乐模块的 Key 与其它凭据同一套约定：不带 = 保持原值，带串 = 覆盖。
+    if (typeof input.musicApiKey === "string")
+      patch.musicApiKey = input.musicApiKey.trim();
     if (input.clearArkApiKey === true)
       patch.arkApiKey = "";
     if (input.clearMinimaxApiKey === true)
       patch.minimaxApiKey = "";
     if (input.clearCustomApiKey === true)
       patch.customApiKey = "";
+    if (input.clearMusicApiKey === true)
+      patch.musicApiKey = "";
     // ComfyUI 的 Cookie 也是凭据，与 API Key 同一套约定：不带 = 保持原值，带串 = 覆盖，
     // clearComfyCookies = 清空。它**不进** directKeys——那里是原样透传，Cookie 要先归一化。
     if (typeof input.comfyCookies === "string")
@@ -515,6 +548,24 @@ export class GameStudioGateway extends TypertRemoteService {
       nodes,
       bindings,
       notes
+    };
+  }
+  /**
+   * 【谱乐 AI】连接自检：读一页历史，不生成、不排队、不扣生成积分。
+   * 402 视为「Key 有效但积分不足」，由 `testMusicConnection` 用 warning 表达。
+   */
+  async testMusic() {
+    const config = await loadConfig();
+    if (config.musicApiKey.trim() === "") throw new Error("尚未配置谱乐 AI API Key");
+    const result = await testMusicConnection({
+      baseUrl: config.musicBaseUrl,
+      apiKey: config.musicApiKey,
+      timeoutMs: config.musicTimeoutMs
+    });
+    return {
+      ...result,
+      baseUrl: config.musicBaseUrl,
+      model: config.musicModel
     };
   }
   /**
@@ -855,6 +906,15 @@ export class GameStudioGateway extends TypertRemoteService {
       await mapgen.patchMapProject(id, (project) => {
         project.reviewMode = reviewMode;
         appendJobLog(project.logs, "info", `审核模式：${reviewMode === "manual" ? "每一步人工审核" : "agent 自动审核"}`);
+      });
+      return { ok: true, id, module, reviewMode };
+    }
+    // 音乐生成编辑（模块七）。**别重犯 rig / tile / map 那三个漏**：wire 的
+    // module 枚举、tools 的模块表与这里必须成对加。
+    if (module === "music") {
+      await musicgen.patchMusicJob(id, (job) => {
+        job.reviewMode = reviewMode;
+        musicgen.musicLog(job, "info", `审核模式：${reviewMode === "manual" ? "每一步人工审核" : "agent 自动审核"}`);
       });
       return { ok: true, id, module, reviewMode };
     }
@@ -2279,6 +2339,215 @@ export class GameStudioGateway extends TypertRemoteService {
     return riggen.startAtlas(asString(asRecord(payload).jobId));
   }
 
+  // ── 音乐生成编辑（模块七）──────────────────────────────────────────────
+  //
+  // 这一组方法全部只碰 `music-jobs/`；生成/工具类任务由 musicgen 的后台任务表
+  // 推进，界面与对话都通过 `getMusicJob` / `refreshMusicJob` 看结果。
+  async getMusicGuide(payload: any) {
+    const input = asRecord(payload);
+    return musicGuidePayload(typeof input.lang === "string" ? input.lang : undefined);
+  }
+
+  async listMusicJobs() {
+    return { jobs: await musicgen.listMusicJobs() };
+  }
+
+  async createMusicJob(payload: any) {
+    const input = asRecord(payload);
+    const job = await musicgen.createMusicJob({
+      name: typeof input.name === "string" ? input.name : undefined,
+      source: input.source,
+      settings: input.settings,
+      reviewMode: input.reviewMode === "manual" ? "manual" : input.reviewMode === "auto" ? "auto" : undefined
+    });
+    return musicgen.musicSnapshot(job, originForLinks());
+  }
+
+  async getMusicJob(payload: any) {
+    const input = asRecord(payload);
+    const job = await musicgen.readMusicJob(asString(input.jobId));
+    if (job === undefined) throw new Error(`音乐任务不存在：${asString(input.jobId)}`);
+    return musicgen.musicSnapshot(job, originForLinks());
+  }
+
+  async saveMusicJob(payload: any) {
+    const input = asRecord(payload);
+    const id = asString(input.jobId);
+    const job = await musicgen.patchMusicJob(id, (current) => {
+      if (typeof input.name === "string" && input.name.trim() !== "") current.name = input.name.trim().slice(0, 80);
+      if (input.source !== undefined && input.source !== null) {
+        current.source = musicgen.normalizeMusicSource({ ...current.source, ...asRecord(input.source) });
+      }
+      if (input.settings !== undefined && input.settings !== null) {
+        current.settings = musicgen.normalizeMusicSettings({ ...current.settings, ...asRecord(input.settings) }, current.source);
+      }
+      if (input.reviewMode === "manual" || input.reviewMode === "auto") current.reviewMode = input.reviewMode;
+      musicgen.musicLog(current, "info", "任务参数已更新");
+      return current;
+    });
+    return musicgen.musicSnapshot(job, originForLinks());
+  }
+
+  async deleteMusicJob(payload: any) {
+    const id = asString(asRecord(payload).jobId);
+    await musicgen.deleteMusicJob(id);
+    return { ok: true, id };
+  }
+
+  async setMusicApproved(payload: any) {
+    const input = asRecord(payload);
+    const id = asString(input.jobId);
+    if (typeof input.approved !== "boolean") throw new Error("approved 必须是布尔值");
+    const stage = typeof input.stage === "string" ? input.stage : undefined;
+    if (stage !== undefined && !(musicgen.MUSIC_STAGES as readonly string[]).includes(stage)) {
+      throw new Error(`未知阶段：${stage}（可选：${musicgen.MUSIC_STAGES.join(" / ")}）`);
+    }
+    const job = await musicgen.patchMusicJob(id, (current) => {
+      if (typeof input.versionId === "string" && input.versionId !== "") {
+        const version = current.versions.find((entry) => entry.id === input.versionId);
+        if (version === undefined) throw new Error(`版本不存在：${input.versionId}`);
+        (version as any).approved = input.approved;
+      } else if (typeof input.songId === "string" && input.songId !== "") {
+        const song = current.songs.find((entry) => entry.id === input.songId);
+        if (song === undefined) throw new Error(`歌曲不存在：${input.songId}`);
+        song.approved = input.approved;
+      } else if (stage !== undefined) {
+        (current.stages as any)[stage] = { ...(current.stages as any)[stage], approved: input.approved };
+      } else {
+        for (const song of current.songs) song.approved = input.approved;
+        for (const key of musicgen.MUSIC_STAGES) (current.stages as any)[key] = { ...(current.stages as any)[key], approved: input.approved };
+      }
+      musicgen.musicLog(current, "info", `验收标记：${input.approved ? "通过" : "取消通过"}`);
+      return current;
+    });
+    return musicgen.musicSnapshot(job, originForLinks());
+  }
+
+  async revealMusicJob(payload: any) {
+    const id = asString(asRecord(payload).jobId);
+    const job = await musicgen.readMusicJob(id);
+    if (job === undefined) throw new Error(`音乐任务不存在：${id}`);
+    const dir = musicgen.musicJobDir(id);
+    const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+    try {
+      spawn(command, [dir], { detached: true, stdio: "ignore" }).unref();
+    } catch (error) {
+      throw new Error(`无法打开目录：${error instanceof Error ? error.message : String(error)}`);
+    }
+    return { ok: true, dir };
+  }
+
+  async runMusicGeneration(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.startMusicGeneration(asString(input.jobId), {
+      engine: input.engine,
+      mode: input.mode,
+      model: typeof input.model === "string" ? input.model : undefined,
+      params: asRecord(input.params),
+      regenerate: input.regenerate === true,
+      by: "ai"
+    });
+  }
+
+  async cancelMusicGeneration(payload: any) {
+    const id = asString(asRecord(payload).jobId);
+    const canceled = musicgen.cancelMusicGeneration(id);
+    return {
+      ok: true,
+      canceled,
+      message: canceled
+        ? "已停止本地轮询。已经提交给平台的生成仍会继续并计费；不要为了「确认」再提交一次。"
+        : "当前没有可取消的生成任务。"
+    };
+  }
+
+  async refreshMusicJob(payload: any) {
+    return musicgen.refreshMusicJob(asString(asRecord(payload).jobId));
+  }
+
+  async getMusicWav(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.getMusicWav(asString(input.jobId), asString(input.songId));
+  }
+
+  async getMusicLrc(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.getMusicLrc(
+      asString(input.jobId),
+      Array.isArray(input.songIds) ? input.songIds.map((id: unknown) => String(id)) : undefined
+    );
+  }
+
+  async listMusicHistory(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.listMusicHistory({
+      page: typeof input.page === "number" ? input.page : undefined,
+      size: typeof input.size === "number" ? input.size : undefined,
+      filters: Array.isArray(input.filters) ? input.filters.map((entry: unknown) => String(entry)) : undefined
+    });
+  }
+
+  async listMusicStemInstruments() {
+    return musicgen.listMusicStemInstruments();
+  }
+
+  async runMusicTool(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.runMusicTool(asString(input.jobId), asString(input.kind), asRecord(input.params));
+  }
+
+  async musicPeaks(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.musicPeaks(
+      asString(input.jobId),
+      {
+        songId: typeof input.songId === "string" ? input.songId : undefined,
+        versionId: typeof input.versionId === "string" ? input.versionId : undefined,
+        buckets: typeof input.buckets === "number" ? input.buckets : undefined
+      },
+      originForLinks()
+    );
+  }
+
+  async renderMusicEdit(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.renderMusicEdit(asString(input.jobId), {
+      songId: typeof input.songId === "string" ? input.songId : undefined,
+      versionId: typeof input.versionId === "string" ? input.versionId : undefined,
+      ops: asRecord(input.ops),
+      label: typeof input.label === "string" ? input.label : undefined,
+      preview: input.preview === true,
+      by: input.by === "ai" ? "ai" : "human",
+      force: input.force === true
+    });
+  }
+
+  async saveMusicVersion(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.saveMusicVersion(asString(input.jobId), asString(input.versionId), typeof input.label === "string" ? input.label : undefined);
+  }
+
+  async deleteMusicVersion(payload: any) {
+    const input = asRecord(payload);
+    await musicgen.deleteMusicVersion(asString(input.jobId), asString(input.versionId));
+    return { ok: true };
+  }
+
+  async exportMusic(payload: any) {
+    const input = asRecord(payload);
+    return musicgen.exportMusic(
+      asString(input.jobId),
+      {
+        songId: typeof input.songId === "string" ? input.songId : undefined,
+        versionId: typeof input.versionId === "string" ? input.versionId : undefined,
+        format: typeof input.format === "string" ? input.format : undefined,
+        name: typeof input.name === "string" ? input.name : undefined,
+        zip: input.zip === true
+      },
+      { origin: originForLinks() }
+    );
+  }
+
   assertSurface() {
     for (const spec of METHODS) {
       if (typeof this[spec.method] !== "function") {
@@ -2421,7 +2690,10 @@ const SERVABLE_TILE_DIRS = new Set(["template", "raw", "cell", "decor", "map", "
  */
 const SERVABLE_MAP_DIRS = mapgen.SERVABLE_MAP_DIRS;
 
-type AssetScope = "assets" | "image-assets" | "sequence-assets" | "rig-assets" | "tile-assets" | "map-assets";
+/** 音乐生成编辑（模块七）：原曲、版本、波形缓存、工具产物、导出。 */
+const SERVABLE_MUSIC_DIRS = musicgen.SERVABLE_MUSIC_DIRS;
+
+type AssetScope = "assets" | "image-assets" | "sequence-assets" | "rig-assets" | "tile-assets" | "map-assets" | "music-assets";
 
 interface AssetTarget {
   file: string;
@@ -2449,6 +2721,10 @@ function resolveAssetTarget(scope: AssetScope, id: string, relative: string): As
     if (!mapgen.isValidMapProjectId(id)) return undefined;
     return { file: mapgen.mapAssetPath(id, relative), dirs: SERVABLE_MAP_DIRS };
   }
+  if (scope === "music-assets") {
+    if (!musicgen.isValidMusicJobId(id)) return undefined;
+    return { file: musicgen.musicAssetPath(id, relative), dirs: SERVABLE_MUSIC_DIRS };
+  }
   if (!seqgen.isValidSequenceJobId(id)) return undefined;
   return { file: seqgen.sequenceAssetPath(id, relative), dirs: SERVABLE_SEQUENCE_DIRS };
 }
@@ -2459,13 +2735,14 @@ function sendText(res, status: number, text: string): void {
 }
 
 /**
- * 把四个模块的产物路径映射到磁盘文件：
+ * 把各模块的产物路径映射到磁盘文件：
  *   /dsh-game-material-master/assets/<项目 id>/<相对路径>           八方向图
  *   /dsh-game-material-master/image-assets/<任务 id>/<相对路径>      图片生成
  *   /dsh-game-material-master/sequence-assets/<任务 id>/<相对路径>   序列帧生成
  *   /dsh-game-material-master/rig-assets/<任务 id>/<相对路径>        骨骼动画生成
  *   /dsh-game-material-master/tile-assets/<项目 id>/<相对路径>       45°地图地块生成
  *   /dsh-game-material-master/map-assets/<项目 id>/<相对路径>        地图编辑器
+ *   /dsh-game-material-master/music-assets/<任务 id>/<相对路径>      音乐生成编辑
  *
  * 支持 Range：没有它浏览器里的 <video> 就不能拖动进度条，验收视频时会很难受。
  */
@@ -2500,7 +2777,7 @@ async function handleAsset(req, res): Promise<void> {
   // 三处同步。只改类型不改这里，TypeScript 一句话都不会说 —— `scope` 是断言出来的，
   // 而漏掉的那个 scope 会在这里直接掉进 404（界面表现只是「图裂了」）。
   // 实测：`tile-assets` 就这么漏过一轮，模板图全 404。
-  const SCOPES: readonly string[] = ["assets", "image-assets", "sequence-assets", "rig-assets", "tile-assets", "map-assets"];
+  const SCOPES: readonly string[] = ["assets", "image-assets", "sequence-assets", "rig-assets", "tile-assets", "map-assets", "music-assets"];
   if (!SCOPES.includes(scope)) {
     sendText(res, 404, "Not Found");
     return;
@@ -2550,6 +2827,16 @@ async function handleAsset(req, res): Promise<void> {
     "Cache-Control": "private, max-age=300",
     "Accept-Ranges": "bytes"
   };
+  /**
+   * `?download=1`：给音乐模块的导出链接用，强制浏览器存盘而不是在线播放。
+   * 文件名只用磁盘上的 basename（不接受 URL 里的文件名），中文走 RFC 5987。
+   */
+  if (url.searchParams.get("download") === "1") {
+    const name = basename(target.file);
+    const ascii = name.replace(/[^\x20-\x7e]/gu, "_").replace(/["\\]/gu, "_");
+    baseHeaders["Content-Disposition"] = `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+    baseHeaders["Cache-Control"] = "no-store";
+  }
 
   if (req.headers["if-none-match"] === etag) {
     res.writeHead(304, baseHeaders);
@@ -2598,6 +2885,7 @@ export function apply(ctx) {
   activatePipeline();
   seqgen.activateSequence();
   riggen.activateRig();
+  musicgen.activateMusic();
 
   // 旧版本的数据目录叫 8dir-sprites，插件改名后搬一次，已有项目无缝接上。
   void migrateLegacyDataRoot()
@@ -2650,9 +2938,12 @@ export function apply(ctx) {
       // 恢复轮询失败不影响插件本体。
     }
   })();
+  // 音乐任务（模块七）：把上次没跑完的生成/工具任务接上（不重新提交，只继续查询/下载）。
+  void musicgen.resumeMusicJobs().catch(() => undefined);
   ctx.effect(() => () => {
     disposePipeline();
     seqgen.disposeSequence();
     riggen.disposeRig();
+    musicgen.disposeMusic();
   }, "dsh-game-material-master: pipeline cleanup");
 }

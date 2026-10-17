@@ -123,7 +123,7 @@ export function ffprobePath(): string {
   return resolveBin("ffprobe");
 }
 
-interface RunResult {
+export interface RunResult {
   stdout: Buffer;
   stderr: string;
 }
@@ -179,6 +179,16 @@ function run(bin: string, args: string[], timeoutMs = 300000): Promise<RunResult
       resolve({ stdout: Buffer.concat(out), stderr: err });
     });
   });
+}
+
+/** 通用 ffmpeg 调用（参数数组，绝不拼 shell）。音频剪辑复用同一套超时/报错。 */
+export async function runFfmpeg(args: string[], timeoutMs = 300000): Promise<RunResult> {
+  return run(ffmpegPath(), args, timeoutMs);
+}
+
+/** 通用 ffprobe 调用。 */
+export async function runFfprobe(args: string[], timeoutMs = 60000): Promise<RunResult> {
+  return run(ffprobePath(), args, timeoutMs);
 }
 
 /** 探测媒体时长（秒）。 */

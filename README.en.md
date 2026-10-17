@@ -20,11 +20,11 @@ third-party service.
 > in place for one full turn, then the eight directions are cut out automatically; switch the method in
 > stage ① if you'd rather generate each direction separately).
 >
-> The sidebar entry also carries a **small chevron menu button**: click it to pop up the six features and
+> The sidebar entry also carries a **small chevron menu button**: click it to pop up the seven features and
 > jump straight into the one you want. Features you do not use can be turned off in settings (see
 > "Feature management").
 
-All six modules share the same "generate → review → re-run" workbench. Every stage can be **redone on its
+All seven modules share the same "generate → review → re-run" workbench. Every stage can be **redone on its
 own**, and every asset can be **approved item by item**. The "review mode" lets an agent approve each step
 and move on automatically, or stop at every step and wait for your go-ahead.
 
@@ -35,6 +35,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 | **③ Sequence frames** | First/last frame or a reference video → generate video → extract frames → key | A horizontally laid out, loopable sequence |
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
 | **⑥ Map editor** (**fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon; three default layers — terrain / decor / buildings — that you can rename and reorder; a **marker layer**: one nameable marker per cell, drawn as a numbered circle; **Generate with AI** lives in the assets window: give a prompt, a name, a frame count, a method and a usage, and the plugin **opens a new chat** to generate it — it picks the tile type (plain / whole-cell / quadrant) from the prompt itself, asks the model for **one seamless tile** and assembles all 16 connections / 5 shape rows in code (so the tiles actually line up on the map). Animated assets use quadrant tiles (frames become variants, still auto-connecting) or plain tiles (flipbook), and each asset can be given its own playback speed in "Add asset" (otherwise it follows the global speed in Settings) plus a **clarity** mode for the 2K-to-32px downscale (area average / nearest / average + sharpen) , a **loop mode** (forward / reverse / ping-pong), and **stamps** (one picture stamping N x M cells at once - statues, murals, carpets - rotated with a right-click, green screen keyed to transparency, with per-cell walkability set at import), a **tile size** choice when creating a project (16 / 32 / 48 / 64 - pick 48 / 64 for sharper AI assets) and automatic trimming of the white border models like to add; whole-cell tiles are just 16 connection cases with no animation, so the dialog locks the frame count and the video model, then posts a link; click it and the image and its usage are already filled in on "Add asset") | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles, markers); tick what to export and multiple files come as one ZIP download |
+| **⑦ Music generation & editing** (Puyue AI) | An inspiration prompt or full lyrics → a new chat that is **not attached to any project**; the agent there reads the built-in creation guide, expands the prompt, chooses Suno / Mureka / MiniMax / ACE-Step and a mode, generates → back in the UI, trim / adjust gain / fade / normalize → save versions and export | MP3 / WAV / M4A (multiple outputs can be zipped); the original is kept and every edit is a new version |
 | ~~④ Rigged animation~~ | Part extraction → assembly → skeletal animation → Spine / DragonBones atlas | **Experimental, not covered in this document** |
 
 > 💡 **Module ⑤ "Map tile generation" is built on one idea: geometry by code, content by AI.**
@@ -66,7 +67,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 > their variants are the frames. You can also generate random terrain, a maze or a continent in one go.
 > **Not a single model call is made — so nothing is billed.**
 
-> 🏷️ **Creating anything in any of the six modules asks for a name first**: the field is pre-filled with the
+> 🏷️ **Creating anything in any of the seven modules asks for a name first**: the field is pre-filled with the
 > default (just press Enter to keep it), and cancelling creates nothing. Map projects can also be renamed later.
 
 > ⚠️ **Module ④ "Rigged animation" is still experimental and not yet finished**: the quality of part extraction
@@ -239,9 +240,32 @@ flowchart LR
 
 ---
 
+## ⑦ Music generation & editing (Puyue AI)
+
+This module does not produce a song from a single button click. You enter an idea or paste a full set of
+lyrics and click "Generate and open chat"; the plugin creates a music job, then opens a **new chat that is not
+attached to any project** and sends the job id plus your original text as the first message. The agent in
+that chat:
+
+1. reads the built-in **music creation guide** (style-prompt structure, the 13-point lyric QC, choosing
+   Suno / Mureka / MiniMax / ACE-Step, generation-setting heuristics, game loops / short cues / loudness
+   targets);
+2. expands and structures the prompt; if you supplied full lyrics, the lyrics are authoritative and only
+   line breaks, section tags and pronunciation get minimal fixes;
+3. chooses an engine and mode for the use case (Suno `chirp-v6` by default; ACE-Step for instrumentals or a
+   fixed BPM) and submits the generation;
+4. waits for the platform, then optionally post-processes locally and for free (trim / gain / fades /
+   loudnorm);
+5. posts the tool's `openUrl` as a Markdown link.
+
+Clicking the link returns to the music page: preview (the asset route supports Range, so seeking works),
+waveform, trim, gain, fades, normalization to -14 LUFS / -1 dBTP, save as a new version, and export to
+MP3 / WAV / M4A (multiple outputs are zipped automatically). The original is never overwritten. Generation is
+billed by Puyue AI credits; the plugin does not collect payment and never re-submits just to check status.
+
 ## Driving it from chat
 
-**Every feature of all six modules** (including the experimental rigged animation and map tiles) **is available through
+**Every feature of all seven modules** (including the experimental rigged animation and map tiles) **is available through
 chat**. The plugin registers the whole pipeline as `game_material_*` tools, so an agent can drive it forward,
 wait, review, and also stop at each step for you to approve.
 
@@ -309,6 +333,7 @@ installation tree.
 | Base URL | Host root, without `/v1` or `/v2`. `api.minimax.cn` in mainland China, `api.minimaxi.com` internationally |
 | Default parameters | Cell width and height, frame count, pixel block size, keying threshold, and so on |
 | Local ComfyUI (image-to-video) | Routes image-to-video through a local **ComfyUI** instead of MiniMax; "Test connection" is read-only and free |
+| Music generation (Puyue AI) | Puyue AI API key, base URL, default music model and timeouts; "Test connection" reads one page of history and does not generate anything (no generation credits). Generation is billed by platform credits; the plugin does not collect payment |
 | Feature management | Per-module switches: a disabled module disappears from the UI **and the agent cannot call it either** (see below) |
 
 Keys are written only to `<DSH_HOME>/game-material-master/config.json` on your machine, and the UI always
@@ -404,7 +429,7 @@ the host side (the host has no access to the locale service), so the browser hal
 along every time it reads a project or resets prompts.
 
 Scope note: **localization covers the browser half's UI text and the built-in default prompts** — the workbench
-title, the six module tabs, every card's buttons and notice bars, dialogs, the settings page, the review
+title, the seven module tabs, every card's buttons and notice bars, dialogs, the settings page, the review
 controls, and the default prompts. Two categories remain in Chinese, because DSH currently only exposes the
 locale service to the browser half:
 
@@ -435,7 +460,8 @@ Everything in the UI that you can click, change or approve is bilingual.
 ├── sequence-jobs/<id>/ sequence frames
 ├── rig-jobs/<id>/      rigged animation (experimental: sheet / parts / layout / rig / atlas)
 ├── tile-jobs/<id>/     map tiles (template / raw / cell / decor / map / export)
-└── map-jobs/<id>/      map editor (project.json / map.json / tilesets / ai / preview / export)
+├── map-jobs/<id>/      map editor (project.json / map.json / tilesets / ai / preview / export)
+└── music-jobs/<id>/    music generation & editing (songs / versions / peaks / tools / out)
 ```
 
 > Map tiles keep the **raw generation output** in `raw/`: after changing regularisation parameters such as
@@ -512,6 +538,12 @@ The screenshots in this document were taken by Playwright against the real UI; t
      formula and the fact that "1-based index − 1 == AsLib's chip index" come from its `AsMap.hpp`.
 
   Its code is **CC0**; this plugin re-implements the behaviour in TypeScript and **does not copy its source**.
+- **The music-creation methodology is distilled from
+  [bitwize-music-studio/claude-ai-music-skills](https://github.com/bitwize-music-studio/claude-ai-music-skills)**,
+  released under **CC0-1.0** (Public Domain). This plugin only absorbs the methodology (style-prompt
+  engineering, lyric writing and review, Suno model selection, mastering loudness targets) and rewrites it as
+  a bilingual built-in guide (`src/musicguide.ts`); it does not copy the repository's code or long passages.
+  Original rights belong to its authors. With thanks.
 - ⚠️ **The `Picture/MapChip/*_pipo.png` tiles shipped in the AsLib repository belong to a third party and are
   not bundled here** (its README states "Third party content is copyrighted by its respective owners").
   The built-in tileset is generated procedurally on this machine by `scripts/make-map-sample-tileset.mjs`,

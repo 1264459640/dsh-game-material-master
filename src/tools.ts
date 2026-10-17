@@ -35,13 +35,13 @@ import { listSequenceJobs, readSequenceJob, listSequenceTasks } from "./seqgen.j
 import { listRigJobs, readRigJob, rigSnapshot } from "./riggen.js";
 import { listTileProjects, readTileProject, tileSnapshot } from "./tilegen.js";
 import { listMapProjects, mapSnapshot, readMapProject } from "./mapgen.js";
-import { MAP_STAGES } from "./links.js";
+import { listMusicJobs, musicSnapshot, readMusicJob } from "./musicgen.js";
 import { TOOL_METHODS } from "./wire.js";
-import { PANEL_KEY, STUDIO_MODULES, buildOpenLink, originForLinks, type OpenIntent } from "./links.js";
+import { MUSIC_STAGES, MAP_STAGES, PANEL_KEY, STUDIO_MODULES, buildOpenLink, originForLinks, type OpenIntent } from "./links.js";
 import { loadConfig } from "./config.js";
 
 /**
- * 五个模块的 key 与界面里的模块 key 完全一致。
+ * 七个模块的 key 与界面里的模块 key 完全一致。
  *
  * 真源是 `links.ts` 的 `STUDIO_MODULES`（配置层的 `hiddenModules` 也按它收敛），
  * 这里只是换个短名字。
@@ -56,7 +56,8 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   sequence: "序列帧生成",
   rig: "骨骼动画生成",
   tile: "45°地图地块生成",
-  map: "地图编辑器（导入 tileset）"
+  map: "地图编辑器（导入 tileset）",
+  music: "音乐生成编辑"
 };
 
 /**
@@ -202,7 +203,29 @@ export const METHOD_MODULE: Record<string, ModuleKey> = {
   runMapExport: "map",
   cancelMapJob: "map",
   setMapApproved: "map",
-  revealMapProject: "map"
+  revealMapProject: "map",
+  // 模块七 音乐生成编辑
+  getMusicGuide: "music",
+  listMusicJobs: "music",
+  createMusicJob: "music",
+  getMusicJob: "music",
+  saveMusicJob: "music",
+  deleteMusicJob: "music",
+  setMusicApproved: "music",
+  revealMusicJob: "music",
+  runMusicGeneration: "music",
+  cancelMusicGeneration: "music",
+  refreshMusicJob: "music",
+  getMusicWav: "music",
+  getMusicLrc: "music",
+  listMusicHistory: "music",
+  listMusicStemInstruments: "music",
+  runMusicTool: "music",
+  musicPeaks: "music",
+  renderMusicEdit: "music",
+  saveMusicVersion: "music",
+  deleteMusicVersion: "music",
+  exportMusic: "music"
 };
 
 /**
@@ -216,6 +239,7 @@ export const SHARED_TOOL_METHODS: ReadonlySet<string> = new Set([
   "testCustomImage",
   "testMinimax",
   "testComfy",
+  "testMusic",
   "setReviewMode"
 ]);
 
@@ -276,7 +300,7 @@ function moduleOf(value: unknown): ModuleKey | undefined {
   return typeof value === "string" && (MODULES as readonly string[]).includes(value) ? (value as ModuleKey) : undefined;
 }
 
-/** 任务 id 前缀决定它属于哪个模块（p… / i… / s… / r… / t… / m…）。 */
+/** 任务 id 前缀决定它属于哪个模块（p… / i… / s… / r… / t… / m… / a…）。 */
 export function moduleForId(id: string): ModuleKey | undefined {
   if (/^p[a-z0-9]+$/.test(id)) return "sprite";
   if (/^i[a-z0-9]+$/.test(id)) return "image";
@@ -284,6 +308,7 @@ export function moduleForId(id: string): ModuleKey | undefined {
   if (/^r[a-z0-9]+$/.test(id)) return "rig";
   if (/^t[a-z0-9]+$/.test(id)) return "tile";
   if (/^m[a-z0-9]+$/.test(id)) return "map";
+  if (/^a[a-z0-9]+$/.test(id)) return "music";
   return undefined;
 }
 
@@ -565,6 +590,11 @@ async function snapshotOf(module: ModuleKey, id: string): Promise<any> {
     if (project === undefined) throw new Error(`找不到地图项目：${id}`);
     return mapSnapshot(project, originForLinks());
   }
+  if (module === "music") {
+    const job = await readMusicJob(id);
+    if (job === undefined) throw new Error(`找不到音乐任务：${id}`);
+    return musicSnapshot(job, originForLinks());
+  }
   const job = await readRigJob(id);
   if (job === undefined) throw new Error(`找不到骨骼动画任务：${id}`);
   // 工具侧要的是**绝对** URL（会直接贴给用户点），所以带上已上报的 origin。
@@ -589,6 +619,28 @@ function intentOf(module: ModuleKey, id: string, extra: { stage?: string; direct
 /** 结果里统一带上的「打开界面」信息。 */
 function openInfo(intent: OpenIntent, hint: string) {
   return { panel: PANEL_KEY, openUrl: buildOpenLink(intent), openHint: hint };
+}
+
+/**
+ * 音乐方法对应的界面阶段：生成 / 编辑 / 导出。
+ *
+ * 深链接少一个 stage 也能打开任务，但「从对话里点回来看的是哪一步」会丢失；
+ * 这里按方法名自动补，省得每个工具调用都自己传。
+ */
+function musicStageOf(method: string): "generate" | "edit" | "export" | undefined {
+  if (method === "exportMusic") return "export";
+  if (method === "renderMusicEdit" || method === "saveMusicVersion" || method === "deleteMusicVersion" || method === "musicPeaks") return "edit";
+  if (
+    method === "runMusicGeneration" ||
+    method === "getMusicWav" ||
+    method === "getMusicLrc" ||
+    method === "refreshMusicJob" ||
+    method === "cancelMusicGeneration" ||
+    method === "getMusicJob"
+  ) {
+    return "generate";
+  }
+  return undefined;
 }
 
 /**
@@ -653,7 +705,9 @@ function intentFromCall(method: string, payload: Record<string, any>, value?: an
   const owner = METHOD_MODULE[method];
   if (owner !== undefined && owner !== "sprite") {
     const targetId = projectId !== "" ? projectId : jobId;
-    return targetId === "" ? { module: owner } : { module: owner, jobId: targetId, stage };
+    const autoStage = owner === "music" ? musicStageOf(method) : undefined;
+    const effectiveStage = stage ?? autoStage;
+    return targetId === "" ? { module: owner } : { module: owner, jobId: targetId, ...(effectiveStage === undefined ? {} : { stage: effectiveStage }) };
   }
   // 两个导入入口都是「素材」这一步：链接直接展开素材窗口，省得用户自己找。
   if (method === "importMapTileset" && projectId !== "") {
@@ -670,6 +724,7 @@ function intentFromCall(method: string, payload: Record<string, any>, value?: an
   if (method.startsWith("listRigJob") || method.startsWith("createRigJob")) return { module: "rig" };
   if (method.startsWith("listTileProject") || method.startsWith("createTileProject")) return { module: "tile" };
   if (method.startsWith("listMapProject") || method.startsWith("createMapProject")) return { module: "map" };
+  if (method.startsWith("listMusicJob") || method.startsWith("createMusicJob")) return { module: "music" };
   if (method.startsWith("listImageJob") || method.startsWith("createImageJob")) return { module: "image" };
   if (method.startsWith("listSequenceJob") || method.startsWith("createSequenceJob")) return { module: "sequence" };
   if (method.startsWith("listProject") || method.startsWith("createProject")) return { module: "sprite" };
@@ -756,6 +811,15 @@ const CALL_DESCRIPTION = [
   "  ★ 地图四周**环绕**：视口范围可以越出边界，宿主会把这些格子映射回图内；一张地图就一个 `map.json`，没有多地图。",
   "    生成的几何报告看 game_material_review 返回的 variants[].geomMode —— measured 是量测成功，template 是回退模板几何。",
   "    出现 template 多半是模型不对：必须用 Seedream 5.0 系列；4.0 会把 2:1 等距菱形画成近正方形（实测比例 1.058）。",
+  "音乐生成编辑（模块七，谱乐 AI；按平台积分计费）：getMusicGuide({lang?})【先读内置创作指南】/ listMusicJobs() / createMusicJob({name?,source?,settings?,reviewMode?}) / getMusicJob({jobId,lang?}) / saveMusicJob({jobId,name?,source?,settings?,reviewMode?}) / deleteMusicJob({jobId}) /",
+  "  setMusicApproved({jobId,stage?,songId?,versionId?,approved}) / revealMusicJob({jobId}) /",
+  "  runMusicGeneration({jobId,engine,mode,model?,params?,regenerate?})【★计费：engine=suno|mureka|minimax|aceStep；mode 见指南；params 用 camelCase 或 API 的 snake_case 都收】/",
+  "  cancelMusicGeneration({jobId})【只停本地轮询，已提交的仍会完成并计费】/ refreshMusicJob({jobId})【补查/补下载/恢复工具轮询】/",
+  "  getMusicWav({jobId,songId}) / getMusicLrc({jobId,songIds?}) / listMusicHistory({page?,size?,filters?}) / listMusicStemInstruments() /",
+  "  runMusicTool({jobId,kind,params?})【kind=stems|pro-stems|midi|sheet-music|style-analysis|convert；工具接口只接受公开 http(s) URL】/",
+  "  musicPeaks({jobId,songId?,versionId?,buckets?}) / renderMusicEdit({jobId,songId?,versionId?,ops,label?,preview?,force?})【本地 ffmpeg，免费；ops={start,end,gainDb,fadeIn,fadeOut,normalize,lufs,truePeak,format,bitrate,channels,sampleRate}】/",
+  "  saveMusicVersion({jobId,versionId,label?}) / deleteMusicVersion({jobId,versionId}) / exportMusic({jobId,songId?,versionId?,format?,name?,zip?})【导出到 out/，返回可下载 URL】",
+  "  ★ 音乐任务：先 getMusicGuide；用户给完整歌词时以歌词为权威文本；Suno 每次提交返回 2 首；已有歌曲后再生成必须 regenerate:true；生成后用 game_material_wait，再做后期或让用户点 openUrl 回界面。",
   "说明：key 是方向英文字面量（front/back/downLeft/downRight/upLeft/upRight/left/right）；data 是原始文件字节的 base64（不带 data: 前缀）；",
   "生成类方法立刻返回 {started:true}，接着用 game_material_wait 等它跑完，再用 game_material_review 拿验收包。",
   "调用结果里若带 openUrl，请把它作为 Markdown 链接贴给用户，用户点击即切换到插件对应页面。"
@@ -872,13 +936,14 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
         if (id === "") {
           // 只列可见模块的清单：隐藏的模块连「有哪些项目」都不给模型看一眼。
           await assertModuleVisible(moduleOf(args?.module));
-          const [projects, images, sequences, rigs, tiles, maps] = await Promise.all([
+          const [projects, images, sequences, rigs, tiles, maps, music] = await Promise.all([
             hidden.has("sprite") ? [] : listProjects(),
             hidden.has("image") ? [] : listImageJobs(),
             hidden.has("sequence") ? [] : listSequenceJobs(),
             hidden.has("rig") ? [] : listRigJobs(),
             hidden.has("tile") ? [] : listTileProjects(),
-            hidden.has("map") ? [] : listMapProjects()
+            hidden.has("map") ? [] : listMapProjects(),
+            hidden.has("music") ? [] : listMusicJobs()
           ]);
           const links: Record<string, string> = {};
           for (const key of MODULES) if (!hidden.has(key)) links[key] = buildOpenLink({ module: key });
@@ -891,8 +956,9 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
             rigJobs: rigs,
             tileProjects: tiles,
             mapProjects: maps,
+            musicJobs: music,
             links,
-            hint: "用 game_material_status({module,id}) 看某个目标的细节；八方向图的四步是 images → videos → frames → sheet，45°地图地块是 generate → review → map → export，地图编辑器是 assets（素材）→ rules（自动连接）→ paint（地图）→ export（导出），全本地不花钱。"
+            hint: "用 game_material_status({module,id}) 看某个目标的细节；八方向图的四步是 images → videos → frames → sheet，45°地图地块是 generate → review → map → export，地图编辑器是 assets（素材）→ rules（自动连接）→ paint（地图）→ export（导出），全本地不花钱；音乐是 generate（生成）→ edit（编辑）→ export（导出），生成按谱乐 AI 积分计费。"
           };
         }
         // ⚠️ 这里**不能**再按 module 短路：`status({module:'tile', id})` 也走到这里，
@@ -1075,7 +1141,7 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
           id: { type: "string", description: "项目 id（p…）/ 图片任务 id（i…）/ 序列帧任务 id（s…）。" },
           stage: {
             type: "string",
-            enum: ["images", "videos", "frames", "sheet", "generate", "review", "map", "export", "parts", "layout", "rig", "atlas", ...MAP_STAGES],
+            enum: ["images", "videos", "frames", "sheet", "generate", "review", "map", "export", "parts", "layout", "rig", "atlas", ...MAP_STAGES, ...MUSIC_STAGES],
             description: "八方向图 / 地图地块 / 地图编辑器 / 骨骼动画专用：只看某一个阶段。"
           },
           direction: { type: "string", description: "八方向图专用：只看某一个方位（front/back/…）。" },
@@ -1187,6 +1253,23 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
               ? "这些地块没量出 2:1 菱形，已按模板几何回退。多半是模型不对——请确认生图模型是 Seedream 5.0 系列（4.0 会把等距菱形画成近正方形），然后只重跑这几张：runTileItem({projectId, key, variant})。"
               : "几何都正常。可以继续验收、拼图（runTileMap）或导出（runTileExport）。"
           };
+        } else if (module === "music") {
+          const musicStages = snapshot.stages as Record<string, any>;
+          const stageKeys = Object.keys(musicStages ?? {});
+          if (stage !== undefined && !stageKeys.includes(stage)) {
+            throw new Error(`未知阶段：${stage}（可选：${stageKeys.join(" / ")}）`);
+          }
+          packet.stages = stageKeys
+            .filter((key) => stage === undefined || key === stage)
+            .map((key) => ({ stage: key, ...musicStages[key] }));
+          packet.source = snapshot.source;
+          packet.settings = snapshot.settings;
+          packet.songs = snapshot.songs;
+          packet.versions = snapshot.versions;
+          packet.tools = snapshot.tools;
+          packet.exports = snapshot.exports;
+          packet.songsReady = snapshot.songsReady;
+          packet.nextActions = musicNextActions(snapshot, stage);
         } else {
           // 骨骼动画（模块四）
           const stages = (snapshot.stages as any[]).filter((entry) => stage === undefined || entry.stage === stage);
@@ -1209,7 +1292,8 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
         "图片任务：module=image，id=任务 id，index 可只对某一张生效（省略即全任务）。",
         "序列帧：module=sequence，id=任务 id，step=video|frames|sheet（省略即全部三步）。",
         "骨骼动画：module=rig，id=任务 id，stage=parts|layout|rig|atlas（省略即四个阶段全打）；stage=parts 时可再带 part 只对某个部件生效。",
-        "地图编辑器：module=map，id=项目 id，stage=assets|rules|paint|export（省略即四个阶段全打）。这条链路全本地，打勾只是记录「这步看过了」。"
+        "地图编辑器：module=map，id=项目 id，stage=assets|rules|paint|export（省略即四个阶段全打）。这条链路全本地，打勾只是记录「这步看过了」。",
+        "音乐：module=music，id=任务 id，stage=generate|edit|export；也可以带 songId / versionId 只对某一首/某一版打勾。"
       ].join("\n"),
       parameters: {
         type: "object",
@@ -1217,7 +1301,9 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
         properties: {
           module: { type: "string", enum: [...MODULES], description: "目标所属模块；可省略，按 id 前缀判断。" },
           id: { type: "string", description: "项目 / 任务 id。" },
-          stage: { type: "string", enum: ["images", "videos", "frames", "sheet", ...MAP_STAGES], description: "八方向图 / 地图编辑器：阶段。" },
+          stage: { type: "string", enum: ["images", "videos", "frames", "sheet", ...MAP_STAGES, ...MUSIC_STAGES], description: "八方向图 / 地图编辑器 / 音乐：阶段。" },
+          songId: { type: "string", description: "音乐：只对某一首歌生效。" },
+          versionId: { type: "string", description: "音乐：只对某个版本生效。" },
           key: { type: "string", description: "八方向图：只对某个方位生效（front/back/…）。" },
           index: { type: "integer", description: "图片任务：只对某一张生效。" },
           step: { type: "string", enum: ["video", "frames", "sheet"], description: "序列帧：只对某一步生效。" },
@@ -1282,6 +1368,21 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
           return { module, id, step: step ?? null, approved, ...openInfo({ module: "sequence", jobId: id }, "点开看验收结果") };
         }
 
+        if (module === "music") {
+          const stage = asString(args?.stage) || undefined;
+          if (stage !== undefined && !(MUSIC_STAGES as readonly string[]).includes(stage)) {
+            throw new Error(`未知阶段：${stage}（可选：${MUSIC_STAGES.join(" / ")}）`);
+          }
+          const songId = asString(args?.songId) || undefined;
+          const versionId = asString(args?.versionId) || undefined;
+          await (gateway as any).setMusicApproved(
+            stage === undefined && songId === undefined && versionId === undefined
+              ? { jobId: id, approved }
+              : { jobId: id, approved, ...(stage === undefined ? {} : { stage }), ...(songId === undefined ? {} : { songId }), ...(versionId === undefined ? {} : { versionId }) }
+          );
+          return { module, id, stage: stage ?? null, songId: songId ?? null, versionId: versionId ?? null, approved, ...openInfo({ module: "music", jobId: id, stage }, "点开看验收结果") };
+        }
+
         const rigJob = await readRigJob(id);
         if (rigJob === undefined) throw new Error(`找不到骨骼动画任务：${id}`);
         const rigStage = asString(args?.stage) || undefined;
@@ -1311,7 +1412,7 @@ export function registerStudioTools(host: StudioToolHost, gateway: GameStudioGat
 
 const PROMPT_SECTION = [
   "## 游戏素材大师（game-material-master）",
-  "本机已挂载「游戏素材大师」插件：八方向图生成 / 图片生成 / 序列帧生成 / 骨骼动画生成四个模块，界面在侧栏「游戏素材大师」面板。",
+  "本机已挂载「游戏素材大师」插件：八方向图生成 / 图片生成 / 序列帧生成 / 骨骼动画生成 / 45°地图地块 / 地图编辑器 / 音乐生成编辑七个模块，界面在侧栏「游戏素材大师」面板。",
   "工具：`game_material_intake`（固定流程第 0 步）、`game_material_call`（万能通道，插件全部方法）、`game_material_upload`（按路径上传素材）、",
   "`game_material_reviewMode`、`game_material_status`、`game_material_wait`、`game_material_review`、`game_material_approve`。",
   "一律走这些工具，不要用 bash/shell 直接改 `<DSH_HOME>/game-material-master/` 下的 JSON——那会绕过宿主的复用与校验。",
@@ -1403,7 +1504,15 @@ const PROMPT_SECTION = [
   "  · 工具面**同样不可用**——`game_material_call` / `status` / `intake` / `upload` / `wait` / `review` / `approve` 都会明确报错。",
   "`game_material_status`（不带 id）返回的 `hiddenModules` 是当前被隐藏的模块 key 列表。",
   "遇到这类报错时**不要重试、也不要绕过**（例如直接改配置文件）：告诉用户这个功能被隐藏了，请他在设置里打开。",
-  "`hiddenModules` 也不能通过 `game_material_call({method:\"saveConfig\"})` 修改——工具面会拒绝。"
+  "`hiddenModules` 也不能通过 `game_material_call({method:\"saveConfig\"})` 修改——工具面会拒绝。",
+  "",
+  "### 音乐生成编辑（模块七，谱乐 AI）",
+  "用户要写歌/做音乐时：先 `game_material_intake({module:'music'})` 问清「灵感还是完整歌词 / 用途与风格 / 要不要后期」，并问审核模式；",
+  "然后 `createMusicJob` → `runMusicGeneration` → `game_material_wait`。**提交前先 `getMusicGuide`**（内置创作指南：风格提示词结构、歌词 QC、引擎/模型选择、生成设置、游戏循环与响度目标）。",
+  "一次提交按谱乐 AI 积分计费：Suno 返回 2 首；已有歌曲后再生成必须 `regenerate:true`；不要为确认状态重复提交；失败重试也要先问用户。",
+  "生成后用 `renderMusicEdit` 做裁剪/音量/淡入淡出/loudnorm（本地 ffmpeg、免费），用 `exportMusic` 导出；最后把工具返回的 `openUrl` 原样贴成 Markdown 链接，用户点开回到音乐编辑界面。",
+  "用户给完整歌词时歌词是权威文本：不要重写，只修断句/结构标签/发音并说明改动。工具类接口（分轨/MIDI/乐谱/风格分析/转码）只接受公开 http(s) URL，编辑后的本地版本不能直接传。",
+  "manual 模式：生成后先贴链接并停下等用户说「通过」；auto 模式：自己核对后继续，但失败/再生成仍要找用户确认。"
 ].join("\n");
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -1530,6 +1639,34 @@ function intakeFor(module: ModuleKey, id: string, told: Set<string>, config: any
     ask("mapLayout", "地图要多大？（默认 14×14）要不要指定某几格用别的类别、或者撒装饰？", "布局是本地计算，改多少次都不花钱。", "用 runTileMap({projectId, rows, cols, seed, fill, decorDensity})；手动指定格子用 saveTileMapCells。");
   }
 
+  if (module === "music") {
+    if (config?.musicBlocker !== null && config?.musicBlocker !== undefined) {
+      blockers.push(`${config.musicBlocker}配好点「测试连接」。`);
+    }
+    known.平台 = "谱乐 AI（YourMusic）Open API；当前只支持它";
+    known.BaseURL = config?.musicBaseUrl ?? "https://api.yourmusic.fun";
+    known.默认模型 = config?.musicModel ?? "chirp-v6";
+    known.引擎与模式 = (config?.musicEngines ?? [])
+      .map((engine: any) => `${engine.label}：${(engine.modes ?? []).map((mode: any) => mode.id).join(" / ")}`)
+      .join("；");
+    known.计费 = "每次提交按谱乐 AI 积分计费；Suno 一次返回 2 首，Mureka 可 1–3 首。已有歌曲后再生成必须显式 regenerate:true；不要为了确认状态重复提交。";
+    known.三个阶段 = "generate（生成）→ edit（编辑 / 裁剪 / 音量 / 淡入淡出 / 标准化）→ export（导出）";
+    known.本地编辑免费 = "裁剪 / 音量 / 淡入淡出 / loudnorm 全在本机 ffmpeg 完成；只有平台生成与部分工具接口（WAV、分轨、MIDI、乐谱、风格分析、转码）会计费。";
+    known.工具接口 = "stems 分轨 / pro-stems 高级分轨 / midi / sheet-music / style-analysis / convert；这些接口只接受公开可访问的 http(s) URL（生成歌曲的 audio_url 满足，本地编辑版本不满足）。";
+    if (target?.source) known.用户输入 = target.source.kind === "lyrics" ? "完整歌词" : "灵感提示词";
+    if (target?.source?.prompt) known.提示词原文 = String(target.source.prompt).slice(0, 200);
+    if (target?.source?.lyrics) known.歌词原文 = `${String(target.source.lyrics).slice(0, 200)}…（共 ${String(target.source.lyrics).length} 字）`;
+    if (target?.reviewMode) known.审核模式 = target.reviewMode;
+    const hasMusicText = target?.source !== undefined && ((typeof target.source.prompt === "string" && target.source.prompt.trim() !== "") || (typeof target.source.lyrics === "string" && target.source.lyrics.trim() !== "") || (typeof target.source.note === "string" && target.source.note.trim() !== ""));
+    if (!hasMusicText) {
+      ask("musicSource", "要做一首什么？给我一段灵感提示词，或者一整首歌词（二选一即可）。", "这是创作的起点；有歌词时会以歌词为权威文本，只有灵感时由 agent 写歌词/扩写。", "用 game_material_call({method:'createMusicJob', payload:{name, source:{kind:'prompt'|'lyrics', prompt, lyrics, title?, tags?, instrumental?}}}) 建任务。");
+    }
+    ask("musicStyle", "想要什么风格 / 情绪 / 编制？有没有「不要」的元素（例如不要电吉他、不要合唱）？", "会变成风格标签与 negative_tags；越具体越不容易跑偏。", "用 saveMusicJob({jobId, source:{tags, ...}, settings:{negativeTags}}) 保存。");
+    ask("musicUse", "这首歌在游戏里怎么用：主题曲 / 战斗 / 菜单 / 环境床 / 循环 / 短 stinger？要不要人声、大概多长？", "用途决定时长、结构、能不能循环，比堆风格词更重要。", "把结论写进 source.note，并用 settings.duration / instrumental 表达。");
+    ask("musicEngine", "引擎有偏好吗？（Suno / Mureka / MiniMax / ACE-Step；默认 Suno chirp-v6，纯音乐或需要固定 BPM 时 ACE-Step 更稳）", "不同引擎的模式、参数与计费方式不同；不确定就让 agent 按用途选。", "runMusicGeneration({jobId, engine, mode, params})；也可以先用 saveMusicJob 把偏好写进 source.preferredEngine。");
+    ask("musicReview", "生成后要不要做后期处理？（裁剪掉头尾 / 调音量 / 淡入淡出 / 标准化到 -14 LUFS；默认不处理，保留原曲）", "后期是本地免费的，但会多出一些版本；不做就只交付原曲。", "renderMusicEdit({jobId, songId, ops:{start,end,gainDb,fadeIn,fadeOut,normalize}}) → game_material_wait。");
+  }
+
   if (id === "") {
     questions.push({
       key: "target",
@@ -1544,9 +1681,11 @@ function intakeFor(module: ModuleKey, id: string, told: Set<string>, config: any
                 ? "新建一个地图地块项目，还是在已有项目上继续？"
                 : module === "map"
                   ? "新建一个地图项目，还是在已有项目上继续？"
-                  : "新建一个骨骼动画任务，还是在已有任务上继续？",
+                  : module === "music"
+                    ? "新建一个音乐任务，还是在已有任务上继续？"
+                    : "新建一个骨骼动画任务，还是在已有任务上继续？",
       why: "后面的参数都挂在项目 / 任务上。",
-      how: "新建：game_material_call({method:'createProject'|'createImageJob'|'createSequenceJob'|'createRigJob'|'createTileProject'|'createMapProject', payload:{name}})，返回的 id 就是后续 payload 里的 projectId / jobId。"
+      how: "新建：game_material_call({method:'createProject'|'createImageJob'|'createSequenceJob'|'createRigJob'|'createTileProject'|'createMapProject'|'createMusicJob', payload:{name}})，返回的 id 就是后续 payload 里的 projectId / jobId。"
     });
   }
 
@@ -1651,7 +1790,10 @@ const UPLOAD_KINDS: Record<ModuleKey, string[]> = {
   // 「上传」这条路给出明确的报错信息（见 uploadFromPath）。
   tile: [],
   // 地图编辑器就是**导入素材**起家的：这里上传的就是 tileset 图集原图。
-  map: ["tileset"]
+  map: ["tileset"],
+  // 音乐模块 v1 不导入本地音频：只编辑本任务生成/下载的歌曲。留空数组让
+  // 上传这条路给出明确报错，而不是掉进 sequence 分支做别的事。
+  music: []
 };
 
 /** sprite 的本地视频槽位：`turn`（转圈）或八个方向之一。 */
@@ -1733,6 +1875,8 @@ async function uploadFromPath(
     // 地图地块目前不需要上传素材：地块由模板 + 提示词生成。
     // 明确报错，而不是掉进 sequence 分支里做一件风马牛不相及的事。
     throw new Error("地图地块模块不需要上传素材：地块由「代码渲染的菱形模板 + 提示词」生成。要改画风请用 saveTileProject({style})");
+  } else if (module === "music") {
+    throw new Error("音乐模块 v1 不导入本地音频：只用 runMusicGeneration 生成的歌曲；要编辑本地文件请等后续版本。");
   } else {
     await call.uploadSequenceRef({ jobId: id, kind, name: fileName, data: base64 });
   }
@@ -1882,6 +2026,69 @@ function renderMapSummary(value: any): string[] {
   return lines;
 }
 
+/** 音乐任务的验收/状态摘要：歌曲、版本、工具与导出都直接给可点的 URL。 */
+function renderMusicSummary(value: any): string[] {
+  const lines: string[] = [];
+  const stageLabels: Record<string, string> = { generate: "生成", edit: "编辑", export: "导出" };
+  if (Array.isArray(value.stages)) {
+    lines.push(
+      `  阶段：${value.stages
+        .map((stage: any) => `${stageLabels[stage.stage] ?? stage.stage}：${stage.status ?? "idle"}${stage.approved ? " · 已通过" : ""}${stage.error ? ` · ${stage.error}` : ""}`)
+        .join("  ")}`
+    );
+  } else if (value.stages !== null && value.stages !== undefined) {
+    lines.push(
+      `  阶段：${Object.entries(value.stages)
+        .map(([key, stage]: [string, any]) => `${stageLabels[key] ?? key}：${stage?.status ?? "idle"}${stage?.approved ? " · 已通过" : ""}${stage?.error ? ` · ${stage.error}` : ""}`)
+        .join("  ")}`
+    );
+  }
+  if (value.source !== undefined && value.source !== null) {
+    const kind = value.source.kind === "lyrics" ? "完整歌词" : "灵感提示词";
+    lines.push(`  输入：${kind}${value.source.title ? ` · 标题「${value.source.title}」` : ""}${value.source.instrumental ? " · 纯音乐" : ""}`);
+    if (value.source.note) lines.push(`  补充要求：${String(value.source.note).slice(0, 200)}`);
+    if (value.source.adaptedPrompt) lines.push(`  AI 扩写提示词：${String(value.source.adaptedPrompt).slice(0, 240)}`);
+    if (value.source.adaptedTags) lines.push(`  风格标签：${String(value.source.adaptedTags).slice(0, 240)}`);
+  }
+  if (value.settings !== undefined && value.settings !== null) {
+    lines.push(`  引擎：${value.settings.engine ?? "?"} · 模式：${value.settings.mode ?? "?"} · 模型：${value.settings.model ?? "?"}`);
+  }
+  if (typeof value.songsReady === "number" && typeof value.songsTotal === "number") {
+    lines.push(`  歌曲：${value.songsReady}/${value.songsTotal} 首就绪`);
+  }
+  for (const song of value.songs ?? []) {
+    lines.push(
+      `  - ${song.title ?? song.id}：${song.status}${song.approved ? " · 已通过" : ""}${song.duration ? ` · ${Number(song.duration).toFixed(1)}s` : ""}${song.downloadError ? ` · 下载失败：${song.downloadError}` : ""}${song.error ? ` · ${song.error}` : ""}`
+    );
+    if (typeof song.url === "string") lines.push(`      ${song.url}`);
+    if (typeof song.wavUrl === "string") lines.push(`      WAV：${song.wavUrl}`);
+    if (typeof song.lrcUrl === "string") lines.push(`      滚动歌词：${song.lrcUrl}`);
+  }
+  for (const version of value.versions ?? []) {
+    lines.push(
+      `  版本「${version.label}」：${version.status}${version.preview ? " · 试听" : ""}${version.error ? ` · ${version.error}` : ""} · ${version.format}${version.duration ? ` · ${Number(version.duration).toFixed(1)}s` : ""}`
+    );
+    if (typeof version.url === "string") lines.push(`      ${version.url}`);
+  }
+  for (const tool of value.tools ?? []) {
+    lines.push(`  工具 ${tool.kind}：${tool.status}${tool.error ? ` · ${tool.error}` : ""}`);
+    for (const file of tool.files ?? []) {
+      lines.push(`      ${file.name}${typeof file.url === "string" ? `：${file.url}` : `：${file.file}`}`);
+    }
+    if (tool.result !== undefined && tool.kind === "style-analysis") {
+      const result = tool.result as any;
+      lines.push(`      风格：${(result.genres ?? []).join(" / ")}；标签：${(result.tags ?? []).join(" / ")}`);
+      if (result.description) lines.push(`      ${String(result.description).slice(0, 240)}`);
+    }
+  }
+  for (const entry of value.exports ?? []) {
+    lines.push(`  导出：${entry.file}`);
+    if (typeof entry.downloadUrl === "string") lines.push(`      ${entry.downloadUrl}`);
+  }
+  if (typeof value.blocker === "string" && value.blocker !== "") lines.push(`  ⚠ ${value.blocker}`);
+  return lines;
+}
+
 function renderStatus(value: any): string {
   if (Array.isArray(value.projects)) {
     const lines = [
@@ -1891,6 +2098,8 @@ function renderStatus(value: any): string {
       ...value.imageJobs.map((j: any) => `  - ${j.id} ${j.name} — ${j.ready}/${j.total} 张（抠像 ${j.keyed}）`),
       `序列帧任务（${value.sequenceJobs.length}）：`,
       ...value.sequenceJobs.map((j: any) => `  - ${j.id} ${j.name} — 视频${j.videoReady ? "✓" : "✗"} 帧${j.frameReady ? "✓" : "✗"} 条图${j.sheetReady ? "✓" : "✗"}`),
+      `音乐任务（${(value.musicJobs ?? []).length}）：`,
+      ...(value.musicJobs ?? []).map((j: any) => `  - ${j.id} ${j.name} — ${j.songsReady}/${j.songsTotal} 首 · ${j.versions} 个版本${j.busy ? " · ⏳" : ""}`),
       ...(Array.isArray(value.hiddenModules) && value.hiddenModules.length > 0
         ? [`已隐藏的功能（工具面同样不可调用）：${value.hiddenModules.map((key: string) => MODULE_LABELS[key as ModuleKey] ?? key).join("、")}`]
         : []),
@@ -1903,7 +2112,8 @@ function renderStatus(value: any): string {
   if (value.qa !== null && value.qa !== undefined) {
     lines.push(`  ${renderRigQa(value.qa)}`);
   }
-  if (Array.isArray(value.stages)) {
+  if (value.module === "music") lines.push(...renderMusicSummary(value));
+  if (value.module !== "music" && Array.isArray(value.stages)) {
     for (const stage of value.stages) {
       lines.push(`  ${renderStageLine(stage)}`);
       // 骨骼动画：阶段名之后直接把产物 URL 贴上，否则用户点不到东西。
@@ -1971,7 +2181,8 @@ function renderReview(value: any): string {
   // 地图编辑器（模块六）：产物形状和别的模块完全不同（素材 + 一张地图 + 导出清单），
   // 单独走一段，免得掉进下面按 cells / items 迭代的通用分支。
   if (value.module === "map") lines.push(...renderMapSummary(value));
-  if (Array.isArray(value.stages)) {
+  if (value.module === "music") lines.push(...renderMusicSummary(value));
+  if (value.module !== "music" && Array.isArray(value.stages)) {
     for (const stage of value.stages) {
       lines.push(`${stage.title}${stage.stale ? " · 需重做" : ""}`);
       // 骨骼动画的阶段**没有 cells**（产物是每阶段固定的几个 URL），
@@ -2191,8 +2402,35 @@ function rigNextActions(snapshot: any, stage: string | undefined): string[] {
   return actions;
 }
 
-function sequenceNextActions(snapshot: any): string[] {
-  const byStep = Object.fromEntries((snapshot.steps as any[]).map((entry: any) => [entry.step, entry]));
+function musicNextActions(snapshot: any, stage: string | undefined): string[] {
+  const actions: string[] = [];
+  const songs = Array.isArray(snapshot.songs) ? snapshot.songs : [];
+  const ready = songs.filter((song: any) => song.status === "succeeded");
+  const failed = songs.filter((song: any) => song.status === "failed");
+  const pending = songs.filter((song: any) => song.status === "pending" || song.status === "processing");
+  const versions = Array.isArray(snapshot.versions) ? snapshot.versions : [];
+  if (snapshot.blocker) actions.push(snapshot.blocker);
+  if (songs.length === 0) {
+    actions.push("还没有提交生成：先 getMusicGuide 读创作指南，再用 runMusicGeneration({jobId, engine, mode, params}) 提交（★计费），随后 game_material_wait。");
+  } else if (pending.length > 0) {
+    actions.push(`还有 ${pending.length} 首在跑：game_material_wait({module:'music', id, timeoutSeconds:900})；超时用 refreshMusicJob 继续查，不要重复提交。`);
+  } else if (ready.length === 0) {
+    actions.push("全部失败：先看每首歌的 error，再决定是否调整提示词/参数；重试会再计费，先问用户。");
+  } else {
+    actions.push("歌曲已就绪：把 openUrl 贴给用户，回界面试听；要处理就用 renderMusicEdit（本地免费），要导出用 exportMusic。");
+  }
+  if (ready.length > 0) {
+    actions.push("后期处理：renderMusicEdit({jobId, songId, ops:{start,end,gainDb,fadeIn,fadeOut,normalize,format}}) → game_material_wait；结果在 versions 里，原曲不动。");
+    actions.push("导出：exportMusic({jobId, versionId?|songId?, format?, zip?})；多产物会自动打 zip。");
+  }
+  if (failed.length > 0) actions.push(`${failed.length} 首失败：失败重试会再计费，先向用户确认。`);
+  if (versions.some((version: any) => version.status === "rendering")) actions.push("有版本正在渲染：game_material_wait 等它完成。");
+  if (stage === "edit" && ready.length === 0 && songs.length === 0) actions.push("先完成生成，再来编辑。");
+  if (actions.length === 0) actions.push("任务已就绪：可以继续生成、编辑或导出。");
+  return actions;
+}
+
+function sequenceNextActions(snapshot: any): string[] {  const byStep = Object.fromEntries((snapshot.steps as any[]).map((entry: any) => [entry.step, entry]));
   const actions: string[] = [];
   if (byStep.video?.status !== "ready") {
     actions.push("视频还没好：game_material_call({method:'runSequenceVideo', payload:{jobId}}) 然后 game_material_wait（先确认首帧图或参考素材已上传）");

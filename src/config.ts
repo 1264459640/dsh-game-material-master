@@ -10,6 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ROW_ORDER } from "./directions.js";
 import { STUDIO_MODULES } from "./links.js";
+import { MUSIC_DEFAULT_MODEL } from "./musicmodels.js";
 
 /**
  * 上一版的默认行序（按生成依赖顺序）。方位语义修正后，默认改成罗盘顺时针；
@@ -71,6 +72,11 @@ export function rigJobsRoot(): string {
 /** 地图地块生成模块的项目根。 */
 export function tileJobsRoot(): string {
   return join(dataRoot(), "tile-jobs");
+}
+
+/** 音乐生成编辑模块（模块七）的任务根。 */
+export function musicJobsRoot(): string {
+  return join(dataRoot(), "music-jobs");
 }
 
 /**
@@ -302,13 +308,30 @@ export interface Config {
   rowOrderVersion: number;
 
   /**
+   * **音乐生成编辑（模块七）**。
+   *
+   * 目前只接谱乐 AI（`puyue`）。`musicApiKey` 与其它凭据同一档：落盘明文，
+   * 但**从不回传浏览器**（配置视图里只有 `musicApiKeySet` / hint）。
+   */
+  musicProvider: "puyue";
+  musicApiKey: string;
+  /** 谱乐 AI Open API 根地址（不含 `/v1`；用户填了会自动剥掉）。 */
+  musicBaseUrl: string;
+  /** 默认音乐模型（新建任务 / 未指定时的兜底；任务里可覆盖）。 */
+  musicModel: string;
+  /** 单次 HTTP 请求超时（毫秒）。 */
+  musicTimeoutMs: number;
+  /** 一次生成从提交到「不再等待」的总时长（毫秒）。 */
+  musicPollTimeoutMs: number;
+
+  /**
    * **被隐藏的功能模块**（`links.ts` 的 `STUDIO_MODULES` 子集）。
    *
    * 「隐藏」是**双向**的：界面上不再出现这个模块的页签与入口，对话工具面也
    * 拒绝对它的任何调用（`game_material_call` / `status` / `review` … 一律报错）。
    * 只挡界面不挡工具等于没挡——模型照样能调 `runTileItems` 真实计费。
    *
-   * 空数组（默认）= 六个模块全部可见。全隐藏是允许的：面板会显示一句空态。
+   * 空数组（默认）= 七个模块全部可见。全隐藏是允许的：面板会显示一句空态。
    */
   hiddenModules: string[];
 
@@ -376,6 +399,13 @@ export const DEFAULT_CONFIG: Config = {
   comfySeconds: 0,
   comfySeed: 0,
   comfyTimeoutMs: 600000,
+
+  musicProvider: "puyue",
+  musicApiKey: "",
+  musicBaseUrl: "https://api.yourmusic.fun",
+  musicModel: MUSIC_DEFAULT_MODEL,
+  musicTimeoutMs: 120000,
+  musicPollTimeoutMs: 900000,
 
   cellWidth: 256,
   cellHeight: 256,
@@ -535,6 +565,14 @@ export function normalizeConfig(input: unknown): Config {
     comfySeed: asInt(raw.comfySeed, DEFAULT_CONFIG.comfySeed, 0, 9007199254740991),
     comfyTimeoutMs: asInt(raw.comfyTimeoutMs, DEFAULT_CONFIG.comfyTimeoutMs, 10000, 3600000),
 
+    musicProvider: "puyue",
+    musicApiKey: asString(raw.musicApiKey, DEFAULT_CONFIG.musicApiKey),
+    // 允许用户填本地 mock / 反代地址；去尾斜杠与误填的 /v1 在 musicapi 里再做一次。
+    musicBaseUrl: asString(raw.musicBaseUrl, DEFAULT_CONFIG.musicBaseUrl).replace(/\/+$/u, "") || DEFAULT_CONFIG.musicBaseUrl,
+    musicModel: asString(raw.musicModel, DEFAULT_CONFIG.musicModel).trim() || DEFAULT_CONFIG.musicModel,
+    musicTimeoutMs: asInt(raw.musicTimeoutMs, DEFAULT_CONFIG.musicTimeoutMs, 10000, 900000),
+    musicPollTimeoutMs: asInt(raw.musicPollTimeoutMs, DEFAULT_CONFIG.musicPollTimeoutMs, 60000, 3600000),
+
     cellWidth: asInt(raw.cellWidth, DEFAULT_CONFIG.cellWidth, 16, 2048),
     cellHeight: asInt(raw.cellHeight, DEFAULT_CONFIG.cellHeight, 16, 2048),
     frameCount: asInt(raw.frameCount, DEFAULT_CONFIG.frameCount, 1, 64),
@@ -585,7 +623,7 @@ export async function saveConfig(patch: Partial<Config>): Promise<Config> {
 }
 
 /** 回传给浏览器的脱敏视图：只说明 key 是否已配置，以及尾部 4 位。 */
-export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "comfyCookies"> {
+export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "comfyCookies" | "musicApiKey"> {
   arkApiKeySet: boolean;
   arkApiKeyHint: string;
   minimaxApiKeySet: boolean;
@@ -594,10 +632,12 @@ export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" |
   customApiKeyHint: string;
   comfyCookiesSet: boolean;
   comfyCookiesHint: string;
+  musicApiKeySet: boolean;
+  musicApiKeyHint: string;
 }
 
 export function maskConfig(config: Config): ConfigView {
-  const { arkApiKey, minimaxApiKey, customApiKey, comfyCookies, ...rest } = config;
+  const { arkApiKey, minimaxApiKey, customApiKey, comfyCookies, musicApiKey, ...rest } = config;
   const cookie = normalizeComfyCookies(comfyCookies);
   return {
     ...rest,
@@ -612,7 +652,9 @@ export function maskConfig(config: Config): ConfigView {
     customApiKeyHint: hintOf(customApiKey),
     // Cookie 也是凭据（反代鉴权），同样不回传明文：只说配没配、尾巴 4 位。
     comfyCookiesSet: cookie !== "",
-    comfyCookiesHint: hintOf(cookie)
+    comfyCookiesHint: hintOf(cookie),
+    musicApiKeySet: musicApiKey.trim() !== "",
+    musicApiKeyHint: hintOf(musicApiKey)
   };
 }
 

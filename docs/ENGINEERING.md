@@ -2795,6 +2795,108 @@ running 落在下一次 `getProject` 里**：
 - 模块四的动画预设（`src/spine.ts` 的 `RIG_ANIMATIONS`）只对**标准人形骨骼名**生效：
   部件名对不上就没有对应的时间轴。表外名字的部件仍然会进骨架，只是不会动。
 
+## 音乐生成编辑（模块七 · `music`）
+
+### 为什么单开一个模块
+
+八方向图 / 图片 / 序列帧都在做「视觉素材」，而音乐是**长时音频 + 外部生成平台 + 本地后期**：
+生成要轮询几分钟、结果要下载成可变现的音频文件、后期要 ffmpeg、失败重试会重复计费。
+把它塞进图片模块只会把两套状态机搅在一起。
+
+### 数据与落盘
+
+```
+<DSH_HOME>/game-material-master/music-jobs/<a…>/
+├── job.json
+├── songs/<songId>.mp3|.m4a|.wav       平台返回的原曲（下载后本地播放/编辑）
+├── songs/<songId>-cover.jpg|.png      封面
+├── songs/<songId>-lrc.json            滚动歌词原始对齐数据
+├── versions/<v…>.<ext>                每次编辑的新版本（永不覆盖原曲）
+├── peaks/<hash>.json                  波形缓存（键含文件大小/mtime/桶数）
+├── tools/<toolTaskId>/…               分轨 / MIDI / 乐谱 / 转码产物
+└── out/<安全名>.<ext> / <任务名>.zip   导出
+```
+
+- 任务 id：`a` + base36 时间戳 + 6 位随机；`moduleForId("a…")` → `music`。
+- **所有写 `job.json` 都走 `patchMusicJob()` 的按任务串行队列**。轮询器与用户改名/保存同时
+  发生时，后写的不会覆盖前一次改动——这是「改了名字过一会儿又变回去」的唯一根因。
+- 原曲与版本分开放：编辑失败 / 删除版本都不会伤到原曲；`versions/<id>` 只增不改。
+
+### 状态机与计费闸门
+
+`runMusicGeneration` 先落一条 `submitting` 的 generation，再启动后台任务：
+
+`submitting → polling → succeeded | partial | failed | timeout | canceled`
+
+- 同任务已有任务在跑 → 拒绝（`started:false`）。
+- **已有歌曲后再提交必须 `regenerate:true`**；失败重试也会再计费，工具描述与对话提示词都要求
+  先问用户。
+- `cancelMusicGeneration` 只停本地轮询；已提交给平台的生成仍会完成并计费，返回文案必须写清。
+- 查询 404（文档：未完成 / 不属于当前账号）按「还没完成」处理，继续等到 `musicPollTimeoutMs`；
+  超时标 `timeout` 而不是 failed，`refreshMusicJob` 可继续查。
+- 下载失败不判整首失败：歌曲保持 `succeeded`，记 `downloadError`，远程 URL 仍可播。
+- `activateMusic()` 每次 `apply` 复位 `disposed` / 任务表；`resumeMusicJobs()` 只**查询和下载**，
+  绝不重新提交。`resumeGeneration` 是重启后的接续入口。
+
+### 谱乐 AI 客户端（`musicapi.ts`）
+
+- Base URL + `Authorization: Bearer …`；错误体统一 `{error:{type,code,message,param,request_id}}`。
+- 生成端点映射集中在 `buildGenerationRequest`：Suno（prompt/custom/cover/extend/mashup/sample/concat）、
+  Mureka（prompt/custom/instrumental）、MiniMax（custom）、ACE-Step（prompt/custom）。
+- **长度上限显式报错，不静默截断**：Suno prompt 500 / lyrics 5000 / tags 1000；Mureka lyrics 3000；
+  MiniMax prompt 2000 / lyrics 3000。截断会把最后一段歌词悄悄吃掉。
+- `assertDownloadUrl`：只接受 http(s)，公网 Base 时拒绝本机/私网（SSRF）；用户把 Base 配成本机
+  mock/反代时放行本机。下载流式写 `.part` 再 rename，带大小上限。
+- 工具接口（分轨/MIDI/乐谱/风格分析/转码）只接受**公开 URL**；本地编辑版本不能直接传。
+
+### 本地音频（`musicaudio.ts`）
+
+- 滤镜链：`atrim → asetpts → volume → afade(in) → afade(out) → loudnorm`；
+  淡入淡出之和超过段长时按比例缩放；`loudnorm` 失败自动去掉它重试并写 warning。
+- 格式：MP3 `libmp3lame`、WAV `pcm_s16le`、M4A `aac + faststart`；无有效操作且格式相同 → 直接复制。
+- 版本以 `opsHash`（源文件 mtime/size + 规范化 ops）去重；`force:true` 才重跑。
+- 波形：4kHz 单声道 s16 → 分桶取最大 → 全局归一化；缓存键含 mtime/size/桶数。
+- 只用 `media.runFfmpeg`（内部 `ffmpegPath()`），参数数组、绝不拼 shell。
+
+### 对话面
+
+- `game_material_call` 暴露全部 22 个方法；`intake` 对 `music` 有专用问题与 blocker；
+  `status` 列表带 `musicJobs`；`review` / `wait` / `approve` 都有 music 分支。
+- `runMusicGeneration` / `renderMusicEdit` / `exportMusic` 的 `openUrl` 自动带
+  `stage=generate|edit|export`，用户点回就落在对应卡片。
+- 系统提示词与 `buildMusicRequestPrompt` 都要求：先 `getMusicGuide` → 扩写/保存方案 →
+  `runMusicGeneration` → `game_material_wait` → 可选后期 → 把 `openUrl` 原样贴成 Markdown 链接。
+- 创作指南（`musicguide.ts`）来自 **bitwize-music-studio/claude-ai-music-skills（CC0-1.0）**，
+  只吸收方法论（风格提示词结构、歌词 13 点 QC、Suno 模型选择、母带响度目标）并改写为中英双语。
+
+### 界面里的产物地址
+
+宿主 `musicSnapshot` 里的 `url` / `coverUrl` 是绝对地址，依赖浏览器上报的 `location.origin`。
+插件刚重载、或新宿主刚起来时上报可能还没到，`originForLinks()` 会退化成 `http://localhost` ——
+真机上表现为**封面全裂、播放器 0:00、播放键没反应、下载链打不开**。
+
+两条修法同时保留：
+
+1. `reportClientOrigin` 失败时**退避重试**（最多 20 次、250ms），把真实 origin 补报上去；
+2. 界面**优先用相对路径**：`musicAssetUrl(job, file, fallback)` 从 `job.assetBase` + `file` 拼，
+   只有拿不到本地文件才退回平台远程地址。`song.coverUrl` / `song.url` / `version.url` /
+   `export.url` 都不直接进 `src` / `href`。
+
+### 资源路由
+
+- `AssetScope` 加 `music-assets`；`resolveAssetTarget` 用 `musicgen.musicAssetPath`；
+  `SCOPES` 数组加一项；`SERVABLE_MUSIC_DIRS` 唯一真源在 `musicgen.ts`。
+- MIME 加 mp3/wav/m4a/aac/flac/ogg/mid/pdf/xml/musicxml/lrc；已有 Range 支持进度拖动；
+  `?download=1` 加 `Content-Disposition`（ASCII 回退 + RFC 5987 中文名）。
+
+### 自检
+
+- `verify-music.mjs`：mock 谱乐 AI + 真 ffmpeg，82 项（端点映射、状态机、计费闸门、下载、
+  编辑/淡入淡出/loudnorm、波形、工具、导出 zip、路由 200/206/403/下载头、402/429/坏 JSON）。
+- `verify-music-gateway.mjs`：走真实网关，37 项（wire schema 逐键不丢、工具面、深链接、隐藏模块）。
+- `verify-music-client.mjs`：真渲染 + 假 sessions，41 项（创建卡、歌曲/编辑/版本/导出、
+  新对话不挂靠项目、提示词步骤、功能管理）。
+
 ## 许可
 
 [MIT](LICENSE)
