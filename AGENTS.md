@@ -117,7 +117,7 @@ node scripts/verify-music-gateway.mjs  # 音乐走真实网关：wire schema 不
 node scripts/verify-music-client.mjs   # 音乐界面真渲染 + 新对话桥 + 谱曲卡 + 静态契约（66 项）
 node scripts/verify-sfx.mjs         # 音效生成：mock 火山引擎语音的请求/返回/错误/参考/导出/路由（54 项，纯本地）
 node scripts/verify-sfx-gateway.mjs # 音效走真实网关：wire schema 不丢键、工具面、深链接、隐藏模块、配置字段（39 项）
-node scripts/verify-sfx-client.mjs  # 音效界面真渲染：新建卡 / 任务卡 / 参考 / takes / 生成 / 遮罩 / 静态契约（28 项）
+node scripts/verify-sfx-client.mjs  # 音效界面真渲染：新建卡 / 任务卡 / 参考 / takes / 生成 / 遮罩 / 静态契约（29 项）
 node scripts/verify-rig-runtime.mjs  # 骨骼改动：官方 Spine 4.2 实际加载/IK/Path/FFD/顶点求值（开发依赖）
 node scripts/verify-tile.mjs       # 地图地块几何内核（147 项，含反向验证）
 node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115 项；⚠️ 需要先跑过 e2e-tile-live 生成过地块，否则会在拼图阶段直接抛）
