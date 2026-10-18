@@ -310,6 +310,7 @@ for (const file of files) {
   checkTurnContracts(text, label);
   checkFramePickContracts(text, label);
   checkInputAndZoomContracts(text, label);
+  checkDraftContracts(text, label);
 
   const renderers = renderersIn(text);
   check(`${label}：找到阶段渲染函数`, renderers.size > 0, [...renderers.keys()].join("、"));
@@ -866,6 +867,44 @@ function checkFramePickContracts(text, label) {
   check(
     `${label}：手动选帧走独立的候选帧接口`,
     text.includes("prepareFramePick") && text.includes("setFramePick") && text.includes("resetFramePicks")
+  );
+}
+
+/**
+ * 后台轮询不许覆盖用户正在输入的草稿。
+ *
+ * 真机反馈：「这个提示词是无法替换的呀，我替换的时候它一秒钟又换回来。」
+ * 根因：有任务在跑时界面每 2.5~5 秒 `load()` 一次，无条件拿宿主的值整份覆盖草稿。
+ * 修法是 `mergeDrafts`（只有「草稿 === 上一次宿主值」的字段才跟着宿主走），
+ * 换项目 / 点「重置为默认」才整份替换。这里钉住四个模块的 load 都真的走它。
+ */
+function checkDraftContracts(text, label) {
+  check(
+    `${label}：草稿合并只更新用户没动过的字段`,
+    /function mergeDrafts\(current, previous, next, force\)/.test(text) &&
+      /drafted === undefined \|\| sameDraft\(drafted, previous\?\.\[key\]\) \? next\[key\] : drafted/.test(text)
+  );
+  check(
+    `${label}：模块① 的视频提示词不再被轮询覆盖`,
+    /setVideoPromptDraft\(\(current\) => mergeDrafts\(current, previous\.video, video, force\)\)/.test(text) &&
+      /setPromptDraft\(\(current\) => mergeDrafts\(current, previous\.images, images, force\)\)/.test(text) &&
+      !/setVideoPromptDraft\(next\.prompts\?\.video \?\? ""\)/.test(text)
+  );
+  check(
+    `${label}：模块① 换项目/重置时才整份替换草稿`,
+    /const force = options\.resetDrafts === true \|\| previous\.projectId !== id;/.test(text) &&
+      /resetDrafts: true, notice: T\("提示词已重置为默认模板"\)/.test(text) &&
+      /await loadProject\(projectId, \{ resetDrafts: options\.resetDrafts === true \}\)/.test(text)
+  );
+  check(
+    `${label}：模块②③④ 的提示词/参数草稿同样走合并`,
+    /setPromptDraft\(\(current\) => mergeDrafts\(current, previous\.prompt, next\.prompt \?\? "", force\)\)/.test(text) &&
+      /setSettingsDraft\(\(current\) => mergeDrafts\(current, previous\.settings, settings, force\)\)/.test(text) &&
+      /setPromptDraft\(\(current\) => mergeDrafts\(current, previous\.prompt, prompt, force\)\)/.test(text)
+  );
+  check(
+    `${label}：切换任务时才把草稿整份换成宿主的`,
+    /const force = previous\.id !== id;/.test(text) && !/setSuffixDraft\(next\.suffix \?\? ""\)/.test(text)
   );
 }
 

@@ -44,6 +44,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | **没有任何运行时依赖** | `zod` / `cordis` / dsh-typert-protocol 等一律从 DSH 自身安装树解析；`node_modules` 与 lock 文件不入库 |
 | `lib/` **入库**（不是构建产物目录） | 包直接以 `main: lib/index.js` 发布，`npm publish` 不触发构建 |
 | 生成类调用必须带 loading 反馈，批量任务要按 `job.targets` 盖住**还没轮到**的方向 | 不盖遮罩时界面看着完全正常，只是「点了没反应」，用户会反复点——每次点击都真实计费。`verify-client.mjs` / `verify-feedback.mjs` 会拦 |
+| **后台轮询刷新项目 / 任务时，不许用宿主的值整份覆盖编辑草稿** | 有任务在跑时每 2.5~5 秒拉一次 `getProject` / `getImageJob` / `getSequenceJob` / `getRigJob`；无条件覆盖草稿会让用户正在长文本框里替换的提示词一两秒后被打回原形（真机：「我替换的时候它一秒钟又换回来」）。所有 load 走 `mergeDrafts()`：只有「草稿 === 上一次宿主值」的字段才跟着宿主更新；换项目 / 换任务 / 点「重置为默认」才 `force`。`verify-feedback.mjs` 有合并用例，`verify-client.mjs` 逐模块钉住调用点 |
 | 本地自选视频必须与远端生成的产物**同形**，且导入时作废该槽位已有的下游产物 | 两条路只差 `origin` / `originalName` 两个字段，阶段③④才不用改。不作废（尤其是 `frames/<方向>/raw.bin`）就会拿上一段视频的帧去合成——界面看着完全正常，只是动作 / 朝向对不上；同理，导入时要摘掉在跑的远端 `taskId`，否则它稍后会把本地视频覆盖掉。`verify-host.mjs` 的 9d 段逐条钉住这几条 |
 | 生图一律走 `imageprovider.generateImageWithProvider`，模块里不许自己判 `imageProvider` | 分发只在一个地方，漏掉的那一处**不报错**，只是偷偷继续用另一家模型（用户以为换成了自己的服务，其实还在扣火山方舟的钱）。`verify-custom-image.mjs` 会打一台本地假服务端核对端点真的换了 |
 | 音乐模块：**Key 是凭据**，不进 `saveConfig` 的 `directKeys` | `musicApiKey` 与 `arkApiKey` / `minimaxApiKey` 同一档：`saveConfig` 函数体里 trim 后写入、`maskConfig` 只回 `musicApiKeySet` / hint。加进白名单会原样透传、绕过归一化，而且看起来「保存成功」 |
@@ -94,10 +95,10 @@ npm run typecheck    # 只做类型检查
 
 ```bash
 node scripts/verify-host.mjs       # 宿主全链路（387 项）
-node scripts/verify-client.mjs     # 浏览器半区契约（353 项）
+node scripts/verify-client.mjs     # 浏览器半区契约（363 项）
 node scripts/verify-tools.mjs      # 对话调用面（179 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
-node scripts/verify-feedback.mjs   # 浏览器半区真渲染（203 项，含功能管理、侧栏菜单、生图后端设置页与语义保存错误）
+node scripts/verify-feedback.mjs   # 浏览器半区真渲染（212 项，含功能管理、侧栏菜单、生图后端设置页、语义保存错误与草稿合并）
 node scripts/verify-i18n.mjs       # 中英词条表契约（9 项）
 node scripts/verify-comfy.mjs      # 本地 ComfyUI 后端（124 项，自起 mock ComfyUI，纯本地、不用装 ComfyUI）
 node scripts/verify-custom-image.mjs  # 自定义生图后端三协议（68 项：起本地假服务端，离线、零计费）

@@ -342,9 +342,9 @@ const api = new Proxy(
  * 本地却什么都看不出来。数字变了就说明 Hook 顺序改了，必须同步这里的槽位。
  */
 const EXPECTED_HOOKS = {
-  StudioPanel: 20,
-  ImageModule: 15,
-  SequenceModule: 16
+  StudioPanel: 21,
+  ImageModule: 16,
+  SequenceModule: 17
 };
 
 /**
@@ -357,7 +357,8 @@ const EXPECTED_HOOKS = {
  *   11 settingsDraft / 12 sourceBusy / 13 dropOver /
  *   14 fileInputRef(useRef) / 15 usePendingTasks 的 map / 16·17 usePendingTasks 内部两个 ref /
  *   18 useStudioIntent（深链接意图；null = 没有待处理的链接）/
- *   19 useHiddenModules（被隐藏的功能模块 key 数组；[] = 五个全可见）
+ *   19 useHiddenModules（被隐藏的功能模块 key 数组；[] = 五个全可见）/
+ *   20 loadedPrompts(useRef，上次从宿主读到的提示词；不读槽位)
  *
  * ⚠️ 槽位是**稀疏**的：下标 18 之前的几个 `undefined` 会让桩回落到 Hook 的初始值，
  * 所以新加的 Hook 必须显式写它的下标——顺手 append 到数组末尾会落到 ref 槽上，
@@ -929,8 +930,9 @@ function makeSequenceJob(overrides = {}) {
  *   0 useLocaleTick（语言切换计数器）/ 1 jobs / 2 jobId / 3 job / 4 notice /
  *   5 uploading / 6 promptDraft / 7 suffixDraft /
  *   8 settingsDraft / 9 keyingDraft / 10 useGlobalConfig / 11 usePendingTasks.map /
- *   12 useStudioIntent（深链接意图）
- * SequenceModule 的顺序与之完全相同。
+ *   12 useStudioIntent（深链接意图）/
+ *   13 loadedDrafts(useRef，上次从宿主读到的草稿；不读槽位)
+ * SequenceModule 的顺序与之完全相同（它另有自己的 jobIdRef，排在这个 ref 之前）。
  */
 function renderModule(component, job, tasks) {
   HOOK.slots = [
@@ -1464,6 +1466,44 @@ section("骨骼语义保存：真实组件事件的业务失败反馈");
       await pending.at(-1);
       check("无详细错误时仍显示语义校验失败", notices.at(-1)?.kind === "error" && notices.at(-1).text.includes("语义校验失败"));
     }
+  }
+}
+
+section("草稿合并：轮询不许覆盖用户正在输入的内容");
+{
+  // 真机反馈：「这个提示词是无法替换的呀，我替换的时候它一秒钟又换回来。」
+  // 根因：有任务在跑时界面每 2.5~5 秒拉一次项目 / 任务，load() 无条件拿宿主的值
+  // 整份覆盖草稿 —— 用户正在长文本框里替换提示词，刚打进去的内容就被打回原形。
+  // 现在只有「草稿 === 上一次宿主值」（没改过）的字段才跟着宿主走。
+  const { mergeDrafts } = bundle.__test ?? {};
+  check("产物暴露草稿合并测试入口", typeof mergeDrafts === "function");
+  if (typeof mergeDrafts === "function") {
+    const SERVER = "[Static shot] 固定机位…";
+    // 没改过：跟着宿主更新（切语言 / 重置默认都靠这条）。
+    check("没改过的提示词跟着宿主更新", mergeDrafts(SERVER, SERVER, "新模板", false) === "新模板");
+    check("草稿还没初始化时用宿主的值", mergeDrafts(undefined, "", SERVER, false) === SERVER);
+    // 改过：轮询（宿主值没变）不能把它打回去。
+    const TYPED = "我自己的提示词：镜头不动，走三步就行。";
+    let draft = mergeDrafts(SERVER, SERVER, SERVER, false);
+    draft = TYPED; // 用户输入（受控 textarea 的 local state）
+    for (let i = 0; i < 5; i++) draft = mergeDrafts(draft, SERVER, SERVER, false);
+    check("连续 5 次轮询后仍是用户输入的内容", draft === TYPED, draft);
+    // 换项目 / 明确重置：整份换成宿主的。
+    check("force 时即使改过也换成宿主的值", mergeDrafts(TYPED, SERVER, "默认模板", true) === "默认模板");
+
+    // 对象草稿（八方向提示词 / 参数）：逐字段判断，别互相牵连。
+    const before = { front: "A", back: "B" };
+    const merged = mergeDrafts({ front: "用户改过的 A", back: "B" }, before, { front: "A2", back: "B2" }, false);
+    check("改过的方向留住、没改过的方向跟着宿主更新", merged.front === "用户改过的 A" && merged.back === "B2", JSON.stringify(merged));
+    check("对象草稿在 force 时整份替换", JSON.stringify(mergeDrafts({ front: "X" }, before, { front: "A2", back: "B2" }, true)) === JSON.stringify({ front: "A2", back: "B2" }));
+
+    // 同一份逻辑也用于模块②③④ 的参数草稿（尺寸 / 网格这些）。
+    const oldSettings = { size: "1024x1024", count: 2, animations: ["idle"] };
+    const nextSettings = { size: "1024x1024", count: 8, animations: ["idle", "walk"] };
+    const settings = mergeDrafts({ ...oldSettings, count: 4 }, oldSettings, nextSettings, false);
+    check("正在改的参数不被轮询冲掉，其余参数照常同步", settings.count === 4 && settings.animations.join() === "idle,walk", JSON.stringify(settings));
+    // 宿主回包缺字段（老版本）时不能把草稿里的键吞掉判断成「改过」——缺的键直接用宿主的。
+    check("草稿里没有的字段直接用宿主的值", mergeDrafts({}, oldSettings, nextSettings, false).count === 8);
   }
 }
 

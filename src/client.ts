@@ -4002,6 +4002,43 @@
       return String(error);
     }
 
+    /** 两个草稿值是否相同：草稿都是宿主回包里的纯 JSON，对象按序列化结果比。 */
+    function sameDraft(a, b) {
+      if (a === b) return true;
+      if (a === undefined || b === undefined || a === null || b === null) return false;
+      if (typeof a !== "object" || typeof b !== "object") return false;
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    /**
+     * 把「界面草稿」和「宿主刚拉回来的值」合起来，**只更新用户没动过的字段**。
+     *
+     * 为什么需要：有任务在跑时界面会轮询（模块①每 2.5 秒、视频阶段固定每 5 秒；
+     * 模块②③④ 每 2.5~5 秒），每次都调一次 `load()` / `loadProject()`。之前它们
+     * 无条件拿宿主的值整份覆盖草稿 —— 用户正在长文本框里替换提示词时，刚打进去的
+     * 内容会在一两秒内被打回原形（真机反馈：「这个提示词是无法替换的呀，我替换的
+     * 时候它一秒钟又换回来」）。
+     *
+     * 判定标准：草稿 === 上一次从宿主读到的值 ⇒ 没改过，跟着宿主走（切语言、
+     * 重置为默认、别处改了这一条都能同步）；不相等 ⇒ 用户改过，留着，直到他自己
+     * 保存或点「重置为默认」。
+     *
+     * @param force - 换项目 / 换任务 / 明确要重置时传 true：整份换成宿主的值。
+     */
+    function mergeDrafts(current, previous, next, force) {
+      if (force === true) return next;
+      if (next === null || typeof next !== "object") {
+        // 标量（提示词这种一整段文本）：没改过才跟着宿主走。
+        return current === undefined || current === previous ? next : current;
+      }
+      const merged = {};
+      for (const key of Object.keys(next)) {
+        const drafted = current !== null && typeof current === "object" ? current[key] : undefined;
+        merged[key] = drafted === undefined || sameDraft(drafted, previous?.[key]) ? next[key] : drafted;
+      }
+      return merged;
+    }
+
     /**
      * 新建项目 / 任务时问一个名字（与「重命名」同一套 `window.prompt` 交互）。
      *
@@ -4835,6 +4872,14 @@
       const intent = useStudioIntent();
       // 功能管理：被隐藏的模块既不在页签里，也不该在别处被切进来（深链接也会被挡）。
       const hidden = useHiddenModules(api);
+      /**
+       * 上一次从宿主读到的提示词（连同项目 id）。
+       *
+       * 后台轮询（有任务在跑时 2.5 秒一次、视频阶段固定 5 秒一次）会反复拉项目，
+       * 用它判断界面上的草稿有没有被用户改过，别再拿宿主的值把正在输入的内容覆盖掉
+       * （真机反馈：「我替换的时候它一秒钟又换回来」）。判定规则见 `mergeDrafts`。
+       */
+      const loadedPrompts = React.useRef({ projectId: null, images: {}, video: "" });
       const visibleModules = visibleModulesOf(hidden);
       /**
        * 真正渲染的模块：当前选中项被隐藏（或压根不存在）时落到第一个可见模块。
@@ -4878,13 +4923,19 @@
       }, [api]);
 
       const loadProject = React.useCallback(
-        async (id) => {
+        async (id, options: any = {}) => {
           if (api === undefined || id === null) return;
           try {
             const next = await api.getProject(id);
+            const previous = loadedPrompts.current;
+            // 换项目、或用户明确点了「重置为默认」：草稿整份换成宿主的。
+            const force = options.resetDrafts === true || previous.projectId !== id;
+            const images = { ...(next.prompts?.images ?? {}) };
+            const video = next.prompts?.video ?? "";
+            loadedPrompts.current = { projectId: id, images, video };
             setProject(next);
-            setPromptDraft({ ...(next.prompts?.images ?? {}) });
-            setVideoPromptDraft(next.prompts?.video ?? "");
+            setPromptDraft((current) => mergeDrafts(current, previous.images, images, force));
+            setVideoPromptDraft((current) => mergeDrafts(current, previous.video, video, force));
             setSettingsDraft({ ...(next.settings ?? {}) });
             setPromptOpen((current) => {
               const keys = Object.keys(current);
@@ -4949,7 +5000,8 @@
           try {
             const value = await fn();
             if (options.notice !== undefined) setNotice({ kind: options.noticeKind ?? "info", text: options.notice });
-            if (options.reload === true && projectId !== null) await loadProject(projectId);
+            if (options.reload === true && projectId !== null)
+              await loadProject(projectId, { resetDrafts: options.resetDrafts === true });
             return value;
           } catch (error) {
             setNotice({ kind: "error", text: msg(error) });
@@ -5994,7 +6046,7 @@
                 if (typeof window !== "undefined" && !window.confirm(T("把八个方向的生图提示词和视频提示词都重置为当前默认模板？你手改过的内容会丢失。"))) return;
                 void start(
                   () => api.savePrompts({ projectId: project.id, resetImagesToDefault: true, resetVideoToDefault: true }),
-                  { reload: true, notice: T("提示词已重置为默认模板"), noticeKind: "ok" },
+                  { reload: true, resetDrafts: true, notice: T("提示词已重置为默认模板"), noticeKind: "ok" },
                   { key: KEY_PROMPT_RESET, label: T("正在重置提示词…") }
                 );
               }
@@ -14914,6 +14966,13 @@
       const tasks = usePendingTasks();
       // 深链接：切到某一个图片任务。
       const intent = useStudioIntent();
+      /**
+       * 上一次从宿主读到的草稿（连同任务 id）。
+       *
+       * 有任务在跑时这里每 2.5 秒 `load()` 一次；无条件覆盖草稿的话，用户正在
+       * 改提示词 / 尺寸时会被打回原形（同模块①的视频提示词）。判定见 `mergeDrafts`。
+       */
+      const loadedDrafts = React.useRef({ id: null, prompt: "", suffix: "", settings: {}, keying: {} });
 
       React.useEffect(() => {
         if (intent === null) return;
@@ -14937,11 +14996,16 @@
         if (id === null) return;
         try {
           const next = await api.getImageJob(id);
+          const previous = loadedDrafts.current;
+          const force = previous.id !== id;
+          const settings = { ...(next.settings ?? {}) };
+          const keying = { ...(next.keying ?? {}) };
+          loadedDrafts.current = { id, prompt: next.prompt ?? "", suffix: next.suffix ?? "", settings, keying };
           setJob(next);
-          setPromptDraft(next.prompt ?? "");
-          setSuffixDraft(next.suffix ?? "");
-          setSettingsDraft({ ...(next.settings ?? {}) });
-          setKeyingDraft({ ...(next.keying ?? {}) });
+          setPromptDraft((current) => mergeDrafts(current, previous.prompt, next.prompt ?? "", force));
+          setSuffixDraft((current) => mergeDrafts(current, previous.suffix, next.suffix ?? "", force));
+          setSettingsDraft((current) => mergeDrafts(current, previous.settings, settings, force));
+          setKeyingDraft((current) => mergeDrafts(current, previous.keying, keying, force));
         } catch (error) {
           setNotice({ kind: "error", text: msg(error) });
         }
@@ -15304,6 +15368,13 @@
       const tasks = usePendingTasks();
       // 深链接：切到某一个序列帧任务。
       const intent = useStudioIntent();
+      /**
+       * 上一次从宿主读到的草稿（连同任务 id）。
+       *
+       * 视频 / 抽帧 / 合成在跑时这里每 5 秒 `load()` 一次；无条件覆盖草稿的话，
+       * 用户正在改提示词 / 时长时会被打回原形。判定见 `mergeDrafts`。
+       */
+      const loadedDrafts = React.useRef({ id: null, prompt: "", suffix: "", settings: {}, keying: {} });
 
       React.useEffect(() => {
         if (intent === null) return;
@@ -15344,11 +15415,16 @@
         if (id === null) return;
         try {
           const next = await api.getSequenceJob(id);
+          const previous = loadedDrafts.current;
+          const force = previous.id !== id;
+          const settings = { ...(next.settings ?? {}) };
+          const keying = { ...(next.keying ?? {}) };
+          loadedDrafts.current = { id, prompt: next.prompt ?? "", suffix: next.suffix ?? "", settings, keying };
           setJob(next);
-          setPromptDraft(next.prompt ?? "");
-          setSuffixDraft(next.suffix ?? "");
-          setSettingsDraft({ ...(next.settings ?? {}) });
-          setKeyingDraft({ ...(next.keying ?? {}) });
+          setPromptDraft((current) => mergeDrafts(current, previous.prompt, next.prompt ?? "", force));
+          setSuffixDraft((current) => mergeDrafts(current, previous.suffix, next.suffix ?? "", force));
+          setSettingsDraft((current) => mergeDrafts(current, previous.settings, settings, force));
+          setKeyingDraft((current) => mergeDrafts(current, previous.keying, keying, force));
         } catch (error) {
           setNotice({ kind: "error", text: msg(error) });
         }
@@ -18703,6 +18779,13 @@
       const globalConfig = useGlobalConfig(api);
       const tasks = usePendingTasks();
       const intent = useStudioIntent();
+      /**
+       * 上一次从宿主读到的草稿（连同任务 id）。
+       *
+       * 有阶段在跑时这里每 2.5 秒 `load()` 一次；无条件覆盖草稿的话，用户正在改
+       * 摊平提示词 / 网格参数时会被打回原形。判定见 `mergeDrafts`。
+       */
+      const loadedDrafts = React.useRef({ id: null, prompt: "", suffix: "", settings: {} });
 
       React.useEffect(() => {
         if (intent === null) return;
@@ -18754,10 +18837,16 @@
               setJob(null);
               return;
             }
+            const previous = loadedDrafts.current;
+            const force = previous.id !== id;
+            const prompt = next.prompts?.sheet ?? "";
+            const suffix = next.prompts?.suffix ?? "";
+            const settings = { ...(next.settings ?? {}) };
+            loadedDrafts.current = { id, prompt, suffix, settings };
             setJob(next);
-            setPromptDraft(next.prompts?.sheet ?? "");
-            setSuffixDraft(next.prompts?.suffix ?? "");
-            setSettingsDraft({ ...(next.settings ?? {}) });
+            setPromptDraft((current) => mergeDrafts(current, previous.prompt, prompt, force));
+            setSuffixDraft((current) => mergeDrafts(current, previous.suffix, suffix, force));
+            setSettingsDraft((current) => mergeDrafts(current, previous.settings, settings, force));
             setSelected((current) => (current !== null && (next.parts ?? []).some((part) => part.name === current) ? current : null));
           } catch (error) {
             setNotice({ kind: "error", text: msg(error) });
@@ -20799,7 +20888,7 @@
      * `mapgeom` / `mapdoc` 的真实现做黄金对照逐点比对 —— 界面复刻的那部分几何
      * 必须有守门的，否则「预览与导出错位」会以静默的方式回来。
      */
-    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, RigSemanticsPanel, MapModule, MusicModule, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection, attachSessionBridge, openAssetChat, openMusicChat, buildAssetRequestPrompt, buildMusicRequestPrompt, buildComposeRequestPrompt, deriveAssetName, deriveMusicName, ASSET_FRAMES_MIN, ASSET_FRAMES_MAX };
+    bundleModule.exports.__test = { StudioPanel, TileModule, ImageModule, SequenceModule, mergeDrafts, RigSemanticsPanel, MapModule, MusicModule, MAP_pointToCell, MAP_cellAnchor, MAP_cellTopLeft, MAP_lineCells, usePendingTasks, LoadingOverlay, MediaBox, BusyBtn, BusyBadge, NumField, ZoomableImage, CSS, subscribeIntent, parseIntents, openStudioIntent, OPEN_QUERY_KEY, StudioGlyph, StudioGlyphIcon, publishHiddenModules, useHiddenModules, visibleModulesOf, normalizeHiddenKeys, ConfigSection, attachSessionBridge, openAssetChat, openMusicChat, buildAssetRequestPrompt, buildMusicRequestPrompt, buildComposeRequestPrompt, deriveAssetName, deriveMusicName, ASSET_FRAMES_MIN, ASSET_FRAMES_MAX };
     return bundleModule.exports;
   }
 });
