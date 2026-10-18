@@ -2839,6 +2839,12 @@ running 落在下一次 `getProject` 里**：
 - 查询 404（文档：未完成 / 不属于当前账号）按「还没完成」处理，继续等到 `musicPollTimeoutMs`；
   超时标 `timeout` 而不是 failed，`refreshMusicJob` 可继续查。
 - 下载失败不判整首失败：歌曲保持 `succeeded`，记 `downloadError`，远程 URL 仍可播。
+- **下载音频必须按文件头校验，不能只信 `Content-Type`**：Suno 的音频 URL 偶尔会先返回一段
+  未完成 / 加密的临时对象，`Content-Type` 仍是 `audio/mpeg`；只信它就会把随机字节落成 `.mp3`，
+  界面表现为「有歌名、但第一首放不了」。`downloadToFile({requireAudio:true})` 用 `sniffBinary`
+  校验 mp3/m4a/wav/flac/ogg/aac；`ensureLocalSong` 对已存在但文件头无效的本地文件先删后重下
+  （一次重试，必要时加 cache-bust）；`musicSnapshot` 对坏文件返回 `file:null` 并回退到远端
+  `audioUrl`，刷新时再重新下载。`verify-music` 用「先返回伪音频」的 mock 钉住拒绝、回退与修复。
 - `activateMusic()` 每次 `apply` 复位 `disposed` / 任务表；`resumeMusicJobs()` 只**查询和下载**，
   绝不重新提交。`resumeGeneration` 是重启后的接续入口。
 
@@ -2895,7 +2901,7 @@ running 落在下一次 `getProject` 里**：
 
 ### 自检
 
-- `verify-music.mjs`：mock 谱乐 AI + 真 ffmpeg，82 项（端点映射、状态机、计费闸门、下载、
+- `verify-music.mjs`：mock 谱乐 AI + 真 ffmpeg，86 项（端点映射、状态机、计费闸门、下载、
   编辑/淡入淡出/loudnorm、波形、工具、导出 zip、路由 200/206/403/下载头、402/429/坏 JSON）。
 - `verify-music-score.mjs`：谱曲模式，46 项（方案归一化、假 Python 脚本、脚本报错/不产出 MIDI、
   MIDI 元数据、内置试听、逐版修改、波形、乐谱包、Suno mock 的音频上传/cover/confirm/regenerate/

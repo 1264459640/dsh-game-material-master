@@ -26,7 +26,7 @@
  */
 
 import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { loadConfig, musicJobsRoot } from "./config.js";
@@ -55,6 +55,7 @@ import {
   querySongs,
   requestWav,
   safeStem,
+  sniffBinary,
   stemInstruments,
   submitAudioConvert,
   submitGeneration,
@@ -645,15 +646,24 @@ function absUrl(origin: string, assetBase: string, relative?: string): string | 
 export async function musicSnapshot(job: MusicJob, origin = originForLinks()): Promise<Record<string, unknown>> {
   const config = await loadConfig();
   const assetBase = musicAssetBase(job.id);
-  const songs = job.songs.map((song) => ({
-    ...song,
-    file: song.localFile ?? null,
-    url: absUrl(origin, assetBase, song.localFile) ?? song.audioUrl ?? null,
-    remoteUrl: song.audioUrl ?? null,
-    coverUrl: absUrl(origin, assetBase, song.coverFile) ?? song.imageUrl ?? null,
-    wavUrl: absUrl(origin, assetBase, song.wavFile) ?? null,
-    lrcUrl: absUrl(origin, assetBase, song.lrcFile) ?? null
-  }));
+  const songs = job.songs.map((song) => {
+    // 不能只看 localFile 是否存在：CDN 偶尔会返回一段随机/加密内容，文件在、但播放器打不开。
+    // 文件头不是音频容器时回退到远端 audioUrl（用户至少能先听），并提示可以刷新重下。
+    const localOk = localSongUsable(job.id, song.localFile);
+    return {
+      ...song,
+      localFile: localOk ? song.localFile : null,
+      file: localOk ? song.localFile : null,
+      url: absUrl(origin, assetBase, localOk ? song.localFile : undefined) ?? song.audioUrl ?? null,
+      remoteUrl: song.audioUrl ?? null,
+      coverUrl: absUrl(origin, assetBase, song.coverFile) ?? song.imageUrl ?? null,
+      wavUrl: absUrl(origin, assetBase, song.wavFile) ?? null,
+      lrcUrl: absUrl(origin, assetBase, song.lrcFile) ?? null,
+      ...(song.localFile !== undefined && !localOk
+        ? { downloadError: "本地音频文件无效，已回退到远端播放；点「刷新」或编辑/导出时会自动重新下载。" }
+        : {})
+    };
+  });
   const versions = job.versions.map((version) => ({
     ...version,
     url: absUrl(origin, assetBase, version.file) ?? null
@@ -953,7 +963,7 @@ async function runGeneration(id: string, generationId: string, request: Generati
     const jobNow = await readMusicJob(id);
     const songs = jobNow?.songs.filter((song) => songIds.includes(song.id)) ?? [];
     // 先到先下载：即使另一首还没完成，用户也能先试听已完成的那首。
-    for (const song of songs.filter((entry) => entry.status === "succeeded" && entry.localFile === undefined)) {
+    for (const song of songs.filter((entry) => entry.status === "succeeded" && !localSongUsable(id, entry.localFile))) {
       await ensureLocalSong(id, song.id).catch((error) => {
         void patchMusicJob(id, (job) => {
           const entry = job.songs.find((item) => item.id === song.id);
@@ -965,7 +975,7 @@ async function runGeneration(id: string, generationId: string, request: Generati
     const failed = songs.filter((song) => song.status === "failed");
     if (songs.length > 0 && songs.every((song) => song.status === "succeeded" || song.status === "failed")) {
       for (const song of succeeded) {
-        if (song.localFile === undefined) {
+        if (!localSongUsable(id, song.localFile)) {
           try {
             await ensureLocalSong(id, song.id);
           } catch (error) {
@@ -1043,6 +1053,35 @@ function applySongPayload(song: MusicSong, payload: MusicSongPayload): void {
 
 // ── 下载 / 补查 / WAV / LRC ─────────────────────────────────────────────
 
+const PLAYABLE_AUDIO_EXTS = new Set(["mp3", "m4a", "wav", "flac", "ogg", "aac"]);
+
+/** 文件头是否是音频容器；只读前 16 字节，不依赖 ffprobe。 */
+function isPlayableAudioFile(file: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(file, "r");
+    const head = Buffer.alloc(16);
+    const read = readSync(fd, head, 0, 16, 0);
+    if (read < 4) return false;
+    const sniffed = sniffBinary(head.subarray(0, read));
+    return sniffed !== undefined && PLAYABLE_AUDIO_EXTS.has(sniffed.ext);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/** 本地文件可用（存在 + 文件头可识别）；localFile 为空 / 路径非法都算不可用。 */
+function localSongUsable(jobId: string, localFile: string | undefined): boolean {
+  if (typeof localFile !== "string" || localFile === "") return false;
+  try {
+    return isPlayableAudioFile(musicAssetPath(jobId, localFile));
+  } catch {
+    return false;
+  }
+}
+
 const downloading = new Map<string, Promise<MusicSong>>();
 
 /** 确保一首歌的音频已落盘；失败时抛错，调用方决定是记 downloadError 还是中断。 */
@@ -1056,14 +1095,55 @@ export async function ensureLocalSong(id: string, songId: string): Promise<Music
     if (job === undefined) throw new Error(`音乐任务不存在：${id}`);
     const song = job.songs.find((entry) => entry.id === songId);
     if (song === undefined) throw new Error(`歌曲不存在：${songId}`);
-    if (song.localFile !== undefined && existsSync(musicAssetPath(id, song.localFile))) return song;
+    if (song.localFile !== undefined) {
+      let existing: string | undefined;
+      try {
+        existing = musicAssetPath(id, song.localFile);
+      } catch {
+        existing = undefined;
+      }
+      if (existing !== undefined && existsSync(existing) && isPlayableAudioFile(existing)) return song;
+      // 旧文件在但头不对（或路径非法）：删掉重下，避免界面继续引用坏文件。
+      if (existing !== undefined) await rm(existing, { force: true }).catch(() => undefined);
+      await patchMusicJob(id, (current) => {
+        const entry = current.songs.find((item) => item.id === songId);
+        if (entry !== undefined) {
+          entry.localFile = undefined;
+          entry.downloadError = undefined;
+        }
+      });
+      song.localFile = undefined;
+    }
     if (typeof song.audioUrl !== "string" || song.audioUrl === "") throw new Error("这首歌没有可下载的音频地址");
     const config = await loadConfig();
     const api = apiConfigOf(config);
-    const result = await downloadToFile(song.audioUrl, join(musicJobDir(id), "songs"), api, {
+    const downloadAudio = (url: string) => downloadToFile(url, join(musicJobDir(id), "songs"), api, {
       stem: `song-${safeStem(songId)}`,
-      fallbackExt: "mp3"
+      fallbackExt: "mp3",
+      requireAudio: true
     });
+    let result: Awaited<ReturnType<typeof downloadToFile>> | undefined;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const retryUrl = attempt === 0 || song.audioUrl.includes("?")
+        ? song.audioUrl
+        : `${song.audioUrl}?_gmm_retry=${Date.now().toString(36)}`;
+      try {
+        const candidate = await downloadAudio(retryUrl);
+        if (isPlayableAudioFile(candidate.file)) {
+          result = candidate;
+          break;
+        }
+        await rm(candidate.file, { force: true }).catch(() => undefined);
+        lastError = new Error("下载到的音频不是可识别的音频容器");
+      } catch (error) {
+        lastError = error;
+      }
+      if (attempt === 0) await sleep(1000);
+    }
+    if (result === undefined) {
+      throw new Error(`音频下载失败，且重试后仍不是可播放的音频：${messageOf(lastError)}`);
+    }
     const relative = `songs/${result.file.split(/[\\/]/u).pop()}`;
     const cover = await downloadCover(id, song, api).catch(() => undefined);
     let duration = song.duration;
@@ -1125,7 +1205,7 @@ export async function refreshMusicJob(id: string): Promise<Record<string, unknow
     const latest = await readMusicJob(id);
     const songs = latest?.songs.filter((song) => generation.songIds.includes(song.id)) ?? [];
     if (songs.length > 0 && songs.every((song) => song.status === "succeeded" || song.status === "failed")) {
-      for (const song of songs.filter((entry) => entry.status === "succeeded" && entry.localFile === undefined)) {
+      for (const song of songs.filter((entry) => entry.status === "succeeded" && !localSongUsable(id, entry.localFile))) {
         await ensureLocalSong(id, song.id).catch(() => undefined);
       }
       await patchMusicJob(id, (current) => {
@@ -1148,7 +1228,7 @@ export async function refreshMusicJob(id: string): Promise<Record<string, unknow
 
   // 已成功但还没下载的歌曲：补下载。
   const latest = await readMusicJob(id);
-  for (const song of latest?.songs.filter((entry) => entry.status === "succeeded" && entry.localFile === undefined) ?? []) {
+  for (const song of latest?.songs.filter((entry) => entry.status === "succeeded" && !localSongUsable(id, entry.localFile)) ?? []) {
     await ensureLocalSong(id, song.id).catch((error) => {
       void patchMusicJob(id, (current) => {
         const entry = current.songs.find((item) => item.id === song.id);
@@ -1555,7 +1635,7 @@ async function resumeGeneration(id: string, generationId: string): Promise<void>
     const latest = await readMusicJob(id);
     const songs = latest?.songs.filter((song) => generation.songIds.includes(song.id)) ?? [];
     if (songs.length > 0 && songs.every((song) => song.status === "succeeded" || song.status === "failed")) {
-      for (const song of songs.filter((entry) => entry.status === "succeeded" && entry.localFile === undefined)) {
+      for (const song of songs.filter((entry) => entry.status === "succeeded" && !localSongUsable(id, entry.localFile))) {
         await ensureLocalSong(id, song.id).catch(() => undefined);
       }
       await patchMusicJob(id, (current) => {

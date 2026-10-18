@@ -920,6 +920,14 @@ export interface DownloadOptions {
   fallbackExt?: string;
   maxBytes?: number;
   timeoutMs?: number;
+  /**
+   * true = 只接受能按文件头识别的音频容器。
+   *
+   * ⚠️ Suno 的音频 URL 偶尔会先返回一段未完成 / 加密的临时对象，
+   * Content-Type 仍可能是 `audio/mpeg`；只信 Content-Type 会把随机字节当成
+   * `.mp3` 落盘，界面就会出现「有歌名但第一首放不了」。音频下载一律开这个。
+   */
+  requireAudio?: boolean;
 }
 
 /**
@@ -982,6 +990,15 @@ export async function downloadToFile(
     stream.destroy();
     await rm(tmp, { force: true }).catch(() => undefined);
     throw error instanceof MusicApiError ? error : new MusicApiError(`下载写入失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (options.requireAudio === true) {
+    const audioExts = new Set(["mp3", "m4a", "wav", "flac", "ogg", "aac"]);
+    if (sniffed === undefined || !audioExts.has(sniffed.ext)) {
+      await rm(tmp, { force: true }).catch(() => undefined);
+      throw new MusicApiError(
+        `下载到的内容不是音频（Content-Type: ${contentType || "unknown"}，文件头无法识别）；已丢弃，稍后可重试`
+      );
+    }
   }
   const byMime = EXT_BY_MIME[contentType];
   const byUrl = extFromUrl(url);

@@ -81,6 +81,12 @@ const mock = createServer((req, res) => {
       res.end(await readFile(toneMp3));
       return;
     }
+    if (url.pathname === "/audio/corrupt.mp3") {
+      const corrupt = Buffer.from("this is definitely not an audio container; the CDN returned an error page or encrypted bytes");
+      res.writeHead(200, { "Content-Type": "audio/mpeg", "Content-Length": String(corrupt.length) });
+      res.end(corrupt);
+      return;
+    }
     if (url.pathname === "/audio/cover.png") {
       res.writeHead(200, { "Content-Type": "image/png" });
       res.end(encodePng(Buffer.alloc(4 * 4 * 4, 255), 4, 4));
@@ -237,6 +243,16 @@ try {
   const bad = { baseUrl: base, apiKey: "bad", timeoutMs: 5000 };
   try { await API.musicHistory(bad); check("401 映射成 Key 无效", false); } catch (error) { check("401 映射成 Key 无效", error instanceof API.MusicApiError && error.status === 401 && /无效/.test(error.message), error.message); }
   const good = { baseUrl: base, apiKey: "sk-test", timeoutMs: 5000 };
+  const dlDir = join(HOME, "download-check");
+  let badAudio = "";
+  try {
+    await API.downloadToFile(`${base}/audio/corrupt.mp3`, dlDir, good, { stem: "bad", requireAudio: true });
+  } catch (error) {
+    badAudio = String(error.message ?? error);
+  }
+  check("伪音频（audio/mpeg 但文件头不对）被拒绝", /不是音频/u.test(badAudio), badAudio.slice(0, 160));
+  const goodDl = await API.downloadToFile(`${base}/audio/tone.wav`, dlDir, good, { stem: "good", requireAudio: true });
+  check("正常音频通过文件头校验", goodDl.ext === "wav" && (await stat(goodDl.file)).isFile());
   const test = await API.testMusicConnection(good);
   check("测试连接读到历史", test.ok === true && test.total === 7, JSON.stringify(test));
   const history = await API.musicHistory(good, { page: 2, size: 5 });
@@ -259,6 +275,17 @@ try {
   const blocked = await gw.runMusicGeneration({ jobId: made.id, engine: "suno", mode: "prompt", params: { prompt: "again" } });
   check("已有歌曲后再提交必须 regenerate:true", blocked.started === false && /regenerate/.test(blocked.reason ?? ""), blocked.reason);
   check("歌曲已下载文件可读", (await stat(join(HOME, "game-material-master", "music-jobs", made.id, settled.songs[0].file))).isFile());
+  // 模拟线上真实故障：文件在、但 CDN 返回的是随机字节。界面不能继续当可播放。
+  const brokenSongId = settled.songs[0].id;
+  const brokenPath = join(HOME, "game-material-master", "music-jobs", made.id, settled.songs[0].file);
+  await writeFile(brokenPath, Buffer.from("not audio at all"));
+  const brokenView = await gw.getMusicJob({ jobId: made.id });
+  const brokenSong = brokenView.songs.find((song) => song.id === brokenSongId);
+  check("坏本地文件不再被当成可播放", brokenSong?.file === null && /无效|回退/u.test(brokenSong?.downloadError ?? ""), JSON.stringify({ file: brokenSong?.file, error: brokenSong?.downloadError }).slice(0, 200));
+  const repairedView = await gw.refreshMusicJob({ jobId: made.id });
+  const repairedSong = repairedView.songs.find((song) => song.id === brokenSongId);
+  check("刷新后自动重下并恢复本地文件", typeof repairedSong?.file === "string" && repairedSong.file !== "" && repairedSong.downloadError === undefined, JSON.stringify({ file: repairedSong?.file, error: repairedSong?.downloadError }).slice(0, 200));
+  settled = repairedView;
 
   section("5) WAV / LRC / 波形");
   const wav = await gw.getMusicWav({ jobId: made.id, songId: settled.songs[0].id });
