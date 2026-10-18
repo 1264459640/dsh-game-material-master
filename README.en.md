@@ -12,26 +12,25 @@ third-party service.
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **🆕 What's new in 0.8.0**: a seventh module, [**Music generation & editing**](#-music-generation--editing-puyue-ai)
-> (Puyue AI generation plus local post-processing, and a **compose mode** that writes MIDI, previews and revises
-> it locally); **Generate with AI** in the map editor (it picks plain / whole-cell / quadrant itself and asks the
-> model for one seamless tile) plus **stamps** (one picture covering N x M cells); an optional **local ComfyUI**
-> backend for image-to-video; and full **DSH 0.2.1** support (`engines.dsh`, `--public-url` path prefix).
+> **🆕 What's new in 0.9.0**: an eighth module, [**Sound effects**](#-sound-effects-volcengine-seed-audio)
+> (Volcengine Seed-Audio: one prompt → sound effects / ambience / character voices, with an optional reference
+> image or audio; every run is billed; up to 120 seconds). The 0.8.0 **music generation / compose mode**,
+> map editor **Generate with AI / stamps**, **local ComfyUI** backend and **DSH 0.2.1** support remain.
 > See the [release notes in AGENTS.md](https://github.com/universe-st/dsh-game-material-master/blob/main/AGENTS.md#已发布版本).
 
 ![Game Material Master · workbench](https://raw.githubusercontent.com/universe-st/dsh-game-material-master/main/docs/images/gmm-00-workbench.png)
 
 > **Up and running in 30 seconds**: `dsh plugin --profile web add dsh-game-material-master` → restart DSH →
-> click "Game Material Master" in the sidebar → enter the two API keys in settings → create a project,
+> click "Game Material Master" in the sidebar → enter the API keys you need (images / video; sound effects use a separate speech key) → create a project,
 > upload your character sheet → click "Generate turn video" (the default path: the character rotates steadily
 > in place for one full turn, then the eight directions are cut out automatically; switch the method in
 > stage ① if you'd rather generate each direction separately).
 >
-> The sidebar entry also carries a **small chevron menu button**: click it to pop up the seven features and
+> The sidebar entry also carries a **small chevron menu button**: click it to pop up the eight features and
 > jump straight into the one you want. Features you do not use can be turned off in settings (see
 > "Feature management").
 
-All seven modules share the same "generate → review → re-run" workbench. Every stage can be **redone on its
+All eight modules share the same "generate → review → re-run" workbench. Every stage can be **redone on its
 own**, and every asset can be **approved item by item**. The "review mode" lets an agent approve each step
 and move on automatically, or stop at every step and wait for your go-ahead.
 
@@ -43,6 +42,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 | **⑤ Map tile generation** | Isometric tiles → assemble a whole map | A tile pack (PNGs) + map PNG + layout JSON |
 | **⑥ Map editor** (**fully local, zero cost**) | Pick a tileset → paint directly (rebuilt after AsLib's RPG Map Maker: one screen, icon-only, no jargon; three default layers — terrain / decor / buildings — that you can rename and reorder; a **marker layer**: one nameable marker per cell, drawn as a numbered circle; **Generate with AI** lives in the assets window: give a prompt, a name, a frame count, a method and a usage, and the plugin **opens a new chat** to generate it — it picks the tile type (plain / whole-cell / quadrant) from the prompt itself, asks the model for **one seamless tile** and assembles all 16 connections / 5 shape rows in code (so the tiles actually line up on the map). Animated assets use quadrant tiles (frames become variants, still auto-connecting) or plain tiles (flipbook), and each asset can be given its own playback speed in "Add asset" (otherwise it follows the global speed in Settings) plus a **clarity** mode for the 2K-to-32px downscale (area average / nearest / average + sharpen) , a **loop mode** (forward / reverse / ping-pong), and **stamps** (one picture stamping N x M cells at once - statues, murals, carpets - rotated with a right-click, green screen keyed to transparency, with per-cell walkability set at import), a **tile size** choice when creating a project (16 / 32 / 48 / 64 - pick 48 / 64 for sharper AI assets) and automatic trimming of the white border models like to add; whole-cell tiles are just 16 connection cases with no animation, so the dialog locks the frame count and the video model, then posts a link; click it and the image and its usage are already filled in on "Add asset") | PNG + save-file JSON (wrapping map, auto-tiling, animated tiles, markers); tick what to export and multiple files come as one ZIP download |
 | **⑦ Music generation & editing** (Puyue AI) | An inspiration prompt or full lyrics → a new chat that is **not attached to any project**; the agent there reads the built-in creation guide, expands the prompt, chooses Suno / Mureka / MiniMax / ACE-Step and a mode, generates → back in the UI, trim / adjust gain / fade / normalize → save versions and export. Also **Compose mode**: analyse the idea, present a style/key/section/instrumentation plan, write MIDI with scoremill, render a local preview, revise version by version, then optionally hand it to Suno | MP3 / WAV / M4A (multiple outputs can be zipped); compose mode also exports a score bundle (MIDI / preview / plan / compose.py). The original is kept and every edit or score version is new |
+| **⑧ Sound effects** (Volcengine Seed-Audio) | Describe the source / environment / intensity / duration → sound effects, ambience, UI sounds, creature roars or character voices; optionally 1 reference image or up to 3 reference audio clips (mutually exclusive); every run adds a take without overwriting earlier ones | WAV / MP3 / Ogg Opus; export one take or zip all. Up to 120 seconds per run; every generation is billed |
 | ~~④ Rigged animation~~ | Part extraction → assembly → skeletal animation → Spine / DragonBones atlas | **Experimental, not covered in this document** |
 
 > 💡 **Module ⑤ "Map tile generation" is built on one idea: geometry by code, content by AI.**
@@ -74,7 +74,7 @@ and move on automatically, or stop at every step and wait for your go-ahead.
 > their variants are the frames. You can also generate random terrain, a maze or a continent in one go.
 > **Not a single model call is made — so nothing is billed.**
 
-> 🏷️ **Creating anything in any of the seven modules asks for a name first**: the field is pre-filled with the
+> 🏷️ **Creating anything in any of the eight modules asks for a name first**: the field is pre-filled with the
 > default (just press Enter to keep it), and cancelling creates nothing. Map projects can also be renamed later.
 
 > ⚠️ **Module ④ "Rigged animation" is still experimental and not yet finished**: the quality of part extraction
@@ -305,9 +305,29 @@ Compose mode):
 Composing, previewing and exporting are fully local and **do not consume Puyue AI credits**; only the final
 Suno handoff is billed.
 
+## ⑧ Sound effects (Volcengine Seed-Audio)
+
+This module generates directly in the UI: describe the sound, choose a format and sample rate, then click
+Generate (billed).
+
+- **Write the prompt like a dubbing director's script**: source + environment + intensity/rhythm + approximate
+  duration, e.g. "metal impact in heavy rain, short and forceful, about 1 second, with a slight tail". Up to
+  **120 seconds** per run; the API has no duration parameter, so put the length in the prompt.
+- **Optional references**: one reference image (image-to-audio) or up to three reference audio clips (each at
+  most 30 seconds / 10MB), never both. Reference audio is addressed as `@音频1…@音频3` in the prompt.
+- **One take per run**: earlier takes are never overwritten; preview, export or zip them in the UI. Failures are
+  not retried automatically.
+- **Default model** `seed-audio-1.0`, default output WAV / 24000Hz (switchable to MP3 / Ogg Opus and
+  16k / 24k / 32k / 44.1k / 48k).
+- **The key is the speech console API key** (header `X-Api-Key`), **not** the Ark `ARK_API_KEY`; the
+  `seed-audio-1.0` model must be enabled in the speech console. "Test connection" really generates one very
+  short sound effect, which costs a small amount.
+- Billing uses the returned `original_duration`; retries are billed again, so confirm with the user first.
+- v1 does not edit audio locally (trim / fade / loudness); it only generates, previews, downloads and exports.
+
 ## Driving it from chat
 
-**Every feature of all seven modules** (including the experimental rigged animation and map tiles) **is available through
+**Every feature of all eight modules** (including the experimental rigged animation and map tiles) **is available through
 chat**. The plugin registers the whole pipeline as `game_material_*` tools, so an agent can drive it forward,
 wait, review, and also stop at each step for you to approve.
 
@@ -339,7 +359,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 The package is published to npm: [dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-(currently `0.8.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
+(currently `0.9.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
 
 **DSH version**: `>=0.2.0-rc.2 <0.3.0` (the `engines.dsh` field; since DSH 0.2.1 the plugin manager checks it first).
 When a Web deployment uses `--public-url https://host/prefix/`, deep links and asset URLs include that path prefix.
@@ -379,6 +399,7 @@ installation tree.
 | Default parameters | Cell width and height, frame count, pixel block size, keying threshold, and so on |
 | Local ComfyUI (image-to-video) | Routes image-to-video through a local **ComfyUI** instead of MiniMax; "Test connection" is read-only and free |
 | Music generation (Puyue AI) | Puyue AI API key, base URL, default music model and timeouts; "Test connection" reads one page of history and does not generate anything (no generation credits). Generation is billed by platform credits; the plugin does not collect payment |
+| Sound effects (Volcengine Seed-Audio) | Speech console API key (not the Ark key), base URL, default model `seed-audio-1.0`, default format / sample rate and timeout; "Test connection" really generates one very short sound effect (small charge) |
 | Feature management | Per-module switches: a disabled module disappears from the UI **and the agent cannot call it either** (see below) |
 
 Keys are written only to `<DSH_HOME>/game-material-master/config.json` on your machine, and the UI always
@@ -474,7 +495,7 @@ the host side (the host has no access to the locale service), so the browser hal
 along every time it reads a project or resets prompts.
 
 Scope note: **localization covers the browser half's UI text and the built-in default prompts** — the workbench
-title, the seven module tabs, every card's buttons and notice bars, dialogs, the settings page, the review
+title, the eight module tabs, every card's buttons and notice bars, dialogs, the settings page, the review
 controls, and the default prompts. Two categories remain in Chinese, because DSH currently only exposes the
 locale service to the browser half:
 
@@ -506,7 +527,8 @@ Everything in the UI that you can click, change or approve is bilingual.
 ├── rig-jobs/<id>/      rigged animation (experimental: sheet / parts / layout / rig / atlas)
 ├── tile-jobs/<id>/     map tiles (template / raw / cell / decor / map / export)
 ├── map-jobs/<id>/      map editor (project.json / map.json / tilesets / ai / preview / export)
-└── music-jobs/<id>/    music generation & editing (songs / versions / peaks / tools / out)
+├── music-jobs/<id>/    music generation & editing (songs / versions / peaks / tools / out)
+└── sfx-jobs/<id>/      sound effects (refs / takes / out)
 ```
 
 > Map tiles keep the **raw generation output** in `raw/`: after changing regularisation parameters such as

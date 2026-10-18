@@ -123,7 +123,7 @@ const textOf = (node) => {
 // ── 静态契约 ────────────────────────────────────────────────────────────
 section("1) 模块注册 / 深链接 / 设置页");
 check("浏览器模块表有 music", /function make_MODULES\(\)[\s\S]*?key: "music", title: T\("音乐生成编辑"\)/.test(source));
-check("OPEN_MODULES 放行 music", source.includes('const OPEN_MODULES = new Set(["sprite", "image", "sequence", "rig", "tile", "map", "music"])'));
+check("OPEN_MODULES 放行 music", source.includes('const OPEN_MODULES = new Set(["sprite", "image", "sequence", "rig", "tile", "map", "music", "sfx"])'));
 check("★ origin 上报失败会退避重试（宿主刚重启时不能永远停在 localhost）", source.includes("const send = (attempt)") && source.includes("attempt < 20"));
 check("解析 music 深链接", (() => {
   const intent = T.parseIntents("?dsh-gmm=1&module=music&job=a1234&stage=edit");

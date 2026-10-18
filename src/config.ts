@@ -11,6 +11,15 @@ import { join } from "node:path";
 import { DEFAULT_ROW_ORDER } from "./directions.js";
 import { STUDIO_MODULES } from "./links.js";
 import { MUSIC_DEFAULT_MODEL } from "./musicmodels.js";
+import {
+  SFX_DEFAULT_BASE_URL,
+  SFX_DEFAULT_FORMAT,
+  SFX_DEFAULT_MODEL,
+  SFX_DEFAULT_SAMPLE_RATE,
+  sfxFormatOrDefault,
+  sfxSampleRateOrDefault,
+  type SfxFormat
+} from "./sfxapi.js";
 
 /**
  * 上一版的默认行序（按生成依赖顺序）。方位语义修正后，默认改成罗盘顺时针；
@@ -77,6 +86,11 @@ export function tileJobsRoot(): string {
 /** 音乐生成编辑模块（模块七）的任务根。 */
 export function musicJobsRoot(): string {
   return join(dataRoot(), "music-jobs");
+}
+
+/** 音效生成模块（模块八）的任务根。 */
+export function sfxJobsRoot(): string {
+  return join(dataRoot(), "sfx-jobs");
 }
 
 /**
@@ -335,13 +349,30 @@ export interface Config {
   musicSoundfontPath: string;
 
   /**
+   * **音效生成（模块八，火山引擎 Seed-Audio）**。
+   *
+   * `sfxApiKey` 与其它凭据同一档：落盘明文，但**从不回传浏览器**。
+   * 注意它是**语音控制台**的 API Key（请求头 `X-Api-Key`），不是火山方舟的
+   * `ARK_API_KEY`——两者不能混用。
+   */
+  sfxProvider: "volcengine";
+  sfxApiKey: string;
+  /** 语音服务根地址（不含 `/api/v3/tts/create`）。 */
+  sfxBaseUrl: string;
+  /** 默认模型；短名 `seed-audio-1.0`，不是方舟的 `doubao-seed-audio-1-0`。 */
+  sfxModel: string;
+  sfxFormat: SfxFormat;
+  sfxSampleRate: number;
+  sfxTimeoutMs: number;
+
+  /**
    * **被隐藏的功能模块**（`links.ts` 的 `STUDIO_MODULES` 子集）。
    *
    * 「隐藏」是**双向**的：界面上不再出现这个模块的页签与入口，对话工具面也
    * 拒绝对它的任何调用（`game_material_call` / `status` / `review` … 一律报错）。
    * 只挡界面不挡工具等于没挡——模型照样能调 `runTileItems` 真实计费。
    *
-   * 空数组（默认）= 七个模块全部可见。全隐藏是允许的：面板会显示一句空态。
+   * 空数组（默认）= 八个模块全部可见。全隐藏是允许的：面板会显示一句空态。
    */
   hiddenModules: string[];
 
@@ -419,6 +450,14 @@ export const DEFAULT_CONFIG: Config = {
   musicPythonPath: "",
   musicFluidsynthPath: "",
   musicSoundfontPath: "",
+
+  sfxProvider: "volcengine",
+  sfxApiKey: "",
+  sfxBaseUrl: SFX_DEFAULT_BASE_URL,
+  sfxModel: SFX_DEFAULT_MODEL,
+  sfxFormat: SFX_DEFAULT_FORMAT as SfxFormat,
+  sfxSampleRate: SFX_DEFAULT_SAMPLE_RATE,
+  sfxTimeoutMs: 300000,
 
   cellWidth: 256,
   cellHeight: 256,
@@ -589,6 +628,15 @@ export function normalizeConfig(input: unknown): Config {
     musicFluidsynthPath: asString(raw.musicFluidsynthPath, DEFAULT_CONFIG.musicFluidsynthPath).trim(),
     musicSoundfontPath: asString(raw.musicSoundfontPath, DEFAULT_CONFIG.musicSoundfontPath).trim(),
 
+    sfxProvider: "volcengine",
+    sfxApiKey: asString(raw.sfxApiKey, DEFAULT_CONFIG.sfxApiKey),
+    // 允许本地 mock / 反代；完整端点 / /api/v3 的误填在 sfxapi 里再剥一次。
+    sfxBaseUrl: asString(raw.sfxBaseUrl, DEFAULT_CONFIG.sfxBaseUrl).replace(/\/+$/u, "") || DEFAULT_CONFIG.sfxBaseUrl,
+    sfxModel: asString(raw.sfxModel, DEFAULT_CONFIG.sfxModel).trim() || DEFAULT_CONFIG.sfxModel,
+    sfxFormat: sfxFormatOrDefault(raw.sfxFormat),
+    sfxSampleRate: sfxSampleRateOrDefault(raw.sfxSampleRate),
+    sfxTimeoutMs: asInt(raw.sfxTimeoutMs, DEFAULT_CONFIG.sfxTimeoutMs, 30000, 900000),
+
     cellWidth: asInt(raw.cellWidth, DEFAULT_CONFIG.cellWidth, 16, 2048),
     cellHeight: asInt(raw.cellHeight, DEFAULT_CONFIG.cellHeight, 16, 2048),
     frameCount: asInt(raw.frameCount, DEFAULT_CONFIG.frameCount, 1, 64),
@@ -639,7 +687,7 @@ export async function saveConfig(patch: Partial<Config>): Promise<Config> {
 }
 
 /** 回传给浏览器的脱敏视图：只说明 key 是否已配置，以及尾部 4 位。 */
-export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "comfyCookies" | "musicApiKey"> {
+export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "comfyCookies" | "musicApiKey" | "sfxApiKey"> {
   arkApiKeySet: boolean;
   arkApiKeyHint: string;
   minimaxApiKeySet: boolean;
@@ -650,10 +698,12 @@ export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" |
   comfyCookiesHint: string;
   musicApiKeySet: boolean;
   musicApiKeyHint: string;
+  sfxApiKeySet: boolean;
+  sfxApiKeyHint: string;
 }
 
 export function maskConfig(config: Config): ConfigView {
-  const { arkApiKey, minimaxApiKey, customApiKey, comfyCookies, musicApiKey, ...rest } = config;
+  const { arkApiKey, minimaxApiKey, customApiKey, comfyCookies, musicApiKey, sfxApiKey, ...rest } = config;
   const cookie = normalizeComfyCookies(comfyCookies);
   return {
     ...rest,
@@ -670,7 +720,9 @@ export function maskConfig(config: Config): ConfigView {
     comfyCookiesSet: cookie !== "",
     comfyCookiesHint: hintOf(cookie),
     musicApiKeySet: musicApiKey.trim() !== "",
-    musicApiKeyHint: hintOf(musicApiKey)
+    musicApiKeyHint: hintOf(musicApiKey),
+    sfxApiKeySet: sfxApiKey.trim() !== "",
+    sfxApiKeyHint: hintOf(sfxApiKey)
   };
 }
 

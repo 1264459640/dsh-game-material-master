@@ -605,7 +605,7 @@ async function main() {
   check("面板 id 与客户端一致", links.PANEL_KEY === "gameStudio", links.PANEL_KEY);
   check(
     "模块名与界面一致（按 STUDIO_MODULES 派生，不写死个数）",
-    links.STUDIO_MODULES.join(",") === "sprite,image,sequence,rig,tile,map,music",
+    links.STUDIO_MODULES.join(",") === "sprite,image,sequence,rig,tile,map,music,sfx",
     links.STUDIO_MODULES.join(",")
   );
 

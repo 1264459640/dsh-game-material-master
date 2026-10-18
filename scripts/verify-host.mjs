@@ -122,7 +122,8 @@ async function main() {
   // 本地 ComfyUI 视频后端新增 testComfy，133 → 134；
   // 「AI 生成素材」新增 composeMapAsset（整理一批帧 → 一张待确认的素材图），134 → 135。
   // 「原地重烘」新增 recomposeMapTileset（按现在的规则重烘一张素材，保留图块序号），135 → 136。
-  check("manifest 方法数为 163（新增远程方法时同步改这个数）", invocations.length === 163, `实际 ${invocations.length}`);
+  // 音效生成（模块八）新增 13 个方法（testSfx + 12 个 sfx 方法），163 → 176。
+  check("manifest 方法数为 176（新增远程方法时同步改这个数）", invocations.length === 176, `实际 ${invocations.length}`);
   const ids = new Set(invocations.map((i) => i.id));
   check("方法 id 唯一", ids.size === invocations.length);
   check("所有方法都声明在 gameStudio 服务下", invocations.every((i) => i.service === "gameStudio" && i.namespace === "gameStudio"));

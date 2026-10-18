@@ -23,6 +23,7 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 45°地图地块生成 | `tile` | **实验性**（45° 等距地块 → 拼成地图；AI 生成地块） |
 | 地图编辑器 | `map` | 正式（参照 AsLib 的 RPG Map Maker：一屏、纯图标、零术语；素材列表 + 新增（属性一次定死）、内置素材默认在列表且可删可恢复、地图环绕、自动连接、动画地块（翻页图）、一键生成；默认三层「地理层 / 装饰层 / 建筑层」且图层可改名换序；**标记层**（每格一个标记、可命名、地图上画成圆圈里的数字、编号连续删了重排）；导出是「内容多选 → 一个「导出」按钮 → 一个 zip 下载 / 另存为」；**全本地零计费**） |
 | 音乐生成编辑 | `music` | 正式（谱乐 AI：灵感/歌词 → 不挂靠项目的新对话 → agent 读内置指南、选引擎/模式生成 → 回界面裁剪/音量/淡入淡出/标准化/导出；**生成按平台积分计费**。另有**谱曲模式**：对话里先给方案 → scoremill 本地写 MIDI → 宿主渲染试听 → 逐版修改 → 可选交 Suno；**谱曲/试听/导出本地免费**） |
+| 音效生成 | `sfx` | 正式（火山引擎豆包语音 **Seed-Audio**：一句话描述 → 音效 / 环境音 / UI 声 / 生物吼叫 / 角色配音；可带 1 张参考图或最多 3 条参考音频（互斥）；每次生成一条 take、永不覆盖；单次 ≤120 秒；**每次生成真实计费**。界面上直接生成，不派给对话；工具面同样可调） |
 
 生图后端是可切换的：默认火山方舟 Seedream，也可以换成用户自己的服务
 （OpenAI 兼容 / ComfyUI / Stable Diffusion WebUI 三种协议；
@@ -63,6 +64,14 @@ DSH 插件「游戏素材大师」：从一张角色设定图出发批量产出�
 | 音乐谱曲模式：**Suno 不接受 MIDI 原文件，但接受音频** | `submitMusicScoreToSuno` 先把这一版试听音频 `POST /v1/suno/audio/upload`（multipart，标准上传免费）拿参考 song id，再走 `POST /v1/suno/generate/cover`；判定版权时返回 `needsCopyrightConsent`，用户确认后传 `copyrightAudio:true` 走付费通道。强制 `confirm:true`；已有歌曲必须 `regenerate:true`；结果不会逐音一致。**绝不自动提交**（真实计费） |
 | 音乐谱曲模式：**方案先落盘再谱曲** | `runMusicScore` 要求 `scorePlan`（或内联 `plan`）；manual 模式在方案后停下等确认。方案字段（含 `structure` / `instrumentation` 嵌套）必须逐个写进 `wire.ts`，否则 typert 静默丢键 |
 | 音乐模块：创作指南来源要保留 **CC0-1.0** 致谢 | `src/musicguide.ts` 头部、README 中英文、设置页文案三处都写；原仓库 `bitwize-music-studio/claude-ai-music-skills`，只吸收方法论、不搬运原文 |
+| 音效模块：**Key 是语音控制台的凭据**，不进 `directKeys` | `sfxApiKey` 与 `arkApiKey` / `musicApiKey` 同一档：`saveConfig` 函数体里 trim 后写入、`maskConfig` 只回 `sfxApiKeySet` / hint。它**不是** `ARK_API_KEY`；填错时 401 提示必须点明这一点 |
+| 音效模块：**模型短名与端点别写错** | `POST {sfxBaseUrl}/api/v3/tts/create`，Header 只有 `Content-Type` / `X-Api-Key` / `X-Api-Request-Id`；`model` 是 `seed-audio-1.0`（不是方舟的 `doubao-seed-audio-1-0`），**不发** `X-Api-Resource-Id`。`verify-sfx.mjs` 逐条断言 |
+| 音效模块：**响应必须按文件头校验音频** | `audio` base64 与 2 小时临时 `url` 两种返回都要认；`Content-Type` 不可信，用 `musicapi.sniffBinary` 校验后才落盘，否则会把错误页 / 未完成对象写成 `.mp3` |
+| 音效模块：**每次生成真实计费**，一次请求 = 一条 take | `runSfxGeneration` 做并发闸门；失败**不自动重试**；取消只停本地请求，远端可能仍会完成并计费。`testSfx` 也会真实生成一条极短音效，设置页按钮必须写明 |
+| 音效模块：**参考图与参考音频互斥** | 参考图最多 1 张；参考音频最多 3 条、每条 ≤30 秒 / ≤10MB；`uploadSfxRef` 与 `buildSfxBody` 两处都要校验。音频参考在提示词里按 `@音频1…@音频3` 引用 |
+| 音效模块：后台任务表 **`activateSfx()` 每次 apply 都要复位**，`resumeSfxJobs()` 把残留 running 标失败 | 与 `pipeline` / `seqgen` / `riggen` / `musicgen` 同一个坑。同步接口没有远端 taskId 可续查，重启后只能标失败并提示「可能已计费」 |
+| 音效模块：**静态资源 scope 四处 + MIME** | `AssetScope` 加 `sfx-assets`、`resolveAssetTarget` 分支、`SCOPES` 数组、`SERVABLE_SFX_DIRS`（唯一真源在 `sfxgen.ts`）四处同步；子目录 `refs` / `takes` / `out` 少一个就是 403 |
+| 音效模块：**界面轮询不许覆盖草稿** | 生成中每 2.5 秒拉一次 `getSfxJob`；提示词与参数走 `mergeDrafts()`，只有「草稿 === 上次宿主值」才跟随更新，切任务才 `force`。`verify-sfx-client.mjs` 有静态契约 |
 | 新增产物子目录时，`SERVABLE_DIRS`（`src/index.ts`）必须同步加一条 | 静态资源路由按**第一段路径**比对白名单，漏掉就 403。界面只表现为「图裂了」、不报错——转圈截帧的 `turn/` 就踩过。模块六的子目录白名单**唯一真源是 `mapgen.SERVABLE_MAP_DIRS`**（`index.ts` 的资源路由直接引用它，别再各写一份）；scope 级那三处（`AssetScope` 类型 / `resolveAssetTarget` 分支 / `SCOPES` 数组）改 scope 时要同步。`verify-map-gateway.mjs` 会真调一遍路由（含 `ai/` 的 200 与未列入目录的 403） |
 | 模块六：**客户端只能执行宿主下发的绘制计划**，不许自己算变体 / 形状 / chunk / 坐标变换 | 界面里唯一允许复刻的是 `MAP_pointToCell` / `MAP_cellAnchor` / `MAP_cellTopLeft` / `MAP_lineCells` 四个坐标函数（命中测试必需），且有黄金对照盯着；**连「哪些 chunk 可见」都由宿主算**（`mapPlan({view})` 回 `visibleKeys`）。多写一套口径就是旧模块「预览好看、导出位移」的老路，`verify-map-client.mjs` 会扫源码拦 |
 | 模块六：**环绕（wrap）是默认行为**，凡涉及「邻居」的地方都必须先取模 | 网格、命中测试、绘制范围、脏块、自动连接的邻域判断都要 wrap。漏掉一处的表现是「接缝处形状不对 / 撤销后画面花掉」，只在贴边时看得出来 —— `verify-map.mjs` 里有「画第 0 行必须连带弄脏最后一行」这条断言，且配了非环绕的反向验证 |
@@ -95,7 +104,7 @@ npm run typecheck    # 只做类型检查
 
 ```bash
 node scripts/verify-host.mjs       # 宿主全链路（387 项）
-node scripts/verify-client.mjs     # 浏览器半区契约（363 项）
+node scripts/verify-client.mjs     # 浏览器半区契约（364 项）
 node scripts/verify-tools.mjs      # 对话调用面（179 项）
 node scripts/verify-pipeline.mjs   # 抽帧 / 抠像 / 合成（40 项）
 node scripts/verify-feedback.mjs   # 浏览器半区真渲染（212 项，含功能管理、侧栏菜单、生图后端设置页、语义保存错误与草稿合并）
@@ -106,6 +115,9 @@ node scripts/verify-music.mjs      # 音乐生成编辑：mock 谱乐 AI 的生�
 node scripts/verify-music-score.mjs   # 谱曲模式：方案 / 假 Python / 内置试听 / 乐谱包 / Suno 上传+cover mock（46 项，纯本地）
 node scripts/verify-music-gateway.mjs  # 音乐走真实网关：wire schema 不丢键、工具面、深链接、隐藏模块、谱曲字段（51 项）
 node scripts/verify-music-client.mjs   # 音乐界面真渲染 + 新对话桥 + 谱曲卡 + 静态契约（66 项）
+node scripts/verify-sfx.mjs         # 音效生成：mock 火山引擎语音的请求/返回/错误/参考/导出/路由（54 项，纯本地）
+node scripts/verify-sfx-gateway.mjs # 音效走真实网关：wire schema 不丢键、工具面、深链接、隐藏模块、配置字段（39 项）
+node scripts/verify-sfx-client.mjs  # 音效界面真渲染：新建卡 / 任务卡 / 参考 / takes / 生成 / 遮罩 / 静态契约（28 项）
 node scripts/verify-rig-runtime.mjs  # 骨骼改动：官方 Spine 4.2 实际加载/IK/Path/FFD/顶点求值（开发依赖）
 node scripts/verify-tile.mjs       # 地图地块几何内核（147 项，含反向验证）
 node scripts/verify-tile-pipeline.mjs  # 地图地块数据层与流水线（115 项；⚠️ 需要先跑过 e2e-tile-live 生成过地块，否则会在拼图阶段直接抛）
@@ -180,6 +192,23 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 | `0.6.0` | 2026-10-15 08:50 | **模块六「地图编辑器」推倒重做**（`feat(map)`，实验性，**全本地零计费**）：参照 [AsPJT/AsLib](https://github.com/AsPJT/AsLib/tree/master) 的 **RPG Map Maker** 改成**一屏、纯图标、零术语**（左侧素材调色板 + 12 个图标按钮，右侧画布，选一张素材图就能开画）；素材形态（RPG Maker A2 拼块 / 整格 16 块 / 普通图块）由尺寸**自动识别**；**地图四周环绕**（相机 / 命中 / 绘制范围 / 脏块 / 邻域判断全部取模）；一格的 A2 自动连接由宿主展开成 **4 条象限 op**（客户端仍只 `drawImage`）；**动画地块**走 op 上的 `cycle` + 全局帧号；自带**程序化生成的内置素材**（4 张 A2 + 1 张道具，水有 2 帧动画；AsLib 的 pipo 素材是第三方版权，不打包）；新增**一键生成**（随机铺满 / 迷宫 / 大陆，同种子逐字节可复现）；编辑协议新增 **`dropKeys`**（界面把缓存 chunk key 报上来，宿主只回真正失效的那几个），`mapPlan` 改成按视口查询（`view` + `have`）；「**翻页图**」给自己的普通素材开逐行动画；**导出窗口按正常操作逻辑重做**（内容三只复选框多选 / 只有一个「导出」/ 多产物自动打一个 `<地图名>.zip`，`src/zip.ts` 手写且时间戳写死所以可复现 / 卡片写出本机绝对路径、「另存为…」走浏览器原生保存框）；**删除**：2:1 等距、多地图、图层高度 / 不透明度 / 类型 / 锁定、地形族与掩码编辑器、掩码覆盖率、Tiled `.tmj` `.tsj` 导出、带图例的自有 JSON、切片 contact sheet（`map-jobs/<id>/maps/` 目录消失，单张地图直接落 `map.json`）；wire 方法删 4 个（`saveMapFamilies` / `createMapDoc` / `deleteMapDoc` / `duplicateMapDoc`）、加 2 个（`runMapGenerate` / `importSampleTileset`）；自检脚本同步重写：`verify-map` / `-pipeline` / `-gateway` / `-client` 四件 + `e2e-map.mjs`。⚠️ 改完必须重启 DSH（宿主半区）。（`0.5.0` 从未发布，其模块六实现已被本次重做整体取代） |
 | `0.7.0` | 2026-10-16 08:27 | **生图后端可选自定义服务**（`feat(image)`）：设置页新增「生图后端」，默认火山方舟 Seedream，也可换成用户自己的服务，协议三选一（**OpenAI 兼容** / **ComfyUI** / **Stable Diffusion WebUI**）；新增 `src/imageprovider.ts`（唯一分发层 `generateImageWithProvider`，模块里自己判 `imageProvider` 会被自检拦）与 `src/customimage.ts`（三协议各自发请求：OpenAI 的 `/images/generations`、带参考图先走 `/images/edits` 且端点不存在时退回 `image` 字段；SD WebUI 的 `txt2img` / `img2img` 与 `user:pass` 走 HTTP Basic；ComfyUI 的上传参考图 → `/prompt` → 轮询 `/history` → `/view`，工作流按 **JSON 树**替换占位符、没写 `{{image}}` 时自动改 `LoadImage` 节点）；配置项 `imageProvider` / `customProtocol` / `customBaseUrl` / `customApiKey`（脱敏回传）/ `customModel` / `customSize` / 负面提示词 / 步数 / CFG / 采样器 / 重绘强度 / 种子 / 超时 / ComfyUI 工作流；设置页 ark 与 custom 两组同时渲染（没配火山方舟 Key 也能先配本地服务并点「测试连接」），新增远程方法 `testCustomImage`；新增自检 `scripts/verify-custom-image.mjs`（68 项，起本地假服务端把三种协议都模拟出来，离线零计费）。**模块六「地图编辑器」转正**（全本地零计费，几何与导出都有像素级自检兜底）：去掉页签角标、进入弹窗与模块内常驻提示条，`verify-map-client.mjs` 反过来逐条钉住这三处不能出现、并断言模块⑤仍带实验性标记。**生成视频的两处都能自选本地视频**（`feat(sprite)`：阶段①转圈视频与阶段②八方向行走视频，导入产物与远端生成只差 `origin` / `originalName` 两个字段，阶段③④一行不用改；容器按**文件头**识别、上限 100MB；导入时作废该槽位已有的下游产物并**摘掉在跑的远端 `taskId`**）；新增 `exportImages`（八方向图 / 候选帧与条带 / 抠像帧 / 整图打成 zip 落 `out/`），界面上每张产物都有单独「保存」、候选帧另有「保存全部图片（zip）」；对话面 `game_material_upload` 新增 `kind=video` + `key`。**模块六：图层可改名换序 + 标记层**（`feat(map)`：默认三层「地理层 / 装饰层 / 建筑层」，图层卡里就地改名 / ↑↓ 换序 / 删层；`MapDoc.markers` 每格一个可命名标记，不进 `layer.data`，op 四态（add / remove / move / rename）走同一条 `applyMapOps`，画成圆圈里的数字、编号连续删了自动重排，导出 `map.json` 加 `markers` 且格式升到 `dsh-gem-map@3`）；`fix(mapgeom)` 视口比地图大时不画最后一列 / 最后一行。自检项数：host 367 / client 352 / tools 153 / feedback 203 / map 123 / map-pipeline 274 / map-gateway 160 / map-client 263。⚠️ 改到了宿主半区：要让设置页显示新的生图后端分组，必须重启 DSH。 |
 | `0.8.0` | 2026-10-17 15:00 | **新增第七个模块「音乐生成编辑」**（`feat(music)`，谱乐 AI：灵感/歌词 → 不挂靠项目的新对话 → 四引擎生成 → 回界面裁剪 / 音量 / 淡入淡出 / loudnorm / 版本 / 导出；另有**谱曲模式**：方案 → scoremill 本地写 MIDI → 试听 → 逐版修改 → 可选交 Suno，谱曲本地免费）；**地图编辑器「AI 生成素材」**（自动判形态、只画一块无缝砖、播放速度 / 清晰度 / 循环方式 / 自动裁边 / 整图多格印花）；**图生视频可选本地 ComfyUI**；**DSH 0.2.1 适配**（`engines.dsh`、`--public-url`）。自检项数：host 387 / client 353 / tools 179 / feedback 203 / music 86 / music-score 46 / music-gateway 51 / music-client 66 / map 238 / map-pipeline 416 / map-gateway 216 / map-client 457。详见下方「0.8.0 发布说明」。 |
+| `0.9.0` | 2026-10-18 10:11 | **新增第八个模块「音效生成」**（`feat(sfx)`，火山引擎豆包语音 **Seed-Audio**：一句话描述 → 音效 / 环境音 / UI 声 / 生物吼叫 / 角色配音；可带 1 张参考图或最多 3 条参考音频（互斥）；每次生成一条 take、永不覆盖；单次 ≤120 秒；每次生成真实计费；界面直接生成、工具面可调）。新增 `src/sfxapi.ts` / `src/sfxgen.ts`、配置项 `sfx*`、wire 13 个方法（163 → **176**）、`sfx-assets` 路由与独立导出；新增自检 `verify-sfx` 54 / `verify-sfx-gateway` 39 / `verify-sfx-client` 28。⚠️ 宿主半区改动，需重启 DSH。 |
+
+### 0.9.0 发布说明（2026-10-18）
+
+`package.json` 是 `0.9.0`。相对 0.8.0：
+
+- **新增第八个模块「音效生成」**（`feat(sfx)`，火山引擎豆包语音 **Seed-Audio**）：界面直接生成 /
+  工具面可调；一句话描述 → 音效 / 环境音 / UI 声 / 生物吼叫 / 角色配音；可带 1 张参考图或最多 3 条
+  参考音频（互斥）；每次生成一条 take、永不覆盖；单次 ≤120 秒；每次生成真实计费。
+- 新增 `src/sfxapi.ts`（HTTP 客户端与参数校验）、`src/sfxgen.ts`（任务、参考、生成、导出、
+  `SERVABLE_SFX_DIRS`）；配置项 `sfxProvider` / `sfxApiKey`（凭据，不进 `directKeys`）/
+  `sfxBaseUrl` / `sfxModel` / `sfxFormat` / `sfxSampleRate` / `sfxTimeoutMs`。
+- wire 新增 13 个方法（`testSfx` + 12 个 sfx 方法），方法数 163 → **176**；工具面新增
+  `intake` 的 `sfx` 分支、`status.sfxJobs`、`review` / `approve` / `upload` 分支与系统提示词。
+- 新增自检 `verify-sfx`（54）/ `verify-sfx-gateway`（39）/ `verify-sfx-client`（28）；
+  `verify-client` 363 → **364**，其余回归不变。
+- ⚠️ 改到了宿主半区：**要重启 DSH**；浏览器半区刷新即可。
 
 下一次发布请**在表中追加一行**，写明版本、UTC 时间与内容；详细说明可以另起一节（格式参照下面的「0.8.0 发布说明」）。
 

@@ -33,8 +33,8 @@ export const OPEN_QUERY_KEY = "dsh-gmm";
 /** 工作台在 `main` 槽里的 key，也是侧栏 `sidebar.panellist` 的 id。 */
 export const PANEL_KEY = "gameStudio";
 
-/** 七个模块的 key。 */
-export const STUDIO_MODULES = ["sprite", "image", "sequence", "rig", "tile", "map", "music"] as const;
+/** 八个模块的 key。 */
+export const STUDIO_MODULES = ["sprite", "image", "sequence", "rig", "tile", "map", "music", "sfx"] as const;
 export type StudioModule = (typeof STUDIO_MODULES)[number];
 
 /** 八方向图的四个阶段。 */
@@ -42,6 +42,9 @@ export const SPRITE_STAGES = ["images", "videos", "frames", "sheet"] as const;
 
 /** 音乐生成编辑（模块七）的三个阶段：生成 / 编辑 / 导出。 */
 export const MUSIC_STAGES = ["compose", "generate", "edit", "export"] as const;
+
+/** 音效生成（模块八）的两个阶段：生成 / 导出。 */
+export const SFX_STAGES = ["generate", "export"] as const;
 
 /**
  * 地图地块的四个阶段。
@@ -67,9 +70,9 @@ export interface OpenIntent {
   module?: StudioModule;
   /** 模块一的项目 id（p…）。 */
   projectId?: string;
-  /** 模块二 / 三 / 四 / 五 / 六 / 七的任务 id（i… / s… / r… / t… / m… / a…）。 */
+  /** 模块二 / 三 / 四 / 五 / 六 / 七 / 八的任务 id（i… / s… / r… / t… / m… / a… / f…）。 */
   jobId?: string;
-  /** 阶段：八方向图 images/videos/frames/sheet；地图地块 generate/review/map/export；地图编辑器 assets/rules/paint/export；音乐 compose/generate/edit/export。 */
+  /** 阶段：八方向图 images/videos/frames/sheet；地图地块 generate/review/map/export；地图编辑器 assets/rules/paint/export；音乐 compose/generate/edit/export；音效 generate/export。 */
   stage?: string;
   /** 音乐谱曲模式：打开时选中哪一版（`score` 查询参数）。 */
   scoreId?: string;

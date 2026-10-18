@@ -89,7 +89,7 @@ const setReviewModeSchema = z.object({
    * ⚠️ 这个枚举漏一个模块，那条模块的「固定流程必须问清审核模式」就落不了地
    * （骨骼动画与地图地块都踩过：走到宿主才抛「未知模块」）。模块六（map）同理。
    */
-  module: z.enum(["sprite", "image", "sequence", "rig", "tile", "map", "music"]),
+  module: z.enum(["sprite", "image", "sequence", "rig", "tile", "map", "music", "sfx"]),
   reviewMode: z.enum(["auto", "manual"])
 });
 const runImageSchema = z.object({ projectId: z.string(), key: z.string(), prompt: z.string().optional() });
@@ -1021,6 +1021,57 @@ const exportMusicSchema = z.object({
   zip: z.boolean().optional()
 });
 
+// ── 音效生成（模块八，火山引擎 Seed-Audio）─────────────────────────────
+//
+// ⚠️ 这一组字段必须逐个写进 schema：typert 会静默丢掉 schema 外的键，
+// 界面表现就是「改了没反应 / 保存成功但没生效」，而且不报任何错。
+const sfxSettingsSchema = z.object({
+  format: z.enum(["mp3", "wav", "ogg_opus"]).optional(),
+  sampleRate: z.number().optional(),
+  speechRate: z.number().optional(),
+  loudnessRate: z.number().optional(),
+  pitchRate: z.number().optional(),
+  watermark: z.boolean().optional()
+});
+const sfxJobIdSchema = z.object({ jobId: z.string() });
+const createSfxJobSchema = z.object({
+  name: z.string().optional(),
+  prompt: z.string(),
+  settings: sfxSettingsSchema.optional(),
+  reviewMode: z.enum(["auto", "manual"]).optional()
+});
+const saveSfxJobSchema = z.object({
+  jobId: z.string(),
+  name: z.string().optional(),
+  prompt: z.string().optional(),
+  settings: sfxSettingsSchema.optional(),
+  reviewMode: z.enum(["auto", "manual"]).optional()
+});
+const uploadSfxRefSchema = z.object({
+  jobId: z.string(),
+  kind: z.enum(["image", "audio"]),
+  name: z.string().optional(),
+  /** 原始文件字节的 base64（不带 data: 前缀）。 */
+  data: z.string()
+});
+const removeSfxRefSchema = z.object({
+  jobId: z.string(),
+  kind: z.enum(["image", "audio"]),
+  /** 音频参考按文件删；省略 = 删全部音频参考。 */
+  file: z.string().optional()
+});
+const setSfxApprovedSchema = z.object({
+  jobId: z.string(),
+  /** `generate` / `export`；空 = 全部阶段。 */
+  stage: z.enum(["generate", "export"]).optional(),
+  approved: z.boolean()
+});
+const exportSfxSchema = z.object({
+  jobId: z.string(),
+  takeId: z.string().optional(),
+  zip: z.boolean().optional()
+});
+
 export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configViewSchema },
   { method: "saveConfig", payload: saveConfigSchema, result: configViewSchema },
   { method: "testArk", result: jsonObject },
@@ -1030,6 +1081,8 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "testComfy", result: jsonObject },
   // 谱乐 AI 连接自检（读一页历史，不生成、不扣生成积分）。
   { method: "testMusic", result: jsonObject },
+  // 火山引擎音效生成自检（★会真实生成一条极短音效，产生少量费用）。
+  { method: "testSfx", result: jsonObject },
   // 浏览器半区在挂载时上报 origin，供宿主拼深链接；不是用户可调用的功能。
   { method: "reportClientOrigin", payload: reportOriginSchema, result: okSchema, clientOnly: true },
 
@@ -1200,7 +1253,21 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "renderMusicEdit", payload: renderMusicEditSchema, result: jsonObject },
   { method: "saveMusicVersion", payload: saveMusicVersionSchema, result: jsonObject },
   { method: "deleteMusicVersion", payload: deleteMusicVersionSchema, result: okSchema },
-  { method: "exportMusic", payload: exportMusicSchema, result: jsonObject }
+  { method: "exportMusic", payload: exportMusicSchema, result: jsonObject },
+
+  // 音效生成（模块八）
+  { method: "listSfxJobs", result: z.object({ jobs: z.array(jsonObject) }) },
+  { method: "createSfxJob", payload: createSfxJobSchema, result: jsonObject },
+  { method: "getSfxJob", payload: sfxJobIdSchema, result: jsonObject },
+  { method: "saveSfxJob", payload: saveSfxJobSchema, result: jsonObject },
+  { method: "deleteSfxJob", payload: sfxJobIdSchema, result: okSchema },
+  { method: "uploadSfxRef", payload: uploadSfxRefSchema, result: jsonObject },
+  { method: "removeSfxRef", payload: removeSfxRefSchema, result: jsonObject },
+  { method: "runSfxGeneration", payload: sfxJobIdSchema, result: startedSchema },
+  { method: "cancelSfxGeneration", payload: sfxJobIdSchema, result: jsonObject },
+  { method: "setSfxApproved", payload: setSfxApprovedSchema, result: jsonObject },
+  { method: "revealSfxJob", payload: sfxJobIdSchema, result: okSchema },
+  { method: "exportSfx", payload: exportSfxSchema, result: jsonObject }
 ];
 
 
