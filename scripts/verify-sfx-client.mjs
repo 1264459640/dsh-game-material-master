@@ -135,6 +135,7 @@ check("新建卡 / 生成按钮 / 参考卡都有 data-testid", ["sfx-create", "
 check("远程方法都在客户端清单里", ["testSfx", "createSfxJob", "getSfxJob", "runSfxGeneration", "uploadSfxRef", "exportSfx"].every((method) => source.includes(`["${method}", true]`) || source.includes(`["${method}", false]`)));
 check("模块导出到 __test", typeof T.SfxModule === "function");
 check("轮询草稿用 mergeDrafts", /setPromptDraft\(\(current\) => mergeDrafts\(current, loadedDraft\.current\.prompt/.test(source));
+check("轮询同时刷新左侧任务列表", /setJobs\(\(current\) => \{[\s\S]{0,900}?takes\.length/.test(source));
 check("生成前先保存提示词与参数", /await api\.saveSfxJob\(\{ jobId, prompt: promptDraft, settings: settingsDraft \}\);\s*\n\s*const result = await api\.runSfxGeneration/.test(source));
 
 // ── 真渲染：新建卡 ──────────────────────────────────────────────────────

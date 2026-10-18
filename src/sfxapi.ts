@@ -364,7 +364,8 @@ export async function generateSfx(
       throw new SfxApiError(`生成超时（${Math.round(config.timeoutMs / 1000)} 秒）：音频生成较慢，可以调大超时后再试；失败重试会再计费，先问用户。`);
     }
     if (composed.aborted) throw new SfxApiError("生成已取消（远端可能仍会完成并计费）");
-    throw new SfxApiError(`请求火山引擎失败：${error instanceof Error ? error.message : String(error)}`);
+    const cause = error instanceof Error && error.cause instanceof Error ? `（${error.cause.message}）` : "";
+    throw new SfxApiError(`请求火山引擎失败：${error instanceof Error ? error.message : String(error)}${cause}`);
   }
 
   const logId = response.headers.get("x-tt-logid") ?? undefined;

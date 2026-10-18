@@ -12,7 +12,10 @@ third-party service.
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **🆕 What's new in 0.9.0**: an eighth module, [**Sound effects**](#-sound-effects-volcengine-seed-audio)
+> **🆕 0.9.1 fixes**: the sound-effect job list now refreshes after polling completes (no more "0 takes · ⏳"
+> stuck forever), and Volcengine network errors include the underlying cause instead of a bare `fetch failed`.
+>
+> **0.9.0 update**: an eighth module, [**Sound effects**](#-sound-effects-volcengine-seed-audio)
 > (Volcengine Seed-Audio: one prompt → sound effects / ambience / character voices, with an optional reference
 > image or audio; every run is billed; up to 120 seconds). The 0.8.0 **music generation / compose mode**,
 > map editor **Generate with AI / stamps**, **local ComfyUI** backend and **DSH 0.2.1** support remain.
@@ -359,7 +362,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 The package is published to npm: [dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-(currently `0.9.0`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
+(currently `0.9.1`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
 
 **DSH version**: `>=0.2.0-rc.2 <0.3.0` (the `engines.dsh` field; since DSH 0.2.1 the plugin manager checks it first).
 When a Web deployment uses `--public-url https://host/prefix/`, deep links and asset URLs include that path prefix.
