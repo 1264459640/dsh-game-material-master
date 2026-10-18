@@ -723,7 +723,7 @@ async function runSfxGeneration(id: string, refs: { image?: Buffer; audios: Buff
         ...(result.logId === undefined ? {} : { logId: result.logId })
       });
       current.stages.generate = { status: "done", approved: false, at: now() };
-      sfxLog(current, "info", `生成完成：${relative}（${result.bytes.length} 字节${duration === undefined ? "" : `，${duration.toFixed(2)} 秒`}）`);
+      sfxLog(current, "info", `生成完成：${relative}（${result.bytes.length} 字节${duration === undefined ? "" : `，${duration.toFixed(2)} 秒`}）${(result.attempts ?? 1) > 1 ? ` · 网络握手重试后成功（第 ${result.attempts} 次）` : ""}`);
     });
   } catch (error) {
     const message = messageOf(error);

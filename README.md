@@ -10,7 +10,10 @@
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **🆕 0.9.1 修复**：音效生成任务在轮询完成后会同步刷新左侧列表（不再停在「0 条 · ⏳」）；
+> **🆕 0.9.2 修复**：火山引擎调用遇到「TLS 握手尚未建立就断开」时会**自动重试最多 3 次**
+> （只重试握手前错误，已发出的请求不重试，避免重复计费）；失败日志会写明尝试次数。
+>
+> **0.9.1 修复**：音效生成任务在轮询完成后会同步刷新左侧列表（不再停在「0 条 · ⏳」）；
 > 火山引擎网络错误会带出底层原因，不再是只有一句 `fetch failed`。
 >
 > **0.9.0 更新**：新增第八个模块 [**音效生成**](#-音效生成火山引擎-seed-audio)（火山引擎 Seed-Audio：
@@ -299,7 +302,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 包已发布到 npm：[dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-（当前 `0.9.1`，`latest`）。本包没有运行时依赖，`dsh plugin add` 拉下来即可用。
+（当前 `0.9.2`，`latest`）。本包没有运行时依赖，`dsh plugin add` 拉下来即可用。
 
 **DSH 版本**：`>=0.2.0-rc.2 <0.3.0`（`package.json` 的 `engines.dsh`；DSH 0.2.1 起插件管理器优先按它判断兼容性）。
 Web 部署用 `--public-url https://host/prefix/` 时，深链接与产物地址会跟着补路径前缀。

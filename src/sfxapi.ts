@@ -99,6 +99,8 @@ export interface SfxResult {
   remoteUrl?: string;
   /** 服务端日志 id（排障时给用户）。 */
   logId?: string;
+  /** 实际尝试的 HTTP 次数；只在网络握手失败并自动重试时 > 1。 */
+  attempts?: number;
 }
 
 export class SfxApiError extends Error {
@@ -330,6 +332,27 @@ function decodeBase64Audio(value: string): Buffer {
 }
 
 /**
+ * 只对**还没完成 TLS 握手**的网络错误自动重试。
+ *
+ * 这类错误说明请求根本没发出去（例如 Clash / TUN 节点抖动时的
+ * `Client network socket disconnected before secure TLS connection was established`），
+ * 重试不会重复计费。已经在握手后断开的连接不重试——那有可能远端已经收到并计费。
+ */
+export function isRetryableHandshakeError(error: unknown): boolean {
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : undefined;
+  const text = [
+    error instanceof Error ? error.message : "",
+    cause?.message,
+    (cause as { code?: string } | undefined)?.code
+  ].filter(Boolean).join(" ");
+  return /before secure TLS connection was established|socket disconnected before secure TLS|UND_ERR_CONNECT_TIMEOUT|EAI_AGAIN|ENOTFOUND|ECONNREFUSED|connect ETIMEDOUT/iu.test(text);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * 调一次生成。`signal` 用于取消；超时由 `config.timeoutMs` 控制。
  *
  * 成功时一定返回**能按文件头识别的音频字节**；解码失败 / 不是音频容器都会抛错，
@@ -344,28 +367,42 @@ export async function generateSfx(
   if (apiKey === "") throw new SfxApiError(sfxBlocker({ sfxApiKey: "" }) ?? "尚未配置语音 API Key");
   const endpoint = sfxEndpoint(config.baseUrl);
   const body = buildSfxBody(request, config.model);
-  const requestId = randomUUID();
   const { signal: composed, timeout } = combinedSignal(config.timeoutMs, signal);
 
-  let response: Response;
-  try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": apiKey,
-        "X-Api-Request-Id": requestId
-      },
-      body: JSON.stringify(body),
-      signal: composed
-    });
-  } catch (error) {
-    if (timeout.aborted) {
-      throw new SfxApiError(`生成超时（${Math.round(config.timeoutMs / 1000)} 秒）：音频生成较慢，可以调大超时后再试；失败重试会再计费，先问用户。`);
+  let response: Response | undefined;
+  let attempts = 0;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    attempts += 1;
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": apiKey,
+          "X-Api-Request-Id": randomUUID()
+        },
+        body: JSON.stringify(body),
+        signal: composed
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+      if (timeout.aborted) {
+        throw new SfxApiError(`生成超时（${Math.round(config.timeoutMs / 1000)} 秒）：音频生成较慢，可以调大超时后再试；失败重试会再计费，先问用户。`);
+      }
+      if (composed.aborted) throw new SfxApiError("生成已取消（远端可能仍会完成并计费）");
+      if (!isRetryableHandshakeError(error) || attempt === 2) {
+        const cause = error instanceof Error && error.cause instanceof Error ? `（${error.cause.message}）` : "";
+        const retried = attempts > 1 ? `（网络握手失败，已尝试 ${attempts} 次）` : "";
+        throw new SfxApiError(`请求火山引擎失败${retried}：${error instanceof Error ? error.message : String(error)}${cause}`);
+      }
+      await sleep(350 * (attempt + 1));
     }
-    if (composed.aborted) throw new SfxApiError("生成已取消（远端可能仍会完成并计费）");
-    const cause = error instanceof Error && error.cause instanceof Error ? `（${error.cause.message}）` : "";
-    throw new SfxApiError(`请求火山引擎失败：${error instanceof Error ? error.message : String(error)}${cause}`);
+  }
+  if (response === undefined) {
+    const cause = lastError instanceof Error && lastError.cause instanceof Error ? `（${lastError.cause.message}）` : "";
+    throw new SfxApiError(`请求火山引擎失败（已尝试 ${attempts} 次）：${lastError instanceof Error ? lastError.message : String(lastError)}${cause}`);
   }
 
   const logId = response.headers.get("x-tt-logid") ?? undefined;
@@ -421,7 +458,8 @@ export async function generateSfx(
     duration: Number.isFinite(duration) && duration > 0 ? duration : undefined,
     originalDuration: Number.isFinite(originalDuration) && originalDuration > 0 ? originalDuration : undefined,
     remoteUrl,
-    logId
+    logId,
+    attempts
   };
 }
 
@@ -451,6 +489,7 @@ export async function testSfxConnection(config: SfxApiConfig): Promise<Record<st
     duration: result.duration ?? null,
     originalDuration: result.originalDuration ?? null,
     format: result.ext,
+    attempts: result.attempts ?? 1,
     message: `连接正常：返回 ${result.bytes.length} 字节音频${result.duration === undefined ? "" : `，${result.duration.toFixed(2)} 秒`}`
   };
 }

@@ -153,6 +153,12 @@ try {
   check("未配置时 sfxBlocker 有可读原因", (API.sfxBlocker({ sfxApiKey: "" }) ?? "").includes("语音"));
   check("已配置时 sfxBlocker 为 undefined", API.sfxBlocker({ sfxApiKey: "x" }) === undefined);
   check("normalizeSfxBaseUrl 会剥掉完整端点", API.normalizeSfxBaseUrl("https://openspeech.bytedance.com/api/v3/tts/create/") === "https://openspeech.bytedance.com");
+  check(
+    "只重试握手前网络错误",
+    API.isRetryableHandshakeError(Object.assign(new Error("fetch failed"), { cause: Object.assign(new Error("Client network socket disconnected before secure TLS connection was established"), { code: "ECONNRESET" }) })) === true &&
+      API.isRetryableHandshakeError(Object.assign(new Error("fetch failed"), { cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET" }) })) === false &&
+      API.isRetryableHandshakeError(new Error("生成已取消")) === false
+  );
 
   section("2) 建任务与参数校验");
   const job = await gw.createSfxJob({

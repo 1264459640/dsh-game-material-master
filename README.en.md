@@ -12,7 +12,11 @@ third-party service.
 [![npm](https://img.shields.io/npm/v/dsh-game-material-master?color=blue)](https://www.npmjs.com/package/dsh-game-material-master)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **🆕 0.9.1 fixes**: the sound-effect job list now refreshes after polling completes (no more "0 takes · ⏳"
+> **🆕 0.9.2 fix**: when Volcengine aborts before the TLS handshake completes, the plugin now retries up to
+> 3 times (handshake-only errors; requests that were already sent are not retried, so billing is not duplicated),
+> and the failure log states how many attempts were made.
+>
+> **0.9.1 fixes**: the sound-effect job list now refreshes after polling completes (no more "0 takes · ⏳"
 > stuck forever), and Volcengine network errors include the underlying cause instead of a bare `fetch failed`.
 >
 > **0.9.0 update**: an eighth module, [**Sound effects**](#-sound-effects-volcengine-seed-audio)
@@ -362,7 +366,7 @@ dsh plugin --profile web add /path/to/dsh-game-material-master
 ```
 
 The package is published to npm: [dsh-game-material-master](https://www.npmjs.com/package/dsh-game-material-master)
-(currently `0.9.1`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
+(currently `0.9.2`, `latest`). It has no runtime dependencies, so `dsh plugin add` is all you need.
 
 **DSH version**: `>=0.2.0-rc.2 <0.3.0` (the `engines.dsh` field; since DSH 0.2.1 the plugin manager checks it first).
 When a Web deployment uses `--public-url https://host/prefix/`, deep links and asset URLs include that path prefix.

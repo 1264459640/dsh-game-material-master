@@ -115,7 +115,7 @@ node scripts/verify-music.mjs      # 音乐生成编辑：mock 谱乐 AI 的生�
 node scripts/verify-music-score.mjs   # 谱曲模式：方案 / 假 Python / 内置试听 / 乐谱包 / Suno 上传+cover mock（46 项，纯本地）
 node scripts/verify-music-gateway.mjs  # 音乐走真实网关：wire schema 不丢键、工具面、深链接、隐藏模块、谱曲字段（51 项）
 node scripts/verify-music-client.mjs   # 音乐界面真渲染 + 新对话桥 + 谱曲卡 + 静态契约（66 项）
-node scripts/verify-sfx.mjs         # 音效生成：mock 火山引擎语音的请求/返回/错误/参考/导出/路由（54 项，纯本地）
+node scripts/verify-sfx.mjs         # 音效生成：mock 火山引擎语音的请求/返回/错误/参考/导出/路由（55 项，纯本地）
 node scripts/verify-sfx-gateway.mjs # 音效走真实网关：wire schema 不丢键、工具面、深链接、隐藏模块、配置字段（39 项）
 node scripts/verify-sfx-client.mjs  # 音效界面真渲染：新建卡 / 任务卡 / 参考 / takes / 生成 / 遮罩 / 静态契约（29 项）
 node scripts/verify-rig-runtime.mjs  # 骨骼改动：官方 Spine 4.2 实际加载/IK/Path/FFD/顶点求值（开发依赖）
@@ -194,6 +194,7 @@ Conventional Commits，中文描述：`feat(rig): …` / `docs: …` / `fix(spri
 | `0.8.0` | 2026-10-17 15:00 | **新增第七个模块「音乐生成编辑」**（`feat(music)`，谱乐 AI：灵感/歌词 → 不挂靠项目的新对话 → 四引擎生成 → 回界面裁剪 / 音量 / 淡入淡出 / loudnorm / 版本 / 导出；另有**谱曲模式**：方案 → scoremill 本地写 MIDI → 试听 → 逐版修改 → 可选交 Suno，谱曲本地免费）；**地图编辑器「AI 生成素材」**（自动判形态、只画一块无缝砖、播放速度 / 清晰度 / 循环方式 / 自动裁边 / 整图多格印花）；**图生视频可选本地 ComfyUI**；**DSH 0.2.1 适配**（`engines.dsh`、`--public-url`）。自检项数：host 387 / client 353 / tools 179 / feedback 203 / music 86 / music-score 46 / music-gateway 51 / music-client 66 / map 238 / map-pipeline 416 / map-gateway 216 / map-client 457。详见下方「0.8.0 发布说明」。 |
 | `0.9.0` | 2026-10-18 10:11 | **新增第八个模块「音效生成」**（`feat(sfx)`，火山引擎豆包语音 **Seed-Audio**：一句话描述 → 音效 / 环境音 / UI 声 / 生物吼叫 / 角色配音；可带 1 张参考图或最多 3 条参考音频（互斥）；每次生成一条 take、永不覆盖；单次 ≤120 秒；每次生成真实计费；界面直接生成、工具面可调）。新增 `src/sfxapi.ts` / `src/sfxgen.ts`、配置项 `sfx*`、wire 13 个方法（163 → **176**）、`sfx-assets` 路由与独立导出；新增自检 `verify-sfx` 54 / `verify-sfx-gateway` 39 / `verify-sfx-client` 28。⚠️ 宿主半区改动，需重启 DSH。 |
 | `0.9.1` | 2026-10-18 12:50 | **音效生成修复**（`fix(sfx)`）：轮询 `getSfxJob` 时同步刷新左侧任务列表（生成完成后不再停在「0 条 · ⏳」）；火山引擎 `fetch failed` 带上底层 `cause`（例如 TLS `ECONNRESET`），便于区分网络与鉴权问题。`verify-sfx-client` 28 → **29**。 |
+| `0.9.2` | 2026-10-18 13:11 | **音效生成网络重试**（`fix(sfx)`）：只对「TLS 握手尚未建立就断开」这类**请求还没发出**的错误自动重试最多 3 次（Clash / TUN 节点抖动常见）；已发出的请求不重试，避免重复计费。成功后日志写明重试次数；`verify-sfx` 54 → **55**。 |
 
 ### 0.9.0 发布说明（2026-10-18）
 
