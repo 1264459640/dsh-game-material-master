@@ -8,6 +8,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { cleanCustomVideoBaseUrl } from "./customvideo.js";
 import { DEFAULT_ROW_ORDER } from "./directions.js";
 import { STUDIO_MODULES } from "./links.js";
 import { MUSIC_DEFAULT_MODEL } from "./musicmodels.js";
@@ -129,6 +130,10 @@ export async function migrateLegacyDataRoot(): Promise<boolean> {
 export const IMAGE_PROVIDERS = ["ark", "custom"] as const;
 export type ImageProvider = (typeof IMAGE_PROVIDERS)[number];
 
+/** 视频后端服务。 */
+export const VIDEO_PROVIDERS = ["minimax", "comfy", "custom"] as const;
+export type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
+
 /** 自定义生图服务的协议。 */
 export const CUSTOM_PROTOCOLS = ["openai", "comfyui", "sdwebui"] as const;
 export type CustomProtocol = (typeof CUSTOM_PROTOCOLS)[number];
@@ -241,6 +246,15 @@ export interface Config {
   minimaxResolution: string;
   minimaxPromptOptimizer: boolean;
   minimaxTimeoutMs: number;
+
+  /** 图生视频后端类型：minimax / comfy / custom */
+  videoProvider: VideoProvider;
+  /** 自定义图生视频 API 地址（如 New API 根地址）。 */
+  customVideoBaseUrl: string;
+  customVideoApiKey: string;
+  /** 自定义视频模型名称（如 kling-v1, sora-2 等）。 */
+  customVideoModel: string;
+  customVideoTimeoutMs: number;
 
   /**
    * **视频改用本机 ComfyUI 生成**（免费、纯本地；默认关）。
@@ -427,6 +441,12 @@ export const DEFAULT_CONFIG: Config = {
   minimaxPromptOptimizer: true,
   minimaxTimeoutMs: 120000,
 
+  videoProvider: "minimax",
+  customVideoBaseUrl: "http://47.90.242.134:3002",
+  customVideoApiKey: "",
+  customVideoModel: "kling-v1",
+  customVideoTimeoutMs: 300000,
+
   comfyVideo: false,
   comfyBaseUrl: "http://127.0.0.1:8188",
   comfyCookies: "",
@@ -604,7 +624,17 @@ export function normalizeConfig(input: unknown): Config {
     minimaxPromptOptimizer: asBool(raw.minimaxPromptOptimizer, DEFAULT_CONFIG.minimaxPromptOptimizer),
     minimaxTimeoutMs: asInt(raw.minimaxTimeoutMs, DEFAULT_CONFIG.minimaxTimeoutMs, 10000, 900000),
 
-    comfyVideo: asBool(raw.comfyVideo, DEFAULT_CONFIG.comfyVideo),
+    videoProvider: raw.videoProvider === "custom" || raw.customVideo === true
+      ? "custom"
+      : raw.videoProvider === "comfy" || raw.comfyVideo === true
+        ? "comfy"
+        : "minimax",
+    customVideoBaseUrl: cleanCustomVideoBaseUrl(asString(raw.customVideoBaseUrl, DEFAULT_CONFIG.customVideoBaseUrl)),
+    customVideoApiKey: asString(raw.customVideoApiKey, DEFAULT_CONFIG.customVideoApiKey),
+    customVideoModel: asString(raw.customVideoModel, DEFAULT_CONFIG.customVideoModel).trim() || DEFAULT_CONFIG.customVideoModel,
+    customVideoTimeoutMs: asInt(raw.customVideoTimeoutMs, DEFAULT_CONFIG.customVideoTimeoutMs, 10000, 1800000),
+
+    comfyVideo: raw.videoProvider === "comfy" || raw.comfyVideo === true,
     comfyBaseUrl: normalizeComfyBaseUrl(asString(raw.comfyBaseUrl, DEFAULT_CONFIG.comfyBaseUrl)),
     comfyCookies: normalizeComfyCookies(asString(raw.comfyCookies, DEFAULT_CONFIG.comfyCookies)),
     comfyWorkflow,
@@ -687,13 +717,15 @@ export async function saveConfig(patch: Partial<Config>): Promise<Config> {
 }
 
 /** 回传给浏览器的脱敏视图：只说明 key 是否已配置，以及尾部 4 位。 */
-export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "comfyCookies" | "musicApiKey" | "sfxApiKey"> {
+export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" | "customApiKey" | "customVideoApiKey" | "comfyCookies" | "musicApiKey" | "sfxApiKey"> {
   arkApiKeySet: boolean;
   arkApiKeyHint: string;
   minimaxApiKeySet: boolean;
   minimaxApiKeyHint: string;
   customApiKeySet: boolean;
   customApiKeyHint: string;
+  customVideoApiKeySet: boolean;
+  customVideoApiKeyHint: string;
   comfyCookiesSet: boolean;
   comfyCookiesHint: string;
   musicApiKeySet: boolean;
@@ -703,7 +735,7 @@ export interface ConfigView extends Omit<Config, "arkApiKey" | "minimaxApiKey" |
 }
 
 export function maskConfig(config: Config): ConfigView {
-  const { arkApiKey, minimaxApiKey, customApiKey, comfyCookies, musicApiKey, sfxApiKey, ...rest } = config;
+  const { arkApiKey, minimaxApiKey, customApiKey, customVideoApiKey, comfyCookies, musicApiKey, sfxApiKey, ...rest } = config;
   const cookie = normalizeComfyCookies(comfyCookies);
   return {
     ...rest,
@@ -716,6 +748,8 @@ export function maskConfig(config: Config): ConfigView {
     minimaxApiKeyHint: hintOf(minimaxApiKey),
     customApiKeySet: customApiKey.trim() !== "",
     customApiKeyHint: hintOf(customApiKey),
+    customVideoApiKeySet: customVideoApiKey.trim() !== "",
+    customVideoApiKeyHint: hintOf(customVideoApiKey),
     // Cookie 也是凭据（反代鉴权），同样不回传明文：只说配没配、尾巴 4 位。
     comfyCookiesSet: cookie !== "",
     comfyCookiesHint: hintOf(cookie),

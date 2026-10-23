@@ -35,12 +35,12 @@ export type NodeStatus = "empty" | "running" | "ready" | "error";
 export type StageKey = "images" | "videos" | "frames" | "sheet";
 
 /**
- * 视频任务的执行后端：MiniMax 云服务，或本机 ComfyUI。
+ * 视频任务的执行后端：MiniMax 云服务、本机 ComfyUI、或自定义 API（New API / OpenAI 视频规范）。
  *
- * 节点的 `taskId` 在两个后端里都是字符串（MiniMax 是 task_id，ComfyUI 是 prompt_id），
+ * 节点的 `taskId` 在各后端里都是字符串（MiniMax 是 task_id，ComfyUI 是 prompt_id，自定义也是 task_id），
  * 单看 id 分不出是谁家的，所以要把后端一起记在节点上。
  */
-export type VideoBackend = "minimax" | "comfy";
+export type VideoBackend = "minimax" | "comfy" | "custom";
 
 /**
  * 阶段①「八方向绿幕图」的生成方式。
@@ -593,7 +593,7 @@ export function summarize(project: Project): ProjectSummary {
  * 一个不认识的字符串会让查询分派悄悄走到「按配置猜」那条路上。
  */
 function normalizeVideoBackend(raw: unknown): VideoBackend | undefined {
-  return raw === "comfy" || raw === "minimax" ? raw : undefined;
+  return raw === "comfy" || raw === "minimax" || raw === "custom" ? raw : undefined;
 }
 
 function normalizeProject(raw: any): Project {

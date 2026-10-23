@@ -29,6 +29,7 @@ import {
 } from "./directions.js";
 import { checkFfmpeg } from "./media.js";
 import { testArk } from "./ark.js";
+import { fetchCustomVideoModels, testCustomVideo } from "./customvideo.js";
 import { customImageBlocker, imageModelOf, imageProviderBlocker, imageProviderSummary, isCustomProvider, testCustomImage } from "./imageprovider.js";
 import {
   detectComfyBindings,
@@ -417,6 +418,11 @@ export class GameStudioGateway extends TypertRemoteService {
       "minimaxResolution",
       "minimaxPromptOptimizer",
       "minimaxTimeoutMs",
+      // 自定义图生视频后端（New API / OpenAI 视频规范）
+      "videoProvider",
+      "customVideoBaseUrl",
+      "customVideoModel",
+      "customVideoTimeoutMs",
       // 本地 ComfyUI 后端（videogen.ts 按 comfyVideo 分派）。
       "comfyVideo",
       "comfyBaseUrl",
@@ -476,6 +482,8 @@ export class GameStudioGateway extends TypertRemoteService {
       patch.minimaxApiKey = input.minimaxApiKey.trim();
     if (typeof input.customApiKey === "string")
       patch.customApiKey = input.customApiKey.trim();
+    if (typeof input.customVideoApiKey === "string")
+      patch.customVideoApiKey = input.customVideoApiKey.trim();
     // 音乐模块的 Key 与其它凭据同一套约定：不带 = 保持原值，带串 = 覆盖。
     if (typeof input.musicApiKey === "string")
       patch.musicApiKey = input.musicApiKey.trim();
@@ -488,6 +496,8 @@ export class GameStudioGateway extends TypertRemoteService {
       patch.minimaxApiKey = "";
     if (input.clearCustomApiKey === true)
       patch.customApiKey = "";
+    if (input.clearCustomVideoApiKey === true)
+      patch.customVideoApiKey = "";
     if (input.clearMusicApiKey === true)
       patch.musicApiKey = "";
     if (input.clearSfxApiKey === true)
@@ -593,6 +603,22 @@ export class GameStudioGateway extends TypertRemoteService {
       bindings,
       notes
     };
+  }
+  /** 【自定义图生视频】连接自检：测试拉取模型列表，不提交视频，零计费。 */
+  async testCustomVideo() {
+    const config = await loadConfig();
+    return testCustomVideo({
+      baseUrl: config.customVideoBaseUrl,
+      apiKey: config.customVideoApiKey,
+      timeoutMs: config.customVideoTimeoutMs
+    });
+  }
+  /** 【自定义图生视频】从 New API / OpenAI 兼容端点动态拉取可用模型列表。 */
+  async fetchCustomVideoModels(payload?: { baseUrl?: string; apiKey?: string }) {
+    const config = await loadConfig();
+    const baseUrl = payload?.baseUrl || config.customVideoBaseUrl;
+    const apiKey = payload?.apiKey !== undefined ? payload.apiKey : config.customVideoApiKey;
+    return fetchCustomVideoModels(baseUrl, apiKey);
   }
   /**
    * 【谱乐 AI】连接自检：读一页历史，不生成、不排队、不扣生成积分。

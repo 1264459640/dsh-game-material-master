@@ -17,6 +17,7 @@ const projectViewSchema = jsonObject;
 const projectListSchema = z.object({ projects: z.array(jsonObject) });
 
 const saveConfigSchema = z.record(z.string(), z.unknown());
+const fetchModelsSchema = z.object({ baseUrl: z.string().optional(), apiKey: z.string().optional() }).optional();
 
 const createProjectSchema = z.object({ name: z.string().optional() });
 const projectIdSchema = z.object({ projectId: z.string() });
@@ -1079,6 +1080,9 @@ export const METHODS: MethodSpec[] = [  { method: "getConfig", result: configVie
   { method: "testMinimax", result: jsonObject },
   // 本地 ComfyUI 后端自检（读 /system_stats + /queue，不排队生图）。
   { method: "testComfy", result: jsonObject },
+  // 自定义视频 API 自检与模型获取
+  { method: "testCustomVideo", result: jsonObject },
+  { method: "fetchCustomVideoModels", payload: fetchModelsSchema, result: z.array(z.string()) },
   // 谱乐 AI 连接自检（读一页历史，不生成、不扣生成积分）。
   { method: "testMusic", result: jsonObject },
   // 火山引擎音效生成自检（★会真实生成一条极短音效，产生少量费用）。

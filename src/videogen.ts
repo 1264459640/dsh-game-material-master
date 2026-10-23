@@ -27,6 +27,7 @@ import {
   uploadComfyImage,
   type ComfyInjectionInput
 } from "./comfy.js";
+import { cleanCustomVideoBaseUrl, queryCustomVideo, submitCustomVideo } from "./customvideo.js";
 import { downloadVideo, queryVideo, retrieveFile, submitVideo } from "./minimax.js";
 import type { VideoBackend } from "./store.js";
 
@@ -67,7 +68,9 @@ export interface VideoQueryResult {
 
 /** 当前配置用哪个后端。 */
 export function videoBackendOf(config: Config): VideoBackend {
-  return config.comfyVideo === true ? "comfy" : "minimax";
+  if (config.videoProvider === "custom") return "custom";
+  if (config.videoProvider === "comfy" || config.comfyVideo === true) return "comfy";
+  return "minimax";
 }
 
 /**
@@ -78,13 +81,20 @@ export function videoBackendOf(config: Config): VideoBackend {
  * 由请求本身报错（测试按钮负责提前发现）。
  */
 export function assertVideoBackendReady(config: Config): void {
-  if (videoBackendOf(config) === "comfy") return;
+  const backend = videoBackendOf(config);
+  if (backend === "comfy") return;
+  if (backend === "custom") {
+    if (config.customVideoApiKey.trim() === "") throw new Error("尚未配置自定义视频 API Key（设置 → 游戏素材大师）");
+    return;
+  }
   if (config.minimaxApiKey.trim() === "") throw new Error("尚未配置 MiniMax API Key");
 }
 
 /** 提交一个视频任务。返回的 taskId 与 backend 必须一起存进节点。 */
 export async function submitVideoTask(config: Config, request: VideoSubmitRequest): Promise<VideoSubmitResult> {
-  if (videoBackendOf(config) === "comfy") return submitViaComfy(config, request);
+  const backend = videoBackendOf(config);
+  if (backend === "comfy") return submitViaComfy(config, request);
+  if (backend === "custom") return submitViaCustom(config, request);
 
   const taskId = await submitVideo({
     baseUrl: config.minimaxBaseUrl,
@@ -158,6 +168,21 @@ async function submitViaComfy(config: Config, request: VideoSubmitRequest): Prom
   return { taskId, backend: "comfy", notes: prepared.notes };
 }
 
+/** 自定义 API（New API / OpenAI Video）提交。 */
+async function submitViaCustom(config: Config, request: VideoSubmitRequest): Promise<VideoSubmitResult> {
+  const taskId = await submitCustomVideo({
+    baseUrl: config.customVideoBaseUrl,
+    apiKey: config.customVideoApiKey,
+    model: request.model ?? config.customVideoModel,
+    prompt: request.prompt,
+    firstFrameImage: request.firstFrameImage,
+    duration: request.duration,
+    resolution: request.resolution,
+    timeoutMs: config.customVideoTimeoutMs
+  });
+  return { taskId, backend: "custom", notes: [] };
+}
+
 /** ComfyUI 的 seed 是整数；0 被当作「用工作流里的原值」，所以随机种子从 1 起。 */
 function randomSeed(): number {
   return 1 + Math.floor(Math.random() * (2 ** 31 - 1));
@@ -184,6 +209,15 @@ export async function queryVideoTask(
     return { status: query.status, remoteStatus: query.remoteStatus, url: query.videoUrl, error: query.error };
   }
 
+  if (backend === "custom") {
+    return queryCustomVideo({
+      baseUrl: config.customVideoBaseUrl,
+      apiKey: config.customVideoApiKey,
+      taskId,
+      timeoutMs: config.customVideoTimeoutMs
+    });
+  }
+
   const request = {
     baseUrl: config.minimaxBaseUrl,
     apiKey: config.minimaxApiKey,
@@ -204,13 +238,22 @@ export async function queryVideoTask(
 
 /** 下载成品视频。ComfyUI 的地址是本机 `/view`，超时用 comfyTimeoutMs。 */
 export async function downloadVideoTask(config: Config, backend: VideoBackend, url: string) {
+  if (backend === "custom") {
+    const isProxyUrl = Boolean(config.customVideoBaseUrl && url.startsWith(cleanCustomVideoBaseUrl(config.customVideoBaseUrl)));
+    const headers: Record<string, string> = {};
+    if (isProxyUrl && config.customVideoApiKey.trim()) {
+      headers["Authorization"] = `Bearer ${config.customVideoApiKey.trim()}`;
+    }
+    return downloadVideo(url, config.customVideoTimeoutMs, Object.keys(headers).length > 0 ? headers : undefined);
+  }
   // 反向代理鉴权时 `/view` 同样要带 Cookie，否则视频下不下来（只影响 comfy 后端）。
   const cookies = backend === "comfy" ? normalizeComfyCookies(config.comfyCookies) : "";
   return downloadVideo(url, backend === "comfy" ? config.comfyTimeoutMs : config.minimaxTimeoutMs, cookies === "" ? undefined : { Cookie: cookies });
 }
 
-/** 失败原因：两个后端的 query 都会给 error，兜底文案按后端区分。 */
+/** 失败原因：各后端的 query 都会给 error，兜底文案按后端区分。 */
 export function videoFailureReason(backend: VideoBackend, error: string | undefined): string {
   if (error !== undefined && error.trim() !== "") return error;
+  if (backend === "custom") return "自定义视频 API 报告该任务失败";
   return backend === "comfy" ? "ComfyUI 报告该任务失败" : "MiniMax 报告该任务失败";
 }
