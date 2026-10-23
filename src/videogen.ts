@@ -73,6 +73,14 @@ export function videoBackendOf(config: Config): VideoBackend {
   return "minimax";
 }
 
+/** 当前生效的视频模型名。 */
+export function videoModelOf(config: Config): string {
+  const backend = videoBackendOf(config);
+  if (backend === "custom") return config.customVideoModel;
+  if (backend === "comfy") return "ComfyUI";
+  return config.minimaxModel;
+}
+
 /**
  * 提交前的前置检查。
  *
@@ -170,10 +178,14 @@ async function submitViaComfy(config: Config, request: VideoSubmitRequest): Prom
 
 /** 自定义 API（New API / OpenAI Video）提交。 */
 async function submitViaCustom(config: Config, request: VideoSubmitRequest): Promise<VideoSubmitResult> {
+  const model =
+    request.model && request.model.trim() !== "" && request.model !== config.minimaxModel
+      ? request.model.trim()
+      : config.customVideoModel;
   const taskId = await submitCustomVideo({
     baseUrl: config.customVideoBaseUrl,
     apiKey: config.customVideoApiKey,
-    model: request.model ?? config.customVideoModel,
+    model,
     prompt: request.prompt,
     firstFrameImage: request.firstFrameImage,
     duration: request.duration,

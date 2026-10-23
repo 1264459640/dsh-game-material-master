@@ -1687,11 +1687,22 @@ function intakeFor(module: ModuleKey, id: string, told: Set<string>, config: any
     known.出图尺寸 = config?.imageProvider === "custom" ? config?.customSize : config?.arkSize;
   }
   if (module === "sequence") {
-    if (config?.minimaxApiKeySet !== true) {
-      blockers.push("还没配置 MiniMax API Key（生视频必需）：设置 → 游戏素材大师 → MiniMax API Key，配好点「测试连接」。");
+    if (config?.videoProvider === "custom") {
+      if (config?.customVideoApiKeySet !== true) {
+        blockers.push("还没配置自定义视频 API Key：设置 → 游戏素材大师 → 自定义 API（图生视频），配好点「测试连接」。");
+      }
+      known.视频模型 = config?.customVideoModel;
+      known.BaseURL = config?.customVideoBaseUrl;
+    } else if (config?.videoProvider === "comfy" || config?.comfyVideo === true) {
+      known.视频模型 = "ComfyUI 工作流";
+      known.BaseURL = config?.comfyBaseUrl;
+    } else {
+      if (config?.minimaxApiKeySet !== true) {
+        blockers.push("还没配置 MiniMax API Key（生视频必需）：设置 → 游戏素材大师 → MiniMax API Key，配好点「测试连接」。");
+      }
+      known.视频模型 = config?.minimaxModel;
+      known.BaseURL = config?.minimaxBaseUrl;
     }
-    known.视频模型 = config?.minimaxModel;
-    known.BaseURL = config?.minimaxBaseUrl;
   }
   if (module === "sprite") {
     known.默认单格尺寸 = `${config?.cellWidth ?? "?"}×${config?.cellHeight ?? "?"}`;

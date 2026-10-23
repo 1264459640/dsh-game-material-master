@@ -30,6 +30,7 @@ import {
 import { checkFfmpeg } from "./media.js";
 import { testArk } from "./ark.js";
 import { fetchCustomVideoModels, testCustomVideo } from "./customvideo.js";
+import { videoBackendOf, videoModelOf } from "./videogen.js";
 import { customImageBlocker, imageModelOf, imageProviderBlocker, imageProviderSummary, isCustomProvider, testCustomImage } from "./imageprovider.js";
 import {
   detectComfyBindings,
@@ -337,6 +338,8 @@ export class GameStudioGateway extends TypertRemoteService {
       imageModel: imageModelOf(config),
       imageProviderBlocker: imageProviderBlocker(config) ?? null,
       customImageBlocker: customImageBlocker(config) ?? null,
+      /** 当前生效的视频模型（模块里那个只读展示位用它）。 */
+      videoModel: videoModelOf(config),
       minimaxModels: MINIMAX_MODEL_PRESETS,
       minimaxHosts: MINIMAX_HOST_PRESETS,
       // 「优云智算版 H3」由用户在模型下拉里显式选择，选中后网关地址/路径/档位全部跟着它走。
@@ -1892,10 +1895,17 @@ export class GameStudioGateway extends TypertRemoteService {
       const before = { ...job.settings };
       // 视频模型是全局设置（含优云智算版），任务里不保留可覆盖的副本；
       // 时长/分辨率也跟着当前模型收敛，避免存下当前模型不支持的档位。
-      const model = (await loadConfig()).minimaxModel;
+      const config = await loadConfig();
+      const backend = videoBackendOf(config);
+      const model = videoModelOf(config);
       job.settings.model = model;
-      job.settings.duration = normalizeDuration(model, clampInt(raw.duration, job.settings.duration, 1, 30));
-      job.settings.resolution = normalizeResolution(model, asString(raw.resolution, job.settings.resolution));
+      if (backend === "minimax") {
+        job.settings.duration = normalizeDuration(model, clampInt(raw.duration, job.settings.duration, 1, 30));
+        job.settings.resolution = normalizeResolution(model, asString(raw.resolution, job.settings.resolution));
+      } else {
+        if (typeof raw.duration === "number") job.settings.duration = clampInt(raw.duration, job.settings.duration, 1, 120);
+        if (typeof raw.resolution === "string" && raw.resolution.trim() !== "") job.settings.resolution = raw.resolution.trim();
+      }
       job.settings.promptOptimizer = raw.promptOptimizer !== false;
       job.settings.frameCount = clampInt(raw.frameCount, job.settings.frameCount, 1, 64);
       job.settings.cellWidth = clampInt(raw.cellWidth, job.settings.cellWidth, 16, 2048);

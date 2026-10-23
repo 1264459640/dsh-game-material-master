@@ -24,7 +24,15 @@ import { basename, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { loadConfig, sequenceJobsRoot } from "./config.js";
 import { normalizeDuration, normalizeResolution } from "./minimax.js";
-import { assertVideoBackendReady, downloadVideoTask, queryVideoTask, submitVideoTask, videoFailureReason } from "./videogen.js";
+import {
+  assertVideoBackendReady,
+  downloadVideoTask,
+  queryVideoTask,
+  submitVideoTask,
+  videoBackendOf,
+  videoFailureReason,
+  videoModelOf
+} from "./videogen.js";
 import { extractFrames, fileSize, mimeOf, toJpegDataUri } from "./media.js";
 import { composeSheet, keyGreen, type SheetRow } from "./chroma.js";
 import { encodePng } from "./png.js";
@@ -181,7 +189,7 @@ export async function createSequenceJob(name: string): Promise<SequenceJob> {
     suffix: "",
     refs: { referenceImages: [], referenceVideos: [] },
     settings: {
-      model: config.minimaxModel,
+      model: videoModelOf(config),
       duration: config.minimaxDuration,
       resolution: config.minimaxResolution,
       promptOptimizer: config.minimaxPromptOptimizer,
@@ -429,13 +437,16 @@ async function submitSequenceVideo(jobId: string): Promise<void> {
   const config = await loadConfig();
   assertVideoBackendReady(config);
 
-  // 模型是全局设置（设置 → 游戏素材大师 → 视频模型），任务只跟随、不覆盖：
+  // 模型是全局设置（设置 → 游戏素材大师 → 视频模型/自定义视频），任务只跟随、不覆盖：
   // 任务的模型快照一旦和当前网关/Key 对不上（例如官方 H3 + 优云智算网关），
   // 就会打出 cp.compshare.cn/v2/... 这种 404。这里以全局配置为准并回写任务。
-  const model = config.minimaxModel;
+  const backend = videoBackendOf(config);
+  const model = videoModelOf(config);
   job.settings.model = model;
-  job.settings.duration = normalizeDuration(model, job.settings.duration);
-  job.settings.resolution = normalizeResolution(model, job.settings.resolution);
+  if (backend === "minimax") {
+    job.settings.duration = normalizeDuration(model, job.settings.duration);
+    job.settings.resolution = normalizeResolution(model, job.settings.resolution);
+  }
 
   const built = buildSequencePrompt(job);
   if ("error" in built) throw new Error(built.error);
@@ -551,7 +562,7 @@ export async function pollSequenceOnce(jobId: string): Promise<void> {
 
   const config = await loadConfig();
   const backend: VideoBackend = job.video.backend ?? "minimax";
-  const model = job.settings.model || config.minimaxModel;
+  const model = job.settings.model || videoModelOf(config);
 
   try {
     const query = await queryVideoTask(config, backend, taskId, { model });
