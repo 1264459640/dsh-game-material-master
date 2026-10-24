@@ -561,7 +561,9 @@ export async function pollSequenceOnce(jobId: string): Promise<void> {
   }
 
   const config = await loadConfig();
-  const backend: VideoBackend = job.video.backend ?? "minimax";
+  // 兼容早期自定义后端任务：旧 job.json 没有 backend 字段时，按当前配置恢复，
+  // 否则会把 custom task_id 错拿去查询 MiniMax，表现为「一直生成 / 查询异常」。
+  const backend: VideoBackend = job.video.backend ?? (videoBackendOf(config) === "custom" ? "custom" : "minimax");
   const model = job.settings.model || videoModelOf(config);
 
   try {

@@ -45,6 +45,7 @@ import {
   downloadVideoTask,
   queryVideoTask,
   submitVideoTask,
+  videoBackendOf,
   videoFailureReason
 } from "./videogen.js";
 import { composeSheet, keyGreen, type SheetRow } from "./chroma.js";
@@ -459,8 +460,8 @@ async function pollTurnVideoOnce(projectId: string, config: Config): Promise<voi
   const node = project.turn?.video;
   const taskId = node?.taskId;
   if (node?.status !== "running" || taskId === undefined) return;
-  // 后端按节点上记的那个值走，不按当前配置：任务可能是改设置之前提交的。
-  const backend: VideoBackend = node.backend ?? "minimax";
+  // 后端按节点上记的那个值走；兼容旧任务：没有 backend 时按当前配置恢复。
+  const backend: VideoBackend = node.backend ?? (videoBackendOf(config) === "custom" ? "custom" : "minimax");
 
   try {
     const query = await queryVideoTask(config, backend, taskId);
@@ -1114,7 +1115,7 @@ export async function pollVideosOnce(projectId: string): Promise<void> {
     pending.map(async (key) => {
       const label = directionOf(key)?.label ?? key;
       const taskId = project.videos[key].taskId as string;
-      const backend: VideoBackend = project.videos[key].backend ?? "minimax";
+      const backend: VideoBackend = project.videos[key].backend ?? (videoBackendOf(config) === "custom" ? "custom" : "minimax");
       try {
         const query = await queryVideoTask(config, backend, taskId);
         if (query.status === "failed") {
