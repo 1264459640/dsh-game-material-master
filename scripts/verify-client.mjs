@@ -471,9 +471,9 @@ for (const file of files) {
   }
 }
 
-// ── 功能管理 + 普通侧栏入口：浏览器半区与宿主是两份实现，只能靠文本契约对齐 ────
+// ── 功能管理 + 侧栏菜单：浏览器半区与宿主是两份实现，只能靠文本契约对齐 ────
 //
-// 「隐藏了功能」要同时落在三处：设置页写配置、工作台页签按它渲染、
+// 「隐藏了功能」要同时落在三处：设置页写配置、工作台 / 侧栏菜单按它渲染、
 // 宿主工具面按它拒绝。前两处在这里钉，第三处在 verify-tools 的第 6.7 节。
 {
   const clientText = readFileSync(fileURLToPath(new URL("../src/client.ts", import.meta.url)), "utf8");
@@ -504,13 +504,17 @@ for (const file of files) {
   check("宿主网关允许保存这个字段", /"hiddenModules"/.test(readFileSync(fileURLToPath(new URL("../src/index.ts", import.meta.url)), "utf8")));
   check("宿主工具面按模块拦调用", /assertModuleVisible/.test(hostToolText) && /METHOD_MODULE/.test(hostToolText));
 
-  // 工作台页签必须按可见性过滤，而不是照旧渲染全部模块。
+  // 工作台页签与侧栏菜单都必须按可见性过滤，而不是照旧渲染全部模块。
   check("工作台页签按可见性过滤", /visibleModules\.map\(/.test(clientText));
-  check("侧栏不再包含下拉菜单及其样式", !/SPR_railMenu|ChevronGlyph/.test(clientText));
+  check("侧栏菜单按可见性过滤", /const entries = visibleModulesOf\(hidden\);/.test(clientText));
   check("工作台在选中模块被隐藏时落到第一个可见模块", /const activeModule =/.test(clientText) && /visibleModules\[0\]\.key/.test(clientText));
 
   // 细节样式缺了不会报错，只会「看着不对劲」，所以把关键类名也钉住。
   for (const className of [
+    "SPR_railGlyph",
+    "SPR_railMenuBtn",
+    "SPR_railMenu",
+    "SPR_railMenuItem",
     "SPR_featureRow",
     "SPR_featureCheck",
     "SPR_modulesHiddenNote"

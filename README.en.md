@@ -472,7 +472,7 @@ pipeline as MiniMax.
 Turn a module off under **Settings → Game Material Master → Feature management**; turn it back on any time.
 Existing project data is never deleted.
 
-- **UI**: the module disappears from the workbench tabs. If you were
+- **UI**: the module disappears from the workbench tabs and from the sidebar shortcut menu. If you were
   sitting on that module, the workbench falls back to the first visible one.
 - **Chat**: `game_material_call` / `status` / `intake` / `upload` / `wait` / `review` / `approve` all refuse,
   and the error says where to turn the feature back on. Hiding only the UI would not be hiding at all: the
