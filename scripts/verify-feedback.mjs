@@ -1150,7 +1150,7 @@ section("深链接");
 // ── 功能管理：隐藏的模块在界面上也必须真的消失 ────────────────────────────
 //
 // 「隐藏」是双向的（工具面由 verify-tools.mjs 钉），这里只管界面这一半：
-// 页签、侧栏菜单、以及全隐藏时的空态。设置页的勾选要能写回宿主。
+// 页签以及全隐藏时的空态。设置页的勾选要能写回宿主。
 section("功能管理（隐藏模块）");
 {
   const test = bundle.__test ?? {};
@@ -1203,67 +1203,17 @@ section("功能管理（隐藏模块）");
     textOf(none.tree).slice(0, 120)
   );
 
-  // ── 侧栏入口的菜单按钮 ──────────────────────────────────────────────────
-  //
-  // StudioGlyph 渲染在宿主 `<button class=…panelRow>` **内部**，所以它只能自己
-  // 挂一个 `span[role=button]` 的触发器，并把这一下点击 stopPropagation 掉。
-  // Hook 顺序：0 useHiddenModules / 1 open / 2 anchor / 3 rootRef / 4 menuRef。
-  function renderRail(hidden, open = true) {
-    HOOK.slots = [hidden, open, { left: 300, top: 120, bottom: 140 }];
+  // 侧栏只提供图标，不能再出现下拉或拦截宿主的点击。
+  for (const hidden of [[], ["rig", "tile"], MODULE_KEYS]) {
+    HOOK.slots = [hidden];
     HOOK.cursor = 0;
-    hookOverflow = false;
-    return StudioGlyph({ size: 18, api: undefined, studioCtx: fakeCtx });
+    const rail = StudioGlyph({ size: 18 });
+    check("侧栏入口保留单个图标", collect(rail, (node) => node.type === "svg").length === 1);
+    check("侧栏入口没有额外按钮或菜单", collect(rail, (node) => node.type === "button" || ["button", "menu", "menuitem"].includes(node.props?.role) || node.props?.["aria-haspopup"]).length === 0);
+    check("侧栏入口不拦截点击或添加焦点", collect(rail, (node) => node.props?.onClick || node.props?.onKeyDown || node.props?.tabIndex !== undefined).length === 0);
+    check("侧栏图标保留请求的尺寸", collect(rail, (node) => node.type === "svg")[0]?.props?.width === 18);
+    check("侧栏入口不再订阅配置或创建菜单状态", HOOK.cursor === 0);
   }
-
-  const closed = renderRail([], false);
-  const trigger = byClass(closed, "SPR_railMenuBtn");
-  check("入口上有菜单按钮", trigger.length === 1, `${trigger.length} 个`);
-  check("菜单按钮带 aria 契约", trigger[0]?.props?.role === "button" && trigger[0]?.props?.["aria-haspopup"] === "menu", JSON.stringify({ role: trigger[0]?.props?.role, haspopup: trigger[0]?.props?.["aria-haspopup"] }));
-  check("菜单默认不展开", byClass(closed, "SPR_railMenu").length === 0);
-  check("图标本体还在", collect(closed, (node) => node.type === "svg").length >= 1);
-
-  // 点一下菜单按钮：必须 preventDefault + 拦住冒泡，否则会顺带把面板切了。
-  let toggled = false;
-  const triggerEvent = {
-    currentTarget: { getBoundingClientRect: () => ({ left: 10, top: 100, right: 46, bottom: 136 }) },
-    preventDefault: () => {
-      toggled = true;
-    },
-    stopPropagation: () => {
-      toggled = true;
-    }
-  };
-  trigger[0].props.onClick(triggerEvent);
-  check("点菜单按钮时拦住冒泡（不会顺手切面板）", toggled === true);
-
-  const opened = renderRail(["rig"], true);
-  const menu = byClass(opened, "SPR_railMenu");
-  check("展开后出现菜单", menu.length === 1, `${menu.length} 个`);
-  const items = byClass(opened, "SPR_railMenuItem");
-  check(`菜单列出全部可见模块（${MODULE_COUNT - 1} 个）`, items.length === MODULE_COUNT - 1, `${items.length} 个`);
-  check(
-    "被隐藏的模块不在菜单里",
-    !items.some((node) => node.props?.["data-module"] === "rig"),
-    items.map((node) => node.props?.["data-module"]).join("、")
-  );
-  check("菜单里能直接点进某个功能", typeof items[0]?.props?.onClick === "function");
-  check("菜单容器吞掉点击，不会冒泡到宿主按钮", typeof menu[0]?.props?.onClick === "function" && typeof menu[0]?.props?.onMouseDown === "function");
-  check("菜单底部说明隐藏了几个", textOf(opened).includes("已隐藏 1 个功能"), textOf(opened).slice(0, 80));
-
-  // 点某一项 → 广播意图 + 切到工作台面板（与深链接同一条路径）。
-  const received = [];
-  const unsubscribe = test.subscribeIntent((intent) => received.push(intent));
-  const panelsBefore = SELECTED_PANELS.length;
-  items.find((node) => node.props?.["data-module"] === "sequence").props.onClick({
-    preventDefault() {},
-    stopPropagation() {}
-  });
-  check("点菜单项会切到工作台面板", SELECTED_PANELS.length === panelsBefore + 1 && SELECTED_PANELS.at(-1) === bundle.GAME_STUDIO_PANEL_ID, SELECTED_PANELS.at(-1));
-  check("点菜单项广播对应模块的意图", JSON.stringify(received.at(-1)) === JSON.stringify({ module: "sequence" }), JSON.stringify(received.at(-1)));
-  unsubscribe();
-
-  const railAllHidden = renderRail(MODULE_KEYS, true);
-  check("全隐藏时菜单给出提示而不是空菜单", byClass(railAllHidden, "SPR_railMenuEmpty").length === 1 && byClass(railAllHidden, "SPR_railMenuItem").length === 0);
 
   // ── 设置页的「功能管理」分组 ────────────────────────────────────────────
   check("设置页组件已注册", typeof ConfigSection === "function", typeof ConfigSection);
